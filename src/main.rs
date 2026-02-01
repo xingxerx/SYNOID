@@ -131,6 +131,47 @@ enum Commands {
     
     /// Check GPU status
     Gpu,
+
+    /// Vectorize video to SVG frames (Resolution Independent)
+    Vectorize {
+        /// Input video
+        #[arg(short, long)]
+        input: PathBuf,
+        
+        /// Output directory
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Color mode: color/binary
+        #[arg(long, default_value = "color")]
+        mode: String,
+    },
+
+    /// Infinite Upscale (Neural/Vector)
+    Upscale {
+        /// Input video
+        #[arg(short, long)]
+        input: PathBuf,
+        
+        /// Scale factor (e.g. 2.0, 4.0)
+        #[arg(short, long, default_value_t = 2.0)]
+        scale: f64,
+        
+        /// Output video path
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Activate Cyberdefense Sentinel
+    Guard {
+        /// Monitor Mode (Process/File)
+        #[arg(short, long, default_value = "all")]
+        mode: String,
+        
+        /// Path to watch for Integrity
+        #[arg(short, long)]
+        watch: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -246,6 +287,69 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("=== SYNOID™ GPU Status ===");
             // Simple check (mock)
             println!("✓ CUDA Detect: Logic not connected (stub)");
+        },
+        Commands::Vectorize { input, output, mode } => {
+            use agent::vector_engine::{vectorize_video, VectorConfig};
+            let mut config = VectorConfig::default();
+            config.colormode = mode;
+            
+            println!("🎨 Starting Vectorization Engine on {:?}", input);
+            println!("   Engine: SVG (Resolution Independent)");
+            
+            match vectorize_video(&input, &output, config).await {
+                Ok(msg) => println!("✅ {}", msg),
+                Err(e) => error!("Vectorization failed: {}", e),
+            }
+        },
+        Commands::Upscale { input, scale, output } => {
+            use agent::vector_engine::upscale_video;
+            println!("🔎 Starting Infinite Upscale (Scale: {:.1}x) on {:?}", scale, input);
+            
+            match upscale_video(&input, scale, &output).await {
+                Ok(msg) => println!("✅ {}", msg),
+                Err(e) => error!("Upscale failed: {}", e),
+            }
+        },
+        Commands::Guard { mode, watch } => {
+            use agent::defense::{Sentinel, IntegrityGuard};
+            use std::{thread, time::Duration};
+            
+            println!("🛡️ ACTIVATING SENTINEL Cyberdefense System...");
+            println!("   Mode: {} | Least Privilege: ENABLED", mode);
+            
+            // 1. Setup Integrity Guard
+            let mut integrity = IntegrityGuard::new();
+            if let Some(path) = watch {
+                println!("   Watching Path: {:?}", path);
+                integrity.watch_path(path);
+                let _ = integrity.build_baseline();
+            }
+
+            // 2. Setup Process Sentinel
+            let mut sentinel = Sentinel::new();
+            
+            println!("✅ Sentinel Online. Monitoring system...");
+            
+            // Infinite Monitor Loop
+            loop {
+                // Check System Health
+                if mode == "all" || mode == "sys" {
+                    let alerts = sentinel.scan_processes();
+                    for alert in alerts {
+                        println!("⚠️ [SENTINEL] {}", alert);
+                    }
+                }
+
+                // Check File Integrity
+                if mode == "all" || mode == "file" {
+                    let violations = integrity.verify_integrity();
+                    for v in violations {
+                        println!("❌ [INTEGRITY] {}", v);
+                    }
+                }
+                
+                thread::sleep(Duration::from_secs(5));
+            }
         }
     }
 

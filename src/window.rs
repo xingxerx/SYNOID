@@ -9,7 +9,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::agent::{vision_tools, audio_tools, research_tools, production_tools};
+use crate::agent::{vision_tools, audio_tools, research_tools, production_tools, vector_engine};
+use crate::agent::vector_engine::{VectorConfig, vectorize_video};
 
 // --- Color Palette (Davinci-inspired) ---
 const COLOR_BG_DARK: egui::Color32 = egui::Color32::from_rgb(26, 26, 26);
@@ -205,6 +206,121 @@ impl eframe::App for SynoidApp {
                             } else {
                                 ui.label(egui::RichText::new("No media selected").italics().weak());
                             }
+
+                            ui.add_space(10.0);
+                            ui.separator();
+                            ui.add_space(10.0);
+
+                            // Production Tools in Media Tab
+                            ui.label(egui::RichText::new("Production Tools").strong());
+                            ui.add_space(5.0);
+
+                            // Compress Video
+                            ui.horizontal(|ui| {
+                                ui.label("Compress Target (MB):");
+                                ui.add(egui::TextEdit::singleline(&mut task.compress_size).desired_width(50.0));
+                                if ui.button("📦 Compress Video").clicked() {
+                                    if !task.input_path.is_empty() {
+                                        let input = PathBuf::from(&task.input_path);
+                                        let size: f64 = task.compress_size.parse().unwrap_or(25.0);
+                                        let output = PathBuf::from(&task.output_path); // Use output_path for compressed output
+                                        
+                                        task.logs.push(format!("[PROD] Starting Compress to {:.2} MB...", size));
+                                        task.status = "📦 Compressing...".to_string();
+                                        
+                                        let task_clone = self.task.clone();
+                                        thread::spawn(move || {
+                                            let rt = tokio::runtime::Runtime::new().unwrap();
+                                            rt.block_on(async {
+                                                match production_tools::compress_video(&input, size, &output).await {
+                                                    Ok(res) => {
+                                                        let mut t = task_clone.lock().unwrap();
+                                                        t.logs.push(format!("[PROD] ✅ Compressed: {:.2} MB", res.size_mb));
+                                                        t.status = "Ready.".to_string();
+                                                    },
+                                                    Err(e) => {
+                                                        let mut t = task_clone.lock().unwrap();
+                                                        t.logs.push(format!("[PROD] ❌ Compression failed: {}", e));
+                                                    }
+                                                }
+                                            });
+                                        });
+                                    }
+                                }
+                            });
+
+                            ui.add_space(10.0);
+                            
+                            // Vectorize UI
+                            ui.label(egui::RichText::new("🎨 Vectorize (SVG)").strong());
+                            if ui.button("✨ Convert to SVG").clicked() {
+                                if !task.input_path.is_empty() {
+                                    let input = PathBuf::from(&task.input_path);
+                                    let output_dir = PathBuf::from(&task.output_path).with_extension(""); 
+                                    
+                                    task.logs.push(format!("[VECTOR] Starting Raster-to-Vector Engine..."));
+                                    task.status = "🎨 Vectorizing...".to_string();
+                                    
+                                    let task_clone = self.task.clone();
+                                    
+                                    thread::spawn(move || {
+                                        let rt = tokio::runtime::Runtime::new().unwrap();
+                                        rt.block_on(async {
+                                            let config = VectorConfig::default();
+                                            match vectorize_video(&input, &output_dir, config).await {
+                                                Ok(msg) => {
+                                                    let mut t = task_clone.lock().unwrap();
+                                                    t.logs.push(format!("[VECTOR] ✅ {}", msg));
+                                                    t.status = "Ready.".to_string();
+                                                },
+                                                Err(e) => {
+                                                    let mut t = task_clone.lock().unwrap();
+                                                    t.logs.push(format!("[VECTOR] ❌ Error: {}", e));
+                                                }
+                                            }
+                                        });
+                                    });
+                                }
+                            }
+
+                            ui.add_space(10.0);
+                            
+                            // Upscale UI
+                            ui.label(egui::RichText::new("🔎 Infinite Upscale").strong());
+                            ui.horizontal(|ui| {
+                                ui.label("Scale (x):");
+                                ui.add(egui::TextEdit::singleline(&mut task.compress_size).desired_width(40.0)); // Reusing field for now or add new one
+                                if ui.button("🚀 Render High-Res").clicked() {
+                                    if !task.input_path.is_empty() {
+                                        let input = PathBuf::from(&task.input_path);
+                                        let output = PathBuf::from(&task.output_path);
+                                        let scale: f64 = task.compress_size.parse().unwrap_or(2.0); // Default to 2.0 if parse fails
+                                        
+                                        task.logs.push(format!("[UPSCALE] Starting {:.1}x Zoom...", scale));
+                                        task.status = "🔎 Upscaling...".to_string();
+                                        
+                                        let task_clone = self.task.clone();
+                                        use crate::agent::vector_engine::upscale_video;
+                                        
+                                        thread::spawn(move || {
+                                            let rt = tokio::runtime::Runtime::new().unwrap();
+                                            rt.block_on(async {
+                                                match upscale_video(&input, scale, &output).await {
+                                                    Ok(msg) => {
+                                                        let mut t = task_clone.lock().unwrap();
+                                                        t.logs.push(format!("[UPSCALE] ✅ {}", msg));
+                                                        t.status = "Ready.".to_string();
+                                                    },
+                                                    Err(e) => {
+                                                        let mut t = task_clone.lock().unwrap();
+                                                        t.logs.push(format!("[UPSCALE] ❌ Error: {}", e));
+                                                    }
+                                                }
+                                            });
+                                        });
+                                    }
+                                }
+                            });
                         });
                     });
                 },

@@ -12,7 +12,16 @@ dotenv = "0.15"
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+vtracer = "0.6" # Core vectorizer engine
+rayon = "1.7"   # Parallel processing for frames
 reqwest = { version = "0.11", features = ["json"] }
 eframe = "0.29.1"
 rfd = "0.13"
 image = "0.24"
+scraper = "0.19"
+resvg = "0.29"   # SVG rendering engine
+tiny-skia = "0.8" # 2D Graphics library for resvg
+sysinfo = "0.29" # System monitoring (Processes/RAM)
+sha2 = "0.10"    # File integrity hashing
+walkdir = "2.3"  # Efficient directory traversal
+

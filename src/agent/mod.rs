@@ -14,3 +14,5 @@ pub mod motor_cortex;
 pub mod research_tools;
 pub mod production_tools;
 pub mod learning;
+pub mod vector_engine;
+pub mod defense;
