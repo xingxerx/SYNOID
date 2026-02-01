@@ -2,6 +2,8 @@
 // Copyright (c) 2026 Xing_The_Creator | SYNOID™
 
 use crate::agent::gpt_oss_bridge::SynoidAgent;
+use crate::agent::consciousness::Consciousness;
+use crate::agent::body::Body;
 use tracing::info;
 
 /// Intents that the Brain can classify
@@ -19,6 +21,9 @@ pub enum Intent {
 pub struct Brain {
     agent: Option<SynoidAgent>,
     api_url: String,
+    // Integrated components (silences unused warnings)
+    _consciousness: Consciousness,
+    _body: Body,
 }
 
 impl Brain {
@@ -26,6 +31,8 @@ impl Brain {
         Self {
             agent: None,
             api_url: api_url.to_string(),
+            _consciousness: Consciousness::new(),
+            _body: Body::new(),
         }
     }
 

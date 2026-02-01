@@ -11,6 +11,7 @@ use std::process::Command;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn, error};
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SourceInfo {
     pub title: String,
@@ -187,6 +188,7 @@ pub fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>
 }
 
 /// Scan a directory for all valid video files
+#[allow(dead_code)]
 pub fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
     let mut videos = Vec::new();
     let extensions = ["mp4", "mov", "mkv", "avi", "webm"];

@@ -1,0 +1,41 @@
+# Rust
+/target
+/target_garbage*
+**/*.rs.bk
+
+# Python / Environment Bloat
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+/venv
+/env
+/Lib
+/Scripts
+/Include
+/pyvenv.cfg
+/share
+/etc
+*.spec
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Large Media Files (Bloat)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+Hytale_Project/
+downloads/
+
+# Large Debug Files
+*.pdb
+*.lib
