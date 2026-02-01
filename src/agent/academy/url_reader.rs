@@ -4,8 +4,7 @@
 use serde::{Deserialize, Serialize};
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use scraper::{Html, Selector};
-use std::path::Path;
-use tracing::{info, warn};
+use tracing::info;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LearnedPattern {

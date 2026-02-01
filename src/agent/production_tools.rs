@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 use crate::agent::source_tools::get_video_duration;
 
 /// Result of a production operation

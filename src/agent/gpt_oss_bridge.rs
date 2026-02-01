@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
-use tracing::{info, error};
+use tracing::info;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct CompletionRequest {

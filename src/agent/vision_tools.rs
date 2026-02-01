@@ -20,7 +20,7 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     info!("[EYES] Scanning visual content: {:?}", path);
     
     // Using ffprobe to detect scene changes (>0.3 difference)
-    let output = Command::new("ffprobe")
+    let _output = Command::new("ffprobe")
         .args([
             "-show_frames",
             "-of", "compact=p=0:nk=1",

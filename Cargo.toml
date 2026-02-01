@@ -25,3 +25,15 @@ sysinfo = "0.29" # System monitoring (Processes/RAM)
 sha2 = "0.10"    # File integrity hashing
 walkdir = "2.3"  # Efficient directory traversal
 
+# Voice Cloning & Neural TTS
+rand = "0.8"      # Pin to 0.8 for candle compatibility
+candle-core = "0.8"
+candle-nn = "0.8"
+candle-transformers = "0.8"
+tokenizers = "0.15"
+hf-hub = "0.3"    # HuggingFace model downloads
+rodio = "0.17"    # Audio playback
+cpal = "0.15"     # Audio recording
+hound = "3.5"     # WAV file writing
+dirs = "5.0"      # Platform cache directories
+

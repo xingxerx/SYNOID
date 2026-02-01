@@ -172,6 +172,29 @@ enum Commands {
         #[arg(short, long)]
         watch: Option<PathBuf>,
     },
+
+    /// Voice Cloning & Neural TTS
+    Voice {
+        /// Record voice sample (seconds)
+        #[arg(long)]
+        record: Option<u32>,
+        
+        /// Clone voice from audio file
+        #[arg(long)]
+        clone: Option<PathBuf>,
+        
+        /// Text to speak
+        #[arg(long)]
+        speak: Option<String>,
+        
+        /// Output audio file
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        
+        /// Download TTS model
+        #[arg(long)]
+        download: bool,
+    },
 }
 
 #[tokio::main]
@@ -201,7 +224,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let source_info = agent::source_tools::download_youtube(&url, output_dir, login.as_deref()).await?;
             println!("✅ Video acquired: {}", source_info.title);
             
-            let output_path = output.unwrap_or_else(|| PathBuf::from("output.mp4"));
+            let _output_path = output.unwrap_or_else(|| PathBuf::from("output.mp4"));
             
             // Placeholder for full pipeline trigger
             info!("Ready to process '{}' with intent: {}", source_info.title, intent);
@@ -349,6 +372,66 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 
                 thread::sleep(Duration::from_secs(5));
+            }
+        },
+        Commands::Voice { record, clone, speak, output, download } => {
+            use agent::voice::{AudioIO, VoiceEngine};
+            
+            println!("🗣️ SYNOID™ Voice Engine");
+            
+            let audio_io = AudioIO::new();
+            
+            // Record voice sample
+            if let Some(duration) = record {
+                let out_path = output.clone().unwrap_or_else(|| PathBuf::from("voice_sample.wav"));
+                match audio_io.record_to_file(&out_path, duration) {
+                    Ok(_) => println!("✅ Recorded {} seconds to {:?}", duration, out_path),
+                    Err(e) => println!("❌ Recording failed: {}", e),
+                }
+            }
+            
+            // Download model
+            if download {
+                match VoiceEngine::new() {
+                    Ok(engine) => {
+                        println!("📥 Downloading TTS model...");
+                        match engine.download_model("microsoft/speecht5_tts") {
+                            Ok(path) => println!("✅ Model ready: {:?}", path),
+                            Err(e) => println!("❌ Download failed: {}", e),
+                        }
+                    },
+                    Err(e) => println!("❌ Engine init failed: {}", e),
+                }
+            }
+            
+            // Speak text
+            if let Some(text) = speak {
+                let out_path = output.clone().unwrap_or_else(|| PathBuf::from("tts_output.wav"));
+                match VoiceEngine::new() {
+                    Ok(engine) => {
+                        match engine.speak(&text, &out_path) {
+                            Ok(_) => {
+                                println!("✅ Speech saved to {:?}", out_path);
+                                let _ = audio_io.play_file(&out_path);
+                            },
+                            Err(e) => println!("⚠️ {}", e),
+                        }
+                    },
+                    Err(e) => println!("❌ {}", e),
+                }
+            }
+            
+            // Clone voice (extract embedding)
+            if let Some(audio_path) = clone {
+                match VoiceEngine::new() {
+                    Ok(engine) => {
+                        match engine.clone_voice(&audio_path) {
+                            Ok(embedding) => println!("✅ Voice cloned. Embedding: {} dims", embedding.len()),
+                            Err(e) => println!("⚠️ {}", e),
+                        }
+                    },
+                    Err(e) => println!("❌ {}", e),
+                }
             }
         }
     }

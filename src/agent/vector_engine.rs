@@ -42,7 +42,26 @@ pub async fn upscale_video(
         
     if !status.status.success() { return Err("FFmpeg extraction failed".into()); }
 
-    // 3. Vectorize & Render High-Res (Parallel)
+    // 3. Resolution Safety Check
+    // Calculate theoretical output size based on first frame
+    if let Some(first_frame) = fs::read_dir(&frames_src)?.filter_map(|e| e.ok()).next() {
+        if let Ok(dims) = image::image_dimensions(first_frame.path()) {
+            let (orig_w, orig_h) = dims;
+            let target_w = (orig_w as f64 * scale_factor) as u32;
+            let target_h = (orig_h as f64 * scale_factor) as u32;
+            
+            info!("[UPSCALE] Original: {}x{}, Target: {}x{}", orig_w, orig_h, target_w, target_h);
+            
+            if target_w > 16384 || target_h > 16384 {
+                return Err(format!(
+                    "Safety Stop: Target resolution {}x{} exceeds 16K limit (16384px). Reduce scale factor.", 
+                    target_w, target_h
+                ).into());
+            }
+        }
+    }
+
+    // 4. Vectorize & Render High-Res (Parallel)
     let paths: Vec<PathBuf> = fs::read_dir(&frames_src)?.filter_map(|e| e.ok()).map(|e| e.path()).collect();
     info!("[UPSCALE] Processing {} frames (Vectorize -> Render {}x)...", paths.len(), scale_factor);
 

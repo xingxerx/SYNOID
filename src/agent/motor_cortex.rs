@@ -30,9 +30,9 @@ impl MotorCortex {
     pub async fn execute_intent(
         &mut self,
         intent: &str,
-        input: &Path,
-        output: &Path,
-        visual_data: &[VisualScene],
+        _input: &Path,
+        _output: &Path,
+        _visual_data: &[VisualScene],
         audio_data: &AudioAnalysis,
     ) -> Result<EditGraph, Box<dyn std::error::Error>> {
         info!("[CORTEX] Executing high-level intent: {}", intent);

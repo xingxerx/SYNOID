@@ -1,6 +1,6 @@
 use sha2::{Sha256, Digest};
-use std::fs::{self, File};
-use std::io::{self, Read};
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use walkdir::WalkDir;

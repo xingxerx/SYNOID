@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::agent::{vision_tools, audio_tools, research_tools, production_tools, vector_engine};
+use crate::agent::{vector_engine, production_tools};
 use crate::agent::vector_engine::{VectorConfig, vectorize_video};
 
 // --- Color Palette (Davinci-inspired) ---

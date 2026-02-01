@@ -9,7 +9,7 @@
 
 use std::process::Command;
 use std::path::{Path, PathBuf};
-use tracing::{info, warn, error};
+use tracing::info;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]

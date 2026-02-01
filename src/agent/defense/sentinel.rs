@@ -1,4 +1,4 @@
-use sysinfo::{Pid, ProcessExt, System, SystemExt};
+use sysinfo::{ProcessExt, System, SystemExt, CpuExt};
 use tracing::{info, warn};
 use std::collections::HashMap;
 
