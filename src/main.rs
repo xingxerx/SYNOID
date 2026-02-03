@@ -183,6 +183,10 @@ enum Commands {
         #[arg(long)]
         clone: Option<PathBuf>,
         
+        /// Create named voice profile from audio
+        #[arg(long)]
+        profile: Option<String>,
+        
         /// Text to speak
         #[arg(long)]
         speak: Option<String>,
@@ -374,7 +378,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 thread::sleep(Duration::from_secs(5));
             }
         },
-        Commands::Voice { record, clone, speak, output, download } => {
+        Commands::Voice { record, clone, profile, speak, output, download } => {
             use agent::voice::{AudioIO, VoiceEngine};
             
             println!("🗣️ SYNOID™ Voice Engine");
@@ -404,16 +408,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             
-            // Speak text
-            if let Some(text) = speak {
-                let out_path = output.clone().unwrap_or_else(|| PathBuf::from("tts_output.wav"));
+            // Create voice profile from audio
+            if let (Some(profile_name), Some(audio_path)) = (&profile, &clone) {
                 match VoiceEngine::new() {
                     Ok(engine) => {
-                        match engine.speak(&text, &out_path) {
-                            Ok(_) => {
-                                println!("✅ Speech saved to {:?}", out_path);
-                                let _ = audio_io.play_file(&out_path);
-                            },
+                        println!("🎭 Creating voice profile '{}'...", profile_name);
+                        match engine.create_profile(profile_name, audio_path) {
+                            Ok(p) => println!("✅ Profile '{}' created ({} dims)", p.name, p.embedding.len()),
+                            Err(e) => println!("❌ Profile creation failed: {}", e),
+                        }
+                    },
+                    Err(e) => println!("❌ {}", e),
+                }
+            } else if let Some(audio_path) = clone {
+                // Clone voice (extract embedding without saving profile)
+                match VoiceEngine::new() {
+                    Ok(engine) => {
+                        match engine.clone_voice(&audio_path) {
+                            Ok(embedding) => println!("✅ Voice cloned. Embedding: {} dims", embedding.len()),
                             Err(e) => println!("⚠️ {}", e),
                         }
                     },
@@ -421,13 +433,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             
-            // Clone voice (extract embedding)
-            if let Some(audio_path) = clone {
+            // Speak text
+            if let Some(text) = speak {
+                let out_path = output.clone().unwrap_or_else(|| PathBuf::from("tts_output.wav"));
                 match VoiceEngine::new() {
                     Ok(engine) => {
-                        match engine.clone_voice(&audio_path) {
-                            Ok(embedding) => println!("✅ Voice cloned. Embedding: {} dims", embedding.len()),
-                            Err(e) => println!("⚠️ {}", e),
+                        // If profile specified, use speak_as
+                        if let Some(profile_name) = &profile {
+                            match engine.speak_as(&text, profile_name, &out_path) {
+                                Ok(_) => {
+                                    println!("✅ Speech saved to {:?}", out_path);
+                                    let _ = audio_io.play_file(&out_path);
+                                },
+                                Err(e) => println!("⚠️ {}", e),
+                            }
+                        } else {
+                            match engine.speak(&text, &out_path) {
+                                Ok(_) => {
+                                    println!("✅ Speech saved to {:?}", out_path);
+                                    let _ = audio_io.play_file(&out_path);
+                                },
+                                Err(e) => println!("⚠️ {}", e),
+                            }
                         }
                     },
                     Err(e) => println!("❌ {}", e),

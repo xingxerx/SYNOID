@@ -37,3 +37,7 @@ cpal = "0.15"     # Audio recording
 hound = "3.5"     # WAV file writing
 dirs = "5.0"      # Platform cache directories
 
+# Vector Animation Engine (SVG Video)
+# Pure SMIL-based animated SVG (no external animation libs needed)
+# rive-rs = { git = "https://github.com/rive-app/rive-rs" }  # Optional: GPU vector renderer
+
