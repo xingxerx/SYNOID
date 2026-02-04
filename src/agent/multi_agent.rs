@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use tracing::{info, warn};
+use crate::agent::reasoning::{ReasoningManager, ReasoningEffort};
 
 // --- Director Agent ---
 
@@ -30,6 +31,7 @@ impl StoryPlan {
 pub struct DirectorAgent {
     pub model_id: String,
     pub system_prompt: String,
+    pub reasoning: ReasoningManager,
 }
 
 impl DirectorAgent {
@@ -37,13 +39,32 @@ impl DirectorAgent {
         Self {
             model_id: model.to_string(),
             system_prompt: "You are the SYNOID Director. Decompose instructions into sub-goals.".into(),
+            reasoning: ReasoningManager::new(),
         }
     }
 
     /// Analyzes raw user intent and returns a structured StoryPlan.
     /// Uses ReAct (Reasoning + Acting) logic to ensure causal grounding.
-    pub async fn analyze_intent(&self, user_prompt: &str) -> Result<StoryPlan, Box<dyn std::error::Error>> {
-        info!("[DIRECTOR] Analyzing intent: {}", user_prompt);
+    /// Optionally adjusts reasoning effort based on style/complexity.
+    pub async fn analyze_intent(
+        &mut self,
+        user_prompt: &str,
+        style_profile: Option<&str>
+    ) -> Result<StoryPlan, Box<dyn std::error::Error>> {
+
+        // Dynamic Reasoning Adjustment
+        if let Some(style) = style_profile {
+            if style.to_lowercase().contains("cinematic") {
+                self.reasoning.set_effort(ReasoningEffort::High);
+            } else if style.to_lowercase().contains("action") {
+                 self.reasoning.set_effort(ReasoningEffort::Medium);
+            } else {
+                 self.reasoning.set_effort(ReasoningEffort::Low);
+            }
+        }
+
+        info!("[DIRECTOR] Analyzing intent: '{}' (Effort: {})", user_prompt, self.reasoning.get_config_param());
+
         // Mock LLM Response for now
         let plan = StoryPlan {
             global_intent: user_prompt.to_string(),

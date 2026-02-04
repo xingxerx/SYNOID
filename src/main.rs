@@ -209,6 +209,10 @@ enum Commands {
         /// User prompt or context
         #[arg(long)]
         prompt: Option<String>,
+
+        /// Style profile to trigger dynamic reasoning
+        #[arg(long)]
+        style: Option<String>,
     },
 }
 
@@ -471,13 +475,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         },
-        Commands::Agent { role, prompt } => {
+        Commands::Agent { role, prompt, style } => {
             use agent::multi_agent::*;
 
             if role == "director" {
-                let dir = DirectorAgent::new("gpt-4-turbo");
+                let mut dir = DirectorAgent::new("gpt-oss-20b");
                 let intent = prompt.unwrap_or("Make a movie".to_string());
-                match dir.analyze_intent(&intent).await {
+                let style_deref = style.as_deref();
+
+                match dir.analyze_intent(&intent, style_deref).await {
                     Ok(plan) => {
                         println!("🎬 Story Plan Generated: {}", plan.global_intent);
                         println!("   Scenes: {}", plan.scenes.len());
