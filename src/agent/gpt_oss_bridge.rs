@@ -1,73 +1,97 @@
-// SYNOID™ GPT-OSS Bridge
+// SYNOID™ MCP Server Bridge
 // Copyright (c) 2026 Xing_The_Creator | SYNOID™
 
-use serde::{Deserialize, Serialize};
-use reqwest::Client;
+use std::sync::Arc;
+use crate::agent::multi_agent::NativeTimelineEngine;
 use tracing::info;
 
-#[derive(Serialize, Deserialize, Debug)]
-struct CompletionRequest {
-    model: String,
-    prompt: String,
-    max_tokens: u32,
-    temperature: f32,
+// Mock MCP SDK Structures
+pub struct Tool {
+    pub name: String,
+    pub description: String,
+    pub handler: Box<dyn Fn(&str) + Send + Sync>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct CompletionResponse {
-    choices: Vec<CompletionChoice>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct CompletionChoice {
-    text: String,
-}
-
-#[derive(Clone)]
-pub struct SynoidAgent {
-    client: Client,
-    api_url: String,
-    model: String,
-}
-
-impl SynoidAgent {
-    pub fn new(api_url: &str) -> Self {
+impl Tool {
+    pub fn new<F>(name: &str, description: &str, handler: F) -> Self
+    where F: Fn(&str) + Send + Sync + 'static {
         Self {
-            client: Client::new(),
-            api_url: api_url.to_string(),
-            model: std::env::var("SYNOID_MODEL").unwrap_or("gpt-oss:20b".to_string()),
+            name: name.to_string(),
+            description: description.to_string(),
+            handler: Box::new(handler),
+        }
+    }
+}
+
+pub struct Resource {
+    pub uri: String,
+    pub description: String,
+}
+
+impl Resource {
+    pub fn new(uri: &str, description: &str) -> Self {
+        Self {
+            uri: uri.to_string(),
+            description: description.to_string(),
+        }
+    }
+}
+
+pub struct Server {
+    pub name: String,
+    pub tools: Vec<Tool>,
+    pub resources: Vec<Resource>,
+}
+
+impl Server {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            tools: Vec::new(),
+            resources: Vec::new(),
         }
     }
 
-    pub async fn reason(&self, prompt: &str) -> Result<String, String> {
-        info!("[CORTEX] Reasoning on: '{}'...", prompt.chars().take(50).collect::<String>());
-        
-        // This is a simplified implementation assuming an OpenAI-compatible /completions endpoint
-        // or a similar local inference server (e.g. llama.cpp, vllm)
-        let req = CompletionRequest {
-            model: self.model.clone(),
-            prompt: prompt.to_string(),
-            max_tokens: 512,
-            temperature: 0.7,
-        };
+    pub fn register_tool(&mut self, tool: Tool) {
+        self.tools.push(tool);
+    }
 
-        let res = self.client.post(&format!("{}/completions", self.api_url))
-            .json(&req)
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {}", e))?;
-            
-        if !res.status().is_success() {
-            return Err(format!("API Error: {}", res.status()));
-        }
+    pub fn register_resource(&mut self, resource: Resource) {
+        self.resources.push(resource);
+    }
+}
 
-        let body: CompletionResponse = res.json().await
-            .map_err(|e| format!("Parse failed: {}", e))?;
+// Synoid MCP Implementation
 
-        if let Some(choice) = body.choices.first() {
-            Ok(choice.text.trim().to_string())
-        } else {
-            Err("No completion choices returned".to_string())
+pub struct SynoidMcpServer {
+    pub project_root: String,
+    pub timeline_engine: Arc<NativeTimelineEngine>,
+    pub mcp_server: Server,
+}
+
+impl SynoidMcpServer {
+    pub fn init(path: &str, engine: Arc<NativeTimelineEngine>) -> Self {
+        let mut server = Server::new("SYNOID_Core_Bridge");
+
+        // Tool: Allows agent to execute a trim in the native app
+        server.register_tool(Tool::new(
+            "trim_clip",
+            "Trims a specific clip in the SYNOID timeline",
+            |args| {
+                info!("[MCP] Executing native trim: {:?}", args);
+            }
+        ));
+
+        // Resource: Exposes the current project media folder
+        server.register_resource(Resource::new(
+            "media://project/assets",
+            "Access to local raw footage for semantic indexing"
+        ));
+
+        Self {
+            project_root: path.to_string(),
+            timeline_engine: engine,
+            mcp_server: server,
         }
     }
 }
