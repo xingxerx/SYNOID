@@ -50,6 +50,20 @@ pub async fn trim_video(
     })
 }
 
+pub async fn apply_anamorphic_mask(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    info!("[PROD] Applying 2.39:1 Cinematic Mask");
+    let status = Command::new("ffmpeg")
+        .args([
+            "-y", "-i", input.to_str().unwrap(),
+            "-vf", "crop=in_w:in_w/2.39",
+            "-c:a", "copy",
+            output.to_str().unwrap(),
+        ])
+        .status()?;
+    if !status.success() { return Err("Anamorphic mask failed".into()); }
+    Ok(())
+}
+
 /// Compress video to target file size (in MB)
 /// Uses 2-pass encoding for precision if size is critical
 pub async fn compress_video(
