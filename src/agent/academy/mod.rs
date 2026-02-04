@@ -1,5 +1,16 @@
+<<<<<<< HEAD
 // SYNOID Academy - Learning Engine
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
+=======
+<<<<<<< HEAD
+// SYNOID Academy - Learning Engine
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
+
+pub struct StyleLibrary {}
+=======
+// SYNOID™ Academy - Learning Engine
+// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+>>>>>>> 6a9a0e46cfef412301bc99a54953fa045a84c520
 
 use serde::{Deserialize, Serialize};
 
@@ -47,5 +58,6 @@ impl StyleLibrary {
     }
 }
 
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
 pub struct TechniqueExtractor {}
 pub mod url_reader;

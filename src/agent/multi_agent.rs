@@ -1,9 +1,22 @@
+<<<<<<< HEAD
 // SYNOID Multi-Agent Systems (MAS)
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
+=======
+<<<<<<< HEAD
+// SYNOID Multi-Agent System
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
+
+#[allow(dead_code)]
+pub struct Swarm {}
+=======
+// SYNOID™ Multi-Agent Systems (MAS)
+// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+>>>>>>> 6a9a0e46cfef412301bc99a54953fa045a84c520
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use tracing::{info, warn};
+use crate::agent::reasoning::{ReasoningManager, ReasoningEffort};
 
 // --- Director Agent ---
 
@@ -30,6 +43,7 @@ impl StoryPlan {
 pub struct DirectorAgent {
     pub model_id: String,
     pub system_prompt: String,
+    pub reasoning: ReasoningManager,
 }
 
 impl DirectorAgent {
@@ -37,13 +51,32 @@ impl DirectorAgent {
         Self {
             model_id: model.to_string(),
             system_prompt: "You are the SYNOID Director. Decompose instructions into sub-goals.".into(),
+            reasoning: ReasoningManager::new(),
         }
     }
 
     /// Analyzes raw user intent and returns a structured StoryPlan.
     /// Uses ReAct (Reasoning + Acting) logic to ensure causal grounding.
-    pub async fn analyze_intent(&self, user_prompt: &str) -> Result<StoryPlan, Box<dyn std::error::Error>> {
-        info!("[DIRECTOR] Analyzing intent: {}", user_prompt);
+    /// Optionally adjusts reasoning effort based on style/complexity.
+    pub async fn analyze_intent(
+        &mut self,
+        user_prompt: &str,
+        style_profile: Option<&str>
+    ) -> Result<StoryPlan, Box<dyn std::error::Error>> {
+
+        // Dynamic Reasoning Adjustment
+        if let Some(style) = style_profile {
+            if style.to_lowercase().contains("cinematic") {
+                self.reasoning.set_effort(ReasoningEffort::High);
+            } else if style.to_lowercase().contains("action") {
+                 self.reasoning.set_effort(ReasoningEffort::Medium);
+            } else {
+                 self.reasoning.set_effort(ReasoningEffort::Low);
+            }
+        }
+
+        info!("[DIRECTOR] Analyzing intent: '{}' (Effort: {})", user_prompt, self.reasoning.get_config_param());
+
         // Mock LLM Response for now
         let plan = StoryPlan {
             global_intent: user_prompt.to_string(),
@@ -218,3 +251,4 @@ impl CriticAgent {
         (score, feedback)
     }
 }
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3

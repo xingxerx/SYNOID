@@ -1,15 +1,30 @@
+<<<<<<< HEAD
 // SYNOID Vector Engine
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
+=======
+<<<<<<< HEAD
+// SYNOID Vector Engine
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
+=======
+// SYNOID™ Vector Engine
+// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
+>>>>>>> 6a9a0e46cfef412301bc99a54953fa045a84c520
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::fs;
 use tracing::{info, error};
 use rayon::prelude::*;
+<<<<<<< HEAD
+use resvg::usvg; 
+use resvg::tiny_skia;
+=======
 use resvg::usvg;
 use resvg::tiny_skia;
 // use cudarc::driver::{CudaDevice, DevicePtr, LaunchConfig, LaunchAsync}; // Disabled: CUDA 13.1 not supported
 use std::sync::Arc;
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
 
 /// Upscale video by converting to Vector and re-rendering at higher resolution
 pub async fn upscale_video(
@@ -18,7 +33,11 @@ pub async fn upscale_video(
     output: &Path
 ) -> Result<String, Box<dyn std::error::Error>> {
     info!("[UPSCALE] Starting Infinite Zoom (Scale: {}x) on {:?}", scale_factor, input);
+<<<<<<< HEAD
+    
+=======
 
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
     // 1. Setup Directories
     let work_dir = input.parent().unwrap().join("synoid_upscale_work");
     if work_dir.exists() { fs::remove_dir_all(&work_dir)?; }
@@ -27,7 +46,11 @@ pub async fn upscale_video(
     let frames_src = work_dir.join("src_frames");
     let frames_svg = work_dir.join("vectors");
     let frames_out = work_dir.join("high_res_frames");
+<<<<<<< HEAD
+    
+=======
 
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
     fs::create_dir_all(&frames_src)?;
     fs::create_dir_all(&frames_svg)?;
     fs::create_dir_all(&frames_out)?;
@@ -41,7 +64,11 @@ pub async fn upscale_video(
             frames_src.join("frame_%04d.png").to_str().unwrap()
         ])
         .output()?;
+<<<<<<< HEAD
+        
+=======
 
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
     if !status.status.success() { return Err("FFmpeg extraction failed".into()); }
 
     // 3. Resolution Safety Check
@@ -51,12 +78,21 @@ pub async fn upscale_video(
             let (orig_w, orig_h) = dims;
             let target_w = (orig_w as f64 * scale_factor) as u32;
             let target_h = (orig_h as f64 * scale_factor) as u32;
+<<<<<<< HEAD
+            
+            info!("[UPSCALE] Original: {}x{}, Target: {}x{}", orig_w, orig_h, target_w, target_h);
+            
+            if target_w > 16384 || target_h > 16384 {
+                return Err(format!(
+                    "Safety Stop: Target resolution {}x{} exceeds 16K limit (16384px). Reduce scale factor.", 
+=======
 
             info!("[UPSCALE] Original: {}x{}, Target: {}x{}", orig_w, orig_h, target_w, target_h);
 
             if target_w > 16384 || target_h > 16384 {
                 return Err(format!(
                     "Safety Stop: Target resolution {}x{} exceeds 16K limit (16384px). Reduce scale factor.",
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
                     target_w, target_h
                 ).into());
             }
@@ -67,6 +103,44 @@ pub async fn upscale_video(
     let paths: Vec<PathBuf> = fs::read_dir(&frames_src)?.filter_map(|e| e.ok()).map(|e| e.path()).collect();
     info!("[UPSCALE] Processing {} frames (Vectorize -> Render {}x)...", paths.len(), scale_factor);
 
+<<<<<<< HEAD
+    paths.par_iter().for_each(|img_path| {
+        let stem = img_path.file_stem().unwrap().to_string_lossy();
+        let svg_path = frames_svg.join(format!("{}.svg", stem));
+        let out_png = frames_out.join(format!("{}.png", stem));
+
+        // A. Vectorize (Raster -> SVG)
+        let config = vtracer::Config {
+            color_mode: vtracer::ColorMode::Color,
+            hierarchical: vtracer::Hierarchical::Stacked,
+            filter_speckle: 4,
+            color_precision: 6,
+            layer_difference: 16,
+            corner_threshold: 60,
+            splice_threshold: 45,
+            ..Default::default()
+        };
+        
+        if let Ok(_) = vtracer::convert_image_to_svg(img_path, &svg_path, config) {
+            // B. Render (SVG -> High-Res Raster)
+            if let Ok(svg_data) = fs::read(&svg_path) {
+                let opt = usvg::Options::default();
+                if let Ok(tree) = usvg::Tree::from_data(&svg_data, &opt) {
+                     let size = tree.size.to_screen_size();
+                     let width = (size.width() as f64 * scale_factor) as u32;
+                     let height = (size.height() as f64 * scale_factor) as u32;
+                     
+                     if let Some(mut pixmap) = tiny_skia::Pixmap::new(width, height) {
+                         let transform = tiny_skia::Transform::from_scale(scale_factor as f32, scale_factor as f32);
+                         // Fixed: Added FitTo::Original
+                         resvg::render(&tree, usvg::FitTo::Original, transform, pixmap.as_mut());
+                         pixmap.save_png(out_png).unwrap();
+                     }
+                }
+            }
+        }
+    });
+=======
     // Fix: Memory Management (Buffered Chunking)
     let num_cpus = num_cpus::get();
     info!("[UPSCALE] Memory Guard: Processing in chunks of {}", num_cpus);
@@ -109,6 +183,7 @@ pub async fn upscale_video(
             }
         });
     }
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
 
     // 4. Encode High-Res Video
     info!("[UPSCALE] Encoding high-resolution video...");
@@ -133,6 +208,8 @@ pub async fn upscale_video(
     }
 }
 
+<<<<<<< HEAD
+=======
 pub async fn upscale_video_cuda(
     _input: &Path,
     _scale_factor: f64,
@@ -155,6 +232,7 @@ fn vectorize_frame_cuda(_img_path: &Path) -> Vec<u8> {
     vec![]
 }
 
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
 /// Configuration struct passed from CLI/GUI
 pub struct VectorConfig {
     pub colormode: String,
@@ -197,16 +275,28 @@ pub async fn vectorize_video(
     // 1. Extract Frames using FFmpeg
     let frames_dir = output_dir.join("frames_src");
     fs::create_dir_all(&frames_dir)?;
+<<<<<<< HEAD
+    
+=======
 
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
     info!("[VECTOR] Extracting frames...");
     let status = Command::new("ffmpeg")
         .args([
             "-i", input.to_str().unwrap(),
+<<<<<<< HEAD
+            "-vf", "fps=10", 
+            frames_dir.join("frame_%04d.png").to_str().unwrap()
+        ])
+        .output()?;
+        
+=======
             "-vf", "fps=10",
             frames_dir.join("frame_%04d.png").to_str().unwrap()
         ])
         .output()?;
 
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
     if !status.status.success() {
         return Err("FFmpeg frame extraction failed".into());
     }
@@ -218,7 +308,11 @@ pub async fn vectorize_video(
         .collect();
 
     info!("[VECTOR] Vectorizing {} frames (Parallel)...", paths.len());
+<<<<<<< HEAD
+    
+=======
 
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
     // Convert Config to vtracer Config
     // Fixed: color_mode, removed mode/segment_length
     let vt_config = vtracer::Config {
@@ -236,7 +330,11 @@ pub async fn vectorize_video(
     paths.par_iter().for_each(|frame_path| {
         let stem = frame_path.file_stem().unwrap().to_string_lossy();
         let out_svg = output_dir.join(format!("{}.svg", stem));
+<<<<<<< HEAD
+        
+=======
 
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
         match vtracer::convert_image_to_svg(frame_path, &out_svg, vt_config.clone()) {
             Ok(_) => {}, // Silent success for speed
             Err(e) => error!("Failed frame {}: {}", stem, e),

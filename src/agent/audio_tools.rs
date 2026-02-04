@@ -1,5 +1,15 @@
+<<<<<<< HEAD
 // SYNOID Audio Tools
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
+=======
+<<<<<<< HEAD
+// SYNOID Audio Tools
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
+=======
+// SYNOID™ Audio Tools
+// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
+>>>>>>> 6a9a0e46cfef412301bc99a54953fa045a84c520
 
 use std::path::Path;
 use serde::{Deserialize, Serialize};
@@ -14,6 +24,23 @@ pub struct AudioAnalysis {
 
 /// Scan audio for beats and stats
 pub async fn scan_audio(path: &Path) -> Result<AudioAnalysis, Box<dyn std::error::Error>> {
+<<<<<<< HEAD
+    info!("[EARS] Analyzing audio spectrum: {:?}", path);
+    
+    let duration = crate::agent::source_tools::get_video_duration(path)?;
+    
+    // Simulate transient detection every 0.5s (120 BPM)
+    let mut transients = Vec::new();
+    let mut t = 0.0;
+    while t < duration {
+        transients.push(t);
+        t += 0.5;
+    }
+    
+    Ok(AudioAnalysis {
+        duration,
+        average_loudness: -14.0, // Standard LUFS placeholder
+=======
     info!("[EARS] Performing deep transient analysis: {:?}", path);
 
     // TODO: Integrate FFmpeg 'ebur128' or 'showwavespic' to extract real waveform data
@@ -29,6 +56,7 @@ pub async fn scan_audio(path: &Path) -> Result<AudioAnalysis, Box<dyn std::error
     Ok(AudioAnalysis {
         duration,
         average_loudness: -14.0,
+>>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3
         transients,
     })
 }
