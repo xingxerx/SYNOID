@@ -1,22 +1,13 @@
-<<<<<<< HEAD
 // SYNOID Multi-Agent Systems (MAS)
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
-=======
-<<<<<<< HEAD
-// SYNOID Multi-Agent System
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
-
-#[allow(dead_code)]
-pub struct Swarm {}
-=======
-// SYNOID™ Multi-Agent Systems (MAS)
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
->>>>>>> 6a9a0e46cfef412301bc99a54953fa045a84c520
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use tracing::{info, warn};
 use crate::agent::reasoning::{ReasoningManager, ReasoningEffort};
+
+#[allow(dead_code)]
+pub struct Swarm {}
 
 // --- Director Agent ---
 
@@ -251,4 +242,3 @@ impl CriticAgent {
         (score, feedback)
     }
 }
->>>>>>> d08ccf5953d34fbe37a0ea8472bbd327b03ff5a3

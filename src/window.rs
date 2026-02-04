@@ -239,7 +239,11 @@ impl SynoidApp {
         ui.horizontal(|ui| {
             ui.text_edit_singleline(&mut task.output_path);
             if ui.button("📂").clicked() {
-                if let Some(path) = rfd::FileDialog::new().save_file() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Video", &["mp4"])
+                    .set_file_name("output.mp4")
+                    .save_file() 
+                {
                     task.output_path = path.to_string_lossy().to_string();
                 }
             }

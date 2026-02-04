@@ -191,6 +191,20 @@ pub async fn smart_edit(
     
     log("[SMART] 🧠 Starting AI-powered edit...");
     
+    // Fix: Ensure output path has a valid video extension
+    let mut output_buf = output.to_path_buf();
+    if let Some(ext) = output_buf.extension() {
+        let ext_str = ext.to_string_lossy().to_lowercase();
+        if ext_str == "txt" || !["mp4", "mkv", "mov", "avi"].contains(&ext_str.as_str()) {
+            output_buf.set_extension("mp4");
+            log(&format!("[SMART] ⚠️ Correcting output extension to .mp4: {:?}", output_buf));
+        }
+    } else {
+        output_buf.set_extension("mp4");
+        log(&format!("[SMART] ⚠️ Adding .mp4 extension: {:?}", output_buf));
+    }
+    let output = output_buf.as_path();
+
     // 1. Parse intent
     let intent = EditIntent::from_text(intent_text);
     log(&format!("[SMART] Intent: remove_boring={}, keep_action={}", 
