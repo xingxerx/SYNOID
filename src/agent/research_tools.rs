@@ -1,5 +1,5 @@
-// SYNOID™ Research Tools
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Research Tools
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 //
 // Web research capabilities for finding AI editing tips, tutorials, and techniques.
 

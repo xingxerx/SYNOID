@@ -1,5 +1,5 @@
-// SYNOID™ Vision Tools
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Vision Tools
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use std::path::Path;
 use std::process::Command;

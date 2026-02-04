@@ -1,5 +1,5 @@
-// SYNOID™ Vector Engine
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Vector Engine
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

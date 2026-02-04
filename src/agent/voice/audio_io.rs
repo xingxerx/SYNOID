@@ -1,4 +1,4 @@
-// SYNOID™ Audio I/O Module
+// SYNOID Audio I/O Module
 // Microphone Recording & Speaker Playback
 
 use std::path::Path;

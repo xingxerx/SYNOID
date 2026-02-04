@@ -1,5 +1,5 @@
-// SYNOID™ Production Tools - Editing & Compression
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Production Tools - Editing & Compression
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 //
 // This module provides FFmpeg wrappers for trimming, clipping, and 
 // intelligent compression to target file sizes.

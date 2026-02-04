@@ -1,6 +1,6 @@
 #![allow(dead_code)]
-// SYNOID™ Edit Graph - DAG Representatione - The "Synoid-Link" DAG Implementation
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Edit Graph - DAG Representatione - The "Synoid-Link" DAG Implementation
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 //
 // This module implements the ComfyUI-style node graph for video editing.
 // The AI agent manipulates this graph to define the editing pipeline.

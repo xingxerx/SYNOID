@@ -1,5 +1,5 @@
-// SYNOID™ Embodied Agent GUI with Tree-Organized Commands
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Embodied Agent GUI with Tree-Organized Commands
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 //
 // "Command Center" Premium Interface Design
 // Deep Dark Theme | Tree Sidebar | Professional Typography
@@ -99,7 +99,7 @@ impl Default for SynoidApp {
         task.compress_size = "25.0".to_string();
         task.scale_factor = "2.0".to_string();
         task.guard_mode = "all".to_string();
-        task.logs.push("[SYSTEM] SYNOID™ Core initialized.".to_string());
+        task.logs.push("[SYSTEM] SYNOID Core initialized.".to_string());
         
         Self {
             task: Arc::new(Mutex::new(task)),
@@ -637,7 +637,6 @@ impl eframe::App for SynoidApp {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("SYNOID").size(20.0).color(COLOR_ACCENT_ORANGE).strong());
-                    ui.label(egui::RichText::new("™").size(12.0).color(COLOR_TEXT_SECONDARY));
                 });
                 ui.add_space(4.0);
                 ui.label(egui::RichText::new("Command Center").size(11.0).color(COLOR_TEXT_SECONDARY));
@@ -774,13 +773,13 @@ pub fn run_gui() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
-            .with_title("SYNOID™ Command Center")
+            .with_title("SYNOID Command Center")
             .with_decorations(true),
         ..Default::default()
     };
     
     eframe::run_native(
-        "SYNOID™ Command Center",
+        "SYNOID Command Center",
         options,
         Box::new(|_cc| Ok(Box::new(SynoidApp::default()))),
     )

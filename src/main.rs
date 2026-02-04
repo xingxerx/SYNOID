@@ -1,5 +1,5 @@
-// SYNOID™ Main Entry Point
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Main Entry Point
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 mod agent;
 mod window;
@@ -11,7 +11,7 @@ use dotenv::dotenv;
 
 #[derive(Parser)]
 #[command(name = "synoid-core")]
-#[command(about = "SYNOID™ Agentic Kernel", long_about = None)]
+#[command(about = "SYNOID Agentic Kernel", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -206,7 +206,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
     
-    info!("--- SYNOID™ AGENTIC KERNEL v0.1.0 ---");
+    info!("--- SYNOID AGENTIC KERNEL v0.1.0 ---");
     
     let args = Cli::parse();
     let api_url = std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
@@ -311,7 +311,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("2. Sync to the beat");
         },
         Commands::Gpu => {
-            println!("=== SYNOID™ GPU Status ===");
+            println!("=== SYNOID GPU Status ===");
             // Simple check (mock)
             println!("✓ CUDA Detect: Logic not connected (stub)");
         },
@@ -381,7 +381,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Voice { record, clone, profile, speak, output, download } => {
             use agent::voice::{AudioIO, VoiceEngine};
             
-            println!("🗣️ SYNOID™ Voice Engine");
+            println!("🗣️ SYNOID Voice Engine");
             
             let audio_io = AudioIO::new();
             

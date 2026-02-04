@@ -1,5 +1,5 @@
-// SYNOID™ Brain - Intent Classification & Heuristics
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Brain - Intent Classification & Heuristics
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use crate::agent::consciousness::Consciousness;

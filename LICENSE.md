@@ -1,10 +1,10 @@
-# SYNOID™ Shared Improvement License (SIL) v1.0
+# SYNOID Shared Improvement License (SIL) v1.0
 
 **Copyright © 2026 Xing. All Rights Reserved.**
 
 ## Preamble
 
-This license governs the use, modification, and distribution of SYNOID™ and all associated source code, documentation, and assets (collectively, the "Software"). The Software remains the exclusive property of the copyright holder while permitting collaborative improvement under shared responsibility.
+This license governs the use, modification, and distribution of SYNOID and all associated source code, documentation, and assets (collectively, the "Software"). The Software remains the exclusive property of the copyright holder while permitting collaborative improvement under shared responsibility.
 
 ---
 
@@ -88,7 +88,5 @@ This license governs the use, modification, and distribution of SYNOID™ and al
 | Claim Ownership | ❌ No |
 
 ---
-
-**SYNOID™ is a trademark of Xing.**
 
 *This license is effective as of February 3, 2026.*

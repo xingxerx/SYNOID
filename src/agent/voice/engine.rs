@@ -1,4 +1,4 @@
-// SYNOID™ Voice Engine - Enhanced with Speaker Embeddings
+// SYNOID Voice Engine - Enhanced with Speaker Embeddings
 // Neural TTS & Voice Cloning using Candle
 
 use std::path::{Path, PathBuf};

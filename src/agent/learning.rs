@@ -1,5 +1,5 @@
-// SYNOID™ Learning Kernel
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Learning Kernel
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 //
 // This module provides a "Memory" for the agent, allowing it to:
 // 1. Store successful edit parameters (pacing, cut frequency)
