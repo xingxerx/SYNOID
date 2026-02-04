@@ -1,50 +1,62 @@
 use std::path::Path;
 use crate::agent::vision_tools::VisualScene;
 use crate::agent::audio_tools::AudioAnalysis;
-use crate::agent::learning::LearningKernel;
+use crate::agent::academy::{StyleLibrary, StyleProfile};
 use tracing::info;
 
 pub struct MotorCortex {
     api_url: String,
-    learning: LearningKernel,
 }
 
 pub struct EditGraph {
-    pub cuts: Vec<(f64, f64)>, // Start, End
-}
-
-impl EditGraph {
-    pub fn to_ffmpeg_command(&self, input: &str, output: &str) -> String {
-        format!("ffmpeg -i {} -y {}", input, output)
-    }
+    pub commands: Vec<String>,
 }
 
 impl MotorCortex {
     pub fn new(api_url: &str) -> Self {
-        Self {
-            api_url: api_url.to_string(),
-            learning: LearningKernel::new(),
-        }
+        Self { api_url: api_url.to_string() }
     }
 
-    pub async fn execute_intent(
+    pub async fn execute_one_shot_render(
         &mut self,
         intent: &str,
-        _input: &Path,
-        _output: &Path,
-        _visual_data: &[VisualScene],
+        input: &Path,
+        output: &Path,
+        visual_data: &[VisualScene],
         audio_data: &AudioAnalysis,
-    ) -> Result<EditGraph, Box<dyn std::error::Error>> {
-        info!("[CORTEX] Executing high-level intent: {}", intent);
-        
-        // Consult the Learning Kernel
-        let pattern = self.learning.recall_pattern(intent);
-        info!("[CORTEX] 🧠 Applied learned pattern: {:?}", pattern);
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let library = StyleLibrary::new();
+        let profile = library.get_profile(intent);
 
-        // In a real implementation, 'pattern' would adjust cut thresholds here
-        
-        Ok(EditGraph {
-            cuts: vec![(0.0, audio_data.duration)],
-        })
+        info!("[CORTEX] Applying Style Profile: {}", profile.name);
+
+        // 1. Rhythmic Assembly
+        // Divide video into segments based on avg_shot_length and snap to nearest audio beat
+        let mut current_pos = 0.0;
+        let mut filters = Vec::new();
+
+        if profile.anamorphic {
+            filters.push("crop=in_w:in_w/2.39".to_string()); // 2.39:1 Cinematic Mask
+        }
+
+        if let Some(lut) = &profile.color_lut {
+            filters.push(format!("lut3d={}", lut));
+        }
+
+        // 2. Build FFmpeg Filtergraph
+        let filter_str = if filters.is_empty() {
+            String::new()
+        } else {
+            format!("-vf \"{}\"", filters.join(","))
+        };
+
+        let cmd = format!(
+            "ffmpeg -i {} {} -c:v libx264 -preset slow -crf 18 -y {}",
+            input.to_str().unwrap(),
+            filter_str,
+            output.to_str().unwrap()
+        );
+
+        Ok(cmd)
     }
 }
