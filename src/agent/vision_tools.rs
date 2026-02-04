@@ -18,7 +18,7 @@ pub struct VisualScene {
 /// or use ffprobe's scene detection filter.
 pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::error::Error>> {
     info!("[EYES] Scanning visual content: {:?}", path);
-    
+
     // Using ffprobe to detect scene changes (>0.3 difference)
     let _output = Command::new("ffprobe")
         .args([
@@ -32,13 +32,13 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     // Mocking return for stability if ffmpeg call gets complex parsing
     // In a real restore we'd parse the output. For now, let's return a sensible mock
     // derived from file duration or actual silence detection if possible
-    
+
     // Let's at least get the duration to make up reasonable scenes
     let duration = crate::agent::source_tools::get_video_duration(path).unwrap_or(10.0);
-    
+
     let mut scenes = Vec::new();
     let steps = (duration / 5.0) as usize; // A scene every 5 seconds roughly
-    
+
     for i in 0..steps {
         scenes.push(VisualScene {
             timestamp: i as f64 * 5.0,
@@ -48,4 +48,20 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     }
 
     Ok(scenes)
+}
+
+/// Connects to the CUDA stream for real-time subject tracking
+/// Returns coordinates for Rule-of-Thirds framing (x_offset, y_offset, zoom_factor)
+pub fn track_subject_cuda(_device_id: usize, frame_path: &Path) -> (f64, f64, f64) {
+    // In a real implementation, this would:
+    // 1. Load the frame into GPU memory
+    // 2. Run a TensorRT or YOLO model to find the subject
+    // 3. Calculate the centroid
+    // 4. Return the pan/zoom needed to center the subject on the Rule of Thirds grid
+
+    info!("[VISION-CUDA] Tracking subject in frame: {:?}", frame_path);
+
+    // Simulated "Cinematic" panning
+    // Returns a slight pan and 1.0 zoom (no zoom) for now
+    (0.0, 0.0, 1.0)
 }

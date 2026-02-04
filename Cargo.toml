@@ -24,11 +24,13 @@ tiny-skia = "0.8" # 2D Graphics library for resvg
 sysinfo = "0.29" # System monitoring (Processes/RAM)
 sha2 = "0.10"    # File integrity hashing
 walkdir = "2.3"  # Efficient directory traversal
+num_cpus = "1.0"
+cudarc = "0.9" # Low-level CUDA abstractions
 
 # Voice Cloning & Neural TTS
 rand = "0.8"      # Pin to 0.8 for candle compatibility
-candle-core = "0.8"
-candle-nn = "0.8"
+candle-core = { version = "0.8", features = ["cuda"] }
+candle-nn = { version = "0.8", features = ["cuda"] }
 candle-transformers = "0.8"
 tokenizers = "0.15"
 hf-hub = "0.3"    # HuggingFace model downloads
@@ -40,4 +42,3 @@ dirs = "5.0"      # Platform cache directories
 # Vector Animation Engine (SVG Video)
 # Pure SMIL-based animated SVG (no external animation libs needed)
 # rive-rs = { git = "https://github.com/rive-app/rive-rs" }  # Optional: GPU vector renderer
-

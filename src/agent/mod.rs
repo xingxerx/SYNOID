@@ -18,3 +18,4 @@ pub mod vector_engine;
 pub mod defense;
 pub mod voice;
 pub mod vector_video;
+pub mod reasoning;
