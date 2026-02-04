@@ -1,5 +1,5 @@
-// SYNOID™ Audio Tools
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Audio Tools
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use std::path::Path;
 use serde::{Deserialize, Serialize};

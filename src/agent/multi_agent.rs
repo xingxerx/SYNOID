@@ -1,5 +1,5 @@
-// SYNOID™ Multi-Agent Systems (MAS)
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Multi-Agent Systems (MAS)
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;

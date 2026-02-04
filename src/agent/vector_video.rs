@@ -1,4 +1,4 @@
-// SYNOID™ Vector Video Engine
+// SYNOID Vector Video Engine
 // True SVG/Vector-based video rendering (not frame-by-frame)
 // Inspired by Rive's real-time vector graphics approach
 

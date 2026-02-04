@@ -1,9 +1,27 @@
-// SYNOID™ MCP Server Bridge
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID MCP Server Bridge
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use std::sync::Arc;
 use crate::agent::multi_agent::NativeTimelineEngine;
 use tracing::info;
+
+/// Agent interface for LLM reasoning
+pub struct SynoidAgent {
+    api_url: String,
+}
+
+impl SynoidAgent {
+    pub fn new(api_url: &str) -> Self {
+        Self { api_url: api_url.to_string() }
+    }
+
+    /// Reason about a request using the LLM backend
+    pub async fn reason(&self, request: &str) -> Result<String, String> {
+        // Stub implementation - would call local LLM API
+        info!("[AGENT] Reasoning about: {}", request);
+        Ok(format!("Processed request via {}: {}", self.api_url, request))
+    }
+}
 
 // Mock MCP SDK Structures
 pub struct Tool {

@@ -1,5 +1,5 @@
-// SYNOID™ Embodied Agent GUI with Tree-Organized Commands
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Embodied Agent GUI with Tree-Organized Commands
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 //
 // "Command Center" Premium Interface Design
 // Deep Dark Theme | Tree Sidebar | Professional Typography
@@ -99,7 +99,7 @@ impl Default for SynoidApp {
         task.compress_size = "25.0".to_string();
         task.scale_factor = "2.0".to_string();
         task.guard_mode = "all".to_string();
-        task.logs.push("[SYSTEM] SYNOID™ Core initialized.".to_string());
+        task.logs.push("[SYSTEM] SYNOID Core initialized.".to_string());
         
         Self {
             task: Arc::new(Mutex::new(task)),
@@ -216,12 +216,19 @@ impl SynoidApp {
     // --- Command Panels ---
     
     fn render_youtube_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
-        ui.heading(egui::RichText::new("📺 YouTube Download").color(COLOR_ACCENT_ORANGE));
+        ui.heading(egui::RichText::new("📤 Upload Video").color(COLOR_ACCENT_ORANGE));
         ui.separator();
         ui.add_space(10.0);
         
-        ui.label("YouTube URL:");
-        ui.text_edit_singleline(&mut task.youtube_url);
+        ui.label("Video File:");
+        ui.horizontal(|ui| {
+            ui.text_edit_singleline(&mut task.input_path);
+            if ui.button("📂").clicked() {
+                if let Some(path) = rfd::FileDialog::new().add_filter("Video", &["mp4", "mkv", "avi", "mov", "webm"]).pick_file() {
+                    task.input_path = path.to_string_lossy().to_string();
+                }
+            }
+        });
         ui.add_space(10.0);
         
         ui.label("Creative Intent:");
@@ -239,9 +246,97 @@ impl SynoidApp {
         });
         ui.add_space(20.0);
         
-        if ui.add(egui::Button::new(egui::RichText::new("⬇️ Download & Process").size(16.0)).fill(COLOR_ACCENT_ORANGE)).clicked() {
-            task.logs.push(format!("[YOUTUBE] Starting download: {}", task.youtube_url));
-            task.status = "⬇️ Downloading...".to_string();
+        // Validation hints
+        let has_input = !task.input_path.is_empty();
+        let has_output = !task.output_path.is_empty();
+        
+        if !has_input || !has_output {
+            ui.add_space(5.0);
+            ui.label(egui::RichText::new("⚠️ Select a video file and output path to continue").size(12.0).color(COLOR_ACCENT_RED));
+            ui.add_space(5.0);
+        }
+        
+        let task_clone = self.task.clone();
+        let button_enabled = has_input && has_output;
+        let button = egui::Button::new(egui::RichText::new("📤 Upload & Process").size(16.0))
+            .fill(if button_enabled { COLOR_ACCENT_ORANGE } else { egui::Color32::from_rgb(80, 80, 80) });
+        
+        if ui.add(button).clicked() && button_enabled {
+            let input = PathBuf::from(&task.input_path);
+            let output = PathBuf::from(&task.output_path);
+            let intent = task.intent.clone();
+            
+            task.logs.push(format!("[UPLOAD] Processing: {}", task.input_path));
+            if !intent.is_empty() {
+                task.logs.push(format!("[UPLOAD] 🧠 Intent: {}", intent));
+            }
+            task.status = "📤 Processing...".to_string();
+            task.is_running = true;
+            
+            thread::spawn(move || {
+                // Validate input file exists
+                if !input.exists() {
+                    let mut t = task_clone.lock().unwrap();
+                    t.logs.push(format!("[UPLOAD] ❌ File not found: {:?}", input));
+                    t.status = "⚡ Ready".to_string();
+                    t.is_running = false;
+                    return;
+                }
+                
+                // Use smart editor if intent is provided
+                if !intent.is_empty() {
+                    use crate::agent::smart_editor;
+                    
+                    let task_for_callback = task_clone.clone();
+                    let callback = Box::new(move |msg: &str| {
+                        if let Ok(mut t) = task_for_callback.lock() {
+                            t.logs.push(msg.to_string());
+                        }
+                    });
+                    
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    match rt.block_on(smart_editor::smart_edit(&input, &intent, &output, Some(callback))) {
+                        Ok(result) => {
+                            let mut t = task_clone.lock().unwrap();
+                            t.logs.push(format!("[UPLOAD] {}", result));
+                            t.status = "⚡ Ready".to_string();
+                            t.is_running = false;
+                        },
+                        Err(e) => {
+                            let mut t = task_clone.lock().unwrap();
+                            t.logs.push(format!("[UPLOAD] ❌ Smart edit failed: {}", e));
+                            t.logs.push("[UPLOAD] Falling back to simple copy...".to_string());
+                            
+                            // Fallback to copy
+                            if let Ok(bytes) = std::fs::copy(&input, &output) {
+                                let mb = bytes as f64 / 1_000_000.0;
+                                t.logs.push(format!("[UPLOAD] ✅ Copied: {:.2} MB", mb));
+                            }
+                            t.status = "⚡ Ready".to_string();
+                            t.is_running = false;
+                        }
+                    }
+                } else {
+                    // No intent - just copy the file
+                    match std::fs::copy(&input, &output) {
+                        Ok(bytes) => {
+                            let mut t = task_clone.lock().unwrap();
+                            let mb = bytes as f64 / 1_000_000.0;
+                            t.logs.push(format!("[UPLOAD] ✅ Video imported: {:.2} MB", mb));
+                            t.logs.push("[UPLOAD] 💡 Tip: Add an intent like 'remove boring parts' for AI editing".to_string());
+                            t.logs.push(format!("[UPLOAD] Output: {:?}", output));
+                            t.status = "⚡ Ready".to_string();
+                            t.is_running = false;
+                        },
+                        Err(e) => {
+                            let mut t = task_clone.lock().unwrap();
+                            t.logs.push(format!("[UPLOAD] ❌ Error: {}", e));
+                            t.status = "⚡ Ready".to_string();
+                            t.is_running = false;
+                        }
+                    }
+                }
+            });
         }
     }
 
@@ -637,7 +732,6 @@ impl eframe::App for SynoidApp {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("SYNOID").size(20.0).color(COLOR_ACCENT_ORANGE).strong());
-                    ui.label(egui::RichText::new("™").size(12.0).color(COLOR_TEXT_SECONDARY));
                 });
                 ui.add_space(4.0);
                 ui.label(egui::RichText::new("Command Center").size(11.0).color(COLOR_TEXT_SECONDARY));
@@ -657,7 +751,7 @@ impl eframe::App for SynoidApp {
 
                 // Video Production
                 if let Some(cmd) = self.render_tree_category(ui, "video", "📹", COLOR_ACCENT_ORANGE, &mut video_exp, vec![
-                    ("📺", "YouTube", ActiveCommand::Youtube),
+                    ("📤", "Upload Video", ActiveCommand::Youtube),
                     ("✂️", "Clip", ActiveCommand::Clip),
                     ("📦", "Compress", ActiveCommand::Compress),
                 ]) { new_cmd = Some(cmd); }
@@ -774,13 +868,13 @@ pub fn run_gui() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
-            .with_title("SYNOID™ Command Center")
+            .with_title("SYNOID Command Center")
             .with_decorations(true),
         ..Default::default()
     };
     
     eframe::run_native(
-        "SYNOID™ Command Center",
+        "SYNOID Command Center",
         options,
         Box::new(|_cc| Ok(Box::new(SynoidApp::default()))),
     )

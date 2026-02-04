@@ -1,5 +1,5 @@
-// SYNOID™ Agent Modules
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Agent Modules
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 pub mod gpt_oss_bridge;
 pub mod consciousness;
@@ -18,3 +18,4 @@ pub mod vector_engine;
 pub mod defense;
 pub mod voice;
 pub mod vector_video;
+pub mod smart_editor;

@@ -1,5 +1,5 @@
-// SYNOID™ Source Tools - Video Acquisition
-// Copyright (c) 2026 Xing_The_Creator | SYNOID™
+// SYNOID Source Tools - Video Acquisition
+// Copyright (c) 2026 Xing_The_Creator | SYNOID
 // 
 // This module currently handles:
 // 1. YouTube downloading via yt-dlp (with optional browser auth)
