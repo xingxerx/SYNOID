@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::agent::{vector_engine, production_tools};
+use crate::agent::production_tools;
 use crate::agent::vector_engine::{VectorConfig, vectorize_video};
 
 // --- Color Palette (Premium Dark) ---
@@ -65,6 +65,7 @@ pub struct AgentTask {
     pub input_path: String,
     pub output_path: String,
     pub intent: String,
+    #[allow(dead_code)]
     pub youtube_url: String,
     pub status: String,
     pub is_running: bool,
@@ -834,7 +835,7 @@ impl eframe::App for SynoidApp {
                     egui::Color32::from_rgb(38, 38, 44)
                 );
                 
-                ui.allocate_ui_at_rect(panel_rect.shrink(20.0), |ui| {
+                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(panel_rect.shrink(20.0)), |ui| {
                     let mut task = self.task.lock().unwrap();
                     self.render_command_panel(ui, &mut task);
                 });
@@ -852,7 +853,7 @@ impl eframe::App for SynoidApp {
                 );
                 ui.painter().rect_filled(logs_rect, 6.0, COLOR_BG_DARK);
                 
-                ui.allocate_ui_at_rect(logs_rect.shrink(12.0), |ui| {
+                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(logs_rect.shrink(12.0)), |ui| {
                     egui::ScrollArea::vertical().max_height(180.0).stick_to_bottom(true).show(ui, |ui| {
                         for log in &task.logs {
                             ui.label(egui::RichText::new(log).monospace().size(11.0).color(COLOR_TEXT_SECONDARY));

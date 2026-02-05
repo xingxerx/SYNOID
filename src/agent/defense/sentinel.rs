@@ -5,6 +5,7 @@ use std::collections::HashMap;
 /// The Sentinel monitors system state for anomalies
 pub struct Sentinel {
     system: System,
+    #[allow(dead_code)]
     known_processes: HashMap<String, bool>,
 }
 
@@ -36,7 +37,7 @@ impl Sentinel {
 
             // 2. Memory Usage Alert (RAM > 1GB)
             if process.memory() > 1_000_000 { // > ~1GB KB
-                 let msg = format!("High Memory Alert: Process '{}' (PID: {}) is using {} KB", name, pid, process.memory());
+                 let _msg = format!("High Memory Alert: Process '{}' (PID: {}) is using {} KB", name, pid, process.memory());
                 // warn!("[SENTINEL] {}", msg); // Too noisy usually, kept for debug
             }
         }
@@ -52,6 +53,7 @@ impl Sentinel {
     }
 
     /// Check if a specific process name is running
+    #[allow(dead_code)]
     pub fn is_process_running(&mut self, target_name: &str) -> bool {
         self.system.refresh_processes();
         for process in self.system.processes().values() {

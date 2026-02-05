@@ -50,6 +50,7 @@ pub async fn trim_video(
     })
 }
 
+#[allow(dead_code)]
 pub async fn apply_anamorphic_mask(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error>> {
     info!("[PROD] Applying 2.39:1 Cinematic Mask");
     let status = Command::new("ffmpeg")
@@ -120,4 +121,36 @@ pub async fn compress_video(
         output_path: output.to_path_buf(),
         size_mb,
     })
+}
+
+/// Enhance audio using vocal processing chain (EQ -> Compression -> Normalization)
+pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    info!("[PROD] Enhancing audio: {:?}", input);
+
+    // Filter Chain:
+    // 1. highpass=f=80: Remove rumble
+    // 2. lowpass=f=8000: Remove hiss
+    // 3. acompressor: Even out dynamics
+    // 4. loudnorm: target -16 LUFS (standard podcast/web loudness)
+    let filter_complex = "highpass=f=80,lowpass=f=8000,acompressor=ratio=4:attack=200:threshold=-12dB,loudnorm=I=-16:TP=-1.5:LRA=11";
+
+    let status = Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-nostdin",
+            "-i", input.to_str().unwrap(),
+            "-vn", // Disable video (audio only)
+            "-map", "0:a:0", // Take first audio track
+            "-af", filter_complex,
+            "-c:a", "pcm_s16le", // Use PCM for WAV (lossless intermediate)
+            "-ar", "48000", // Force 48kHz (prevent 192kHz upsampling)
+            output.to_str().unwrap(),
+        ])
+        .status()?;
+
+    if !status.success() {
+        return Err("Audio enhancement failed".into());
+    }
+
+    Ok(())
 }

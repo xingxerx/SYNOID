@@ -17,7 +17,9 @@ pub struct SpeakerProfile {
 
 /// Voice Engine for Neural TTS and Cloning
 pub struct VoiceEngine {
+    #[allow(dead_code)]
     device: Device,
+    #[allow(dead_code)]
     model_dir: PathBuf,
     profiles_dir: PathBuf,
 }
@@ -47,7 +49,7 @@ impl VoiceEngine {
         let api = Api::new()?;
         let repo = api.model(model_id.to_string());
         
-        let config_path = repo.get("config.json")?;
+        let _config_path = repo.get("config.json")?;
         let model_path = repo.get("model.safetensors")?;
         
         info!("[VOICE] Model downloaded to: {:?}", model_path.parent());
@@ -126,7 +128,7 @@ impl VoiceEngine {
     }
 
     /// Generate speech from text (TTS)
-    pub fn speak(&self, text: &str, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn speak(&self, text: &str, _output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         info!("[VOICE] Synthesizing: \"{}\"", text);
         Err("TTS model not yet loaded - run 'synoid voice --download' first".into())
     }
@@ -141,7 +143,7 @@ impl VoiceEngine {
         &self,
         text: &str,
         profile_name: &str,
-        output_path: &Path,
+        _output_path: &Path,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let profile = self.load_profile(profile_name)?;
         info!("[VOICE] Synthesizing as '{}': \"{}\"", profile.name, text);

@@ -1,13 +1,15 @@
 use std::path::Path;
 use crate::agent::vision_tools::VisualScene;
 use crate::agent::audio_tools::AudioAnalysis;
-use crate::agent::academy::{StyleLibrary, StyleProfile};
+use crate::agent::academy::StyleLibrary;
 use tracing::info;
 
+#[allow(dead_code)]
 pub struct MotorCortex {
     api_url: String,
 }
 
+#[allow(dead_code)]
 pub struct EditGraph {
     pub commands: Vec<String>,
 }
@@ -22,8 +24,8 @@ impl MotorCortex {
         intent: &str,
         input: &Path,
         output: &Path,
-        visual_data: &[VisualScene],
-        audio_data: &AudioAnalysis,
+        _visual_data: &[VisualScene],
+        _audio_data: &AudioAnalysis,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let library = StyleLibrary::new();
         let profile = library.get_profile(intent);
@@ -32,7 +34,7 @@ impl MotorCortex {
 
         // 1. Rhythmic Assembly
         // Divide video into segments based on avg_shot_length and snap to nearest audio beat
-        let mut current_pos = 0.0;
+        let _current_pos = 0.0;
         let mut filters = Vec::new();
 
         if profile.anamorphic {

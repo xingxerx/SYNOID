@@ -8,6 +8,7 @@ use tracing::info;
 
 /// Intents that the Brain can classify
 #[derive(Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum Intent {
     DownloadYoutube { url: String },
     ScanVideo { path: String },

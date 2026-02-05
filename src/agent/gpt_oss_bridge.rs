@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // SYNOID MCP Server Bridge
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 

@@ -1,9 +1,10 @@
+#![allow(dead_code, unused_variables)]
 // SYNOID Multi-Agent Systems (MAS)
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
-use tracing::{info, warn};
+use tracing::info;
 use crate::agent::reasoning::{ReasoningManager, ReasoningEffort};
 
 #[allow(dead_code)]

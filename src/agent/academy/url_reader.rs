@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables)]
 // SYNOID Open URL Reader
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 

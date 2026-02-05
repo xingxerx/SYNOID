@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables)]
 // SYNOID Vector Engine
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
@@ -8,7 +9,7 @@ use tracing::{info, error};
 use rayon::prelude::*;
 use resvg::usvg;
 use resvg::tiny_skia;
-use std::sync::Arc;
+
 
 /// Upscale video by converting to Vector and re-rendering at higher resolution
 pub async fn upscale_video(
