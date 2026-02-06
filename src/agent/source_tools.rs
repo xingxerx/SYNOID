@@ -8,11 +8,7 @@
 // 4. YouTube Search via ytsearch
 
 use std::path::{Path, PathBuf};
-<<<<<<< HEAD
 use tokio::process::Command;
-=======
-use std::process::Command;
->>>>>>> pr-10
 use tracing::info;
 
 #[allow(dead_code)]
@@ -140,13 +136,6 @@ pub async fn download_youtube(
 
     // First, get video info without downloading
     let info_output = Command::new("python").args(&args).output().await?;
-=======
-
-    let args = build_ytdlp_info_args(url, auth_browser)?;
-
-    // First, get video info without downloading
-    let info_output = Command::new("python").args(&args).output()?;
->>>>>>> pr-10
 
     if !info_output.status.success() {
         return Err(format!(
@@ -195,16 +184,12 @@ pub async fn download_youtube(
         download_args.push(browser);
     }
 
+    // [SENTINEL] Fix Argument Injection:
+    download_args.push("--");
     download_args.push(url);
 
     info!("[SOURCE] Starting download to: {}", output_template);
     let status = Command::new("python").args(&download_args).status().await?;
-=======
-    let download_args = build_ytdlp_download_args(url, &output_template, auth_browser)?;
-
-    info!("[SOURCE] Starting download to: {}", output_template);
-    let status = Command::new("python").args(&download_args).status()?;
->>>>>>> pr-10
 
     if !status.success() {
         return Err("Download process failed".into());
@@ -288,12 +273,8 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
             "default=noprint_wrappers=1:nokey=1",
             path.to_str().unwrap(),
         ])
-<<<<<<< HEAD
         .output()
         .await?;
-=======
-        .output()?;
->>>>>>> pr-10
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let duration: f64 = output_str.trim().parse()?;

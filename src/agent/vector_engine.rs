@@ -43,7 +43,7 @@ pub async fn upscale_video(
             "-i",
             input.to_str().unwrap(),
             "-vf",
-            "fps=12", // Lower FPS for "stylized" look
+            "fps=12",
             frames_src.join("frame_%04d.png").to_str().unwrap(),
         ])
         .output()?;
@@ -139,15 +139,17 @@ pub async fn upscale_video(
         .args([
             "-framerate",
             "12",
-            "-i",
-            frames_out.join("frame_%04d.png").to_str().unwrap(),
+        ])
+        .arg("-i")
+        .arg(frames_out.join("frame_%04d.png"))
+        .args([
             "-c:v",
             "libx264",
             "-pix_fmt",
             "yuv420p",
             "-y",
-            output.to_str().unwrap(),
         ])
+        .arg(output.to_str().unwrap())
         .output()?;
 
     // Cleanup
@@ -230,8 +232,6 @@ pub async fn vectorize_video(
         .args([
             "-i",
             input.to_str().unwrap(),
-            "-vf",
-            "fps=10",
             frames_dir.join("frame_%04d.png").to_str().unwrap(),
         ])
         .output()?;

@@ -62,8 +62,7 @@ impl TranscriptionEngine {
         }
 
         // Read result
-        let data = fs::read_to_string(&output_json)?;
-        let segments: Vec<TranscriptSegment> = serde_json::from_str(&data)?;
+        let segments: Vec<TranscriptSegment> = serde_json::from_str(&fs::read_to_string(&output_json)?)?;
 
         info!("[TRANSCRIBE] Success! {} segments generated.", segments.len());
 

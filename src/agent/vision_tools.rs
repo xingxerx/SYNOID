@@ -2,10 +2,7 @@
 // SYNOID Vision Tools
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use tokio::process::Command;
-use tracing::info;
+use serde::{Deserialize, Serialize};use std::process::Command;acing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VisualScene {
@@ -27,18 +24,12 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
 
     let _output = Command::new("ffprobe")
         .args([
-            "-show_frames",
-            "-of",
-            "compact=p=0:nk=1",
-            "-f",
-            "lavfi",
-            &format!(
-                "movie='{}',select='gt(scene,0.3)'",
-                path.to_str().unwrap().replace("\\", "/")
-            ),
+            "-of", "compact=p=0:nk=1",
+            "-f", "lavfi",
         ])
+        .arg(&filter_graph)
         .output()
-        .await;
+        .await; // Re-added .await as it's an async function
 
     // Mocking return for stability if ffmpeg call gets complex parsing
     // In a real restore we'd parse the output. For now, let's return a sensible mock
