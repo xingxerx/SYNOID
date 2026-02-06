@@ -6,7 +6,11 @@
 
 use crate::agent::source_tools::get_video_duration;
 use std::path::{Path, PathBuf};
+<<<<<<< HEAD
 use tokio::process::Command;
+=======
+use std::process::Command;
+>>>>>>> pr-10
 use tracing::{info, warn};
 
 /// Result of a production operation
@@ -95,9 +99,15 @@ pub async fn compress_video(
         "[PROD] Compressing video: {:?} -> {:.2} MB",
         input, target_size_mb
     );
+<<<<<<< HEAD
 
     let duration = get_video_duration(input).await?;
 
+=======
+
+    let duration = get_video_duration(input)?;
+
+>>>>>>> pr-10
     // Calculate target bitrate
     // Bitrate (bits/s) = (Target Size (MB) * 8192) / Duration (s)
     // We reserve ~128kbps for audio, so video bitrate is remainder
@@ -115,8 +125,7 @@ pub async fn compress_video(
     );
 
     // Single pass CRF (Consistant Rate Factor) capped by maxrate is usually better/faster for modern codecs
-    // but 2-pass is standard for strict size. Let's do a smart single pass with bufsize for now for speed/simplicity
-    // unless strict control is requested.
+    // but 2-pass is standard for strict control is requested.
 
     let status = Command::new("ffmpeg")
         .arg("-y")

@@ -8,7 +8,11 @@
 // 4. YouTube Search via ytsearch
 
 use std::path::{Path, PathBuf};
+<<<<<<< HEAD
 use tokio::process::Command;
+=======
+use std::process::Command;
+>>>>>>> pr-10
 use tracing::info;
 
 #[allow(dead_code)]
@@ -33,6 +37,66 @@ pub async fn check_ytdlp() -> bool {
         .unwrap_or(false)
 }
 
+fn build_ytdlp_info_args(
+    url: &str,
+    auth_browser: Option<&str>,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let mut args = vec![
+        "-m".to_string(),
+        "yt_dlp".to_string(),
+        "--print".to_string(),
+        "%(title)s".to_string(),
+        "--print".to_string(),
+        "%(duration)s".to_string(),
+        "--print".to_string(),
+        "%(width)s".to_string(),
+        "--print".to_string(),
+        "%(height)s".to_string(),
+        "--no-download".to_string(),
+    ];
+
+    if let Some(browser) = auth_browser {
+        if browser.starts_with('-') {
+            return Err("Browser name cannot start with '-'".into());
+        }
+        args.push("--cookies-from-browser".to_string());
+        args.push(browser.to_string());
+    }
+
+    args.push("--".to_string());
+    args.push(url.to_string());
+
+    Ok(args)
+}
+
+fn build_ytdlp_download_args(
+    url: &str,
+    output_path: &str,
+    auth_browser: Option<&str>,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let mut args = vec![
+        "-m".to_string(),
+        "yt_dlp".to_string(),
+        "-f".to_string(),
+        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best".to_string(),
+        "-o".to_string(),
+        output_path.to_string(),
+    ];
+
+    if let Some(browser) = auth_browser {
+        if browser.starts_with('-') {
+            return Err("Browser name cannot start with '-'".into());
+        }
+        args.push("--cookies-from-browser".to_string());
+        args.push(browser.to_string());
+    }
+
+    args.push("--".to_string());
+    args.push(url.to_string());
+
+    Ok(args)
+}
+
 /// Download a YouTube video using yt-dlp
 pub async fn download_youtube(
     url: &str,
@@ -46,6 +110,7 @@ pub async fn download_youtube(
 
     // Create output directory if it doesn't exist
     std::fs::create_dir_all(output_dir)?;
+<<<<<<< HEAD
 
     // Construct base arguments
     let mut args = vec![
@@ -75,6 +140,13 @@ pub async fn download_youtube(
 
     // First, get video info without downloading
     let info_output = Command::new("python").args(&args).output().await?;
+=======
+
+    let args = build_ytdlp_info_args(url, auth_browser)?;
+
+    // First, get video info without downloading
+    let info_output = Command::new("python").args(&args).output()?;
+>>>>>>> pr-10
 
     if !info_output.status.success() {
         return Err(format!(
@@ -108,6 +180,7 @@ pub async fn download_youtube(
     let output_template = output_path.to_string_lossy().to_string();
 
     // Now download
+<<<<<<< HEAD
     let mut download_args = vec![
         "-m",
         "yt_dlp",
@@ -126,6 +199,12 @@ pub async fn download_youtube(
 
     info!("[SOURCE] Starting download to: {}", output_template);
     let status = Command::new("python").args(&download_args).status().await?;
+=======
+    let download_args = build_ytdlp_download_args(url, &output_template, auth_browser)?;
+
+    info!("[SOURCE] Starting download to: {}", output_template);
+    let status = Command::new("python").args(&download_args).status()?;
+>>>>>>> pr-10
 
     if !status.success() {
         return Err("Download process failed".into());
@@ -209,8 +288,12 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
             "default=noprint_wrappers=1:nokey=1",
             path.to_str().unwrap(),
         ])
+<<<<<<< HEAD
         .output()
         .await?;
+=======
+        .output()?;
+>>>>>>> pr-10
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let duration: f64 = output_str.trim().parse()?;
@@ -238,4 +321,58 @@ pub fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
         }
     }
     videos
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_ytdlp_info_args() {
+        let args =
+            build_ytdlp_info_args("https://youtube.com/watch?v=123", Some("chrome")).unwrap();
+
+        // Check structural integrity
+        assert!(args.contains(&"--".to_string()));
+        assert_eq!(
+            args.last(),
+            Some(&"https://youtube.com/watch?v=123".to_string())
+        );
+
+        // Verify -- is before url
+        let separator_idx = args.iter().position(|r| r == "--").unwrap();
+        let url_idx = args
+            .iter()
+            .position(|r| r == "https://youtube.com/watch?v=123")
+            .unwrap();
+        assert!(separator_idx < url_idx);
+
+        // Verify auth
+        assert!(args.contains(&"--cookies-from-browser".to_string()));
+        assert!(args.contains(&"chrome".to_string()));
+    }
+
+    #[test]
+    fn test_build_ytdlp_info_args_injection() {
+        // Try to inject a flag via URL
+        let args = build_ytdlp_info_args("-v", None).unwrap();
+
+        // Verify -v is after --
+        let separator_idx = args.iter().position(|r| r == "--").unwrap();
+        let url_idx = args.iter().position(|r| r == "-v").unwrap();
+        assert!(separator_idx < url_idx);
+    }
+
+    #[test]
+    fn test_build_ytdlp_download_args() {
+        let args = build_ytdlp_download_args("https://youtube.com", "out.mp4", None).unwrap();
+        assert!(args.contains(&"--".to_string()));
+        assert_eq!(args.last(), Some(&"https://youtube.com".to_string()));
+    }
+
+    #[test]
+    fn test_bad_browser_name() {
+        let res = build_ytdlp_info_args("url", Some("-bad"));
+        assert!(res.is_err());
+    }
 }

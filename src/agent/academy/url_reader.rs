@@ -50,11 +50,17 @@ impl UrlReader {
         info!("[SENSES] Detected Video URL. Initiating Visual Analysis...");
 
         // 1. Download metadata via yt-dlp (requires local install)
+<<<<<<< HEAD
         use tokio::process::Command;
         let output = Command::new("yt-dlp")
             .args(["--dump-json", "--", url])
             .output()
             .await?;
+=======
+        use std::process::Command;
+        let output = Command::new("yt-dlp").args(["--dump-json", url]).output()?;
+
+>>>>>>> pr-10
         if !output.status.success() {
             return Err("Failed to fetch video metadata".into());
         }

@@ -7,7 +7,7 @@ use resvg::tiny_skia;
 use resvg::usvg;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tokio::process::Command;
+use std::process::Command;
 use tracing::{error, info};
 
 /// Upscale video by converting to Vector and re-rendering at higher resolution
@@ -39,13 +39,14 @@ pub async fn upscale_video(
     // 2. Extract Source Frames
     info!("[UPSCALE] Extracting source frames...");
     let status = Command::new("ffmpeg")
-        .arg("-i")
-        .arg(input)
         .args([
-            "-vf", "fps=12", // Lower FPS for "stylized" look
+            "-i",
+            input.to_str().unwrap(),
+            "-vf",
+            "fps=12", // Lower FPS for "stylized" look
+            frames_src.join("frame_%04d.png").to_str().unwrap(),
         ])
-        .arg(frames_src.join("frame_%04d.png"))
-        .output().await?;
+        .output()?;
 
     if !status.status.success() {
         return Err("FFmpeg extraction failed".into());
@@ -136,17 +137,18 @@ pub async fn upscale_video(
     info!("[UPSCALE] Encoding high-resolution video...");
     let status_enc = Command::new("ffmpeg")
         .args([
-            "-framerate", "12",
-        ])
-        .arg("-i")
-        .arg(frames_out.join("frame_%04d.png"))
-        .args([
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
+            "-framerate",
+            "12",
+            "-i",
+            frames_out.join("frame_%04d.png").to_str().unwrap(),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
             "-y",
+            output.to_str().unwrap(),
         ])
-        .arg(output)
-        .output().await?;
+        .output()?;
 
     // Cleanup
     fs::remove_dir_all(work_dir)?;
@@ -225,13 +227,14 @@ pub async fn vectorize_video(
 
     info!("[VECTOR] Extracting frames...");
     let status = Command::new("ffmpeg")
-        .arg("-i")
-        .arg(input)
         .args([
-            "-vf", "fps=10",
+            "-i",
+            input.to_str().unwrap(),
+            "-vf",
+            "fps=10",
+            frames_dir.join("frame_%04d.png").to_str().unwrap(),
         ])
-        .arg(frames_dir.join("frame_%04d.png"))
-        .output().await?;
+        .output()?;
 
     if !status.status.success() {
         return Err("FFmpeg frame extraction failed".into());

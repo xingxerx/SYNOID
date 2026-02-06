@@ -74,6 +74,7 @@ impl TranscriptionEngine {
         Ok(segments)
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
