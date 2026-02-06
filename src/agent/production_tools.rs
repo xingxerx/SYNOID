@@ -33,25 +33,10 @@ pub async fn trim_video(
         .arg("-i")
         .arg(input)
         .args([
-<<<<<<< HEAD
             "-ss", &start_time.to_string(),
             "-t", &duration.to_string(),
             "-c", "copy", // Fast stream copy
             "-avoid_negative_ts", "make_zero",
-=======
-            "-y",
-            "-i",
-            input.to_str().unwrap(),
-            "-ss",
-            &start_time.to_string(),
-            "-t",
-            &duration.to_string(),
-            "-c",
-            "copy", // Fast stream copy
-            "-avoid_negative_ts",
-            "make_zero",
-            output.to_str().unwrap(),
->>>>>>> pr-7
         ])
         .arg(output)
         .status()?;
@@ -80,19 +65,8 @@ pub async fn apply_anamorphic_mask(
         .arg("-i")
         .arg(input)
         .args([
-<<<<<<< HEAD
             "-vf", "crop=in_w:in_w/2.39",
             "-c:a", "copy",
-=======
-            "-y",
-            "-i",
-            input.to_str().unwrap(),
-            "-vf",
-            "crop=in_w:in_w/2.39",
-            "-c:a",
-            "copy",
-            output.to_str().unwrap(),
->>>>>>> pr-7
         ])
         .arg(output)
         .status()?;
@@ -141,7 +115,6 @@ pub async fn compress_video(
         .arg("-i")
         .arg(input)
         .args([
-<<<<<<< HEAD
             "-c:v", "libx264",
             "-b:v", &format!("{:.0}k", video_bitrate_kbps),
             "-maxrate", &format!("{:.0}k", video_bitrate_kbps * 1.5),
@@ -149,26 +122,6 @@ pub async fn compress_video(
             "-preset", "medium",
             "-c:a", "aac",
             "-b:a", &format!("{:.0}k", audio_bitrate_kbps),
-=======
-            "-y",
-            "-i",
-            input.to_str().unwrap(),
-            "-c:v",
-            "libx264",
-            "-b:v",
-            &format!("{:.0}k", video_bitrate_kbps),
-            "-maxrate",
-            &format!("{:.0}k", video_bitrate_kbps * 1.5),
-            "-bufsize",
-            &format!("{:.0}k", video_bitrate_kbps * 2.0),
-            "-preset",
-            "medium",
-            "-c:a",
-            "aac",
-            "-b:a",
-            &format!("{:.0}k", audio_bitrate_kbps),
-            output.to_str().unwrap(),
->>>>>>> pr-7
         ])
         .arg(output)
         .status()?;
@@ -203,7 +156,6 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
         .args([
             "-y",
             "-nostdin",
-<<<<<<< HEAD
         ])
         .arg("-i")
         .arg(input)
@@ -213,20 +165,6 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
             "-af", filter_complex,
             "-c:a", "pcm_s16le", // Use PCM for WAV (lossless intermediate)
             "-ar", "48000", // Force 48kHz (prevent 192kHz upsampling)
-=======
-            "-i",
-            input.to_str().unwrap(),
-            "-vn", // Disable video (audio only)
-            "-map",
-            "0:a:0", // Take first audio track
-            "-af",
-            filter_complex,
-            "-c:a",
-            "pcm_s16le", // Use PCM for WAV (lossless intermediate)
-            "-ar",
-            "48000", // Force 48kHz (prevent 192kHz upsampling)
-            output.to_str().unwrap(),
->>>>>>> pr-7
         ])
         .arg(output)
         .status()?;

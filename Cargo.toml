@@ -39,6 +39,7 @@ rodio = "0.17"    # Audio playback
 cpal = "0.15"     # Audio recording
 hound = "3.5"     # WAV file writing
 dirs = "5.0"      # Platform cache directories
+url = "2.5.8"
 
 # Vector Animation Engine (SVG Video)
 # Pure SMIL-based animated SVG (no external animation libs needed)

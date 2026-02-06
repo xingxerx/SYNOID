@@ -120,13 +120,9 @@ pub async fn download_youtube(
         download_args.push("--cookies-from-browser");
         download_args.push(browser);
     }
-<<<<<<< HEAD
     
     // [SENTINEL] Fix Argument Injection:
     download_args.push("--");
-=======
-
->>>>>>> pr-7
     download_args.push(url);
 
     info!("[SOURCE] Starting download to: {}", output_template);
@@ -205,20 +201,10 @@ pub async fn search_youtube(
 pub fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
     let output = Command::new("ffprobe")
         .args([
-<<<<<<< HEAD
             "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
             "--",
-=======
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            path.to_str().unwrap(),
->>>>>>> pr-7
         ])
         .arg(path)
         .output()?;

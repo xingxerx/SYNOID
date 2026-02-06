@@ -13,9 +13,7 @@ pub mod motor_cortex;
 pub mod multi_agent;
 pub mod production_tools;
 pub mod reasoning;
-<<<<<<< HEAD
 pub mod muxer;
-=======
 pub mod research_tools;
 pub mod smart_editor;
 pub mod source_tools;
@@ -23,4 +21,3 @@ pub mod vector_engine;
 pub mod vector_video;
 pub mod vision_tools;
 pub mod voice;
->>>>>>> pr-7
