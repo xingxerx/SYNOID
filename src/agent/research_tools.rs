@@ -4,8 +4,8 @@
 //
 // Web research capabilities for finding AI editing tips, tutorials, and techniques.
 
-use tracing::{info};
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 /// Represents a research finding from the web
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,10 +62,26 @@ pub enum ClipCategory {
 pub fn get_available_clips() -> Vec<MediaClip> {
     // Return some mock clips for now
     vec![
-        MediaClip { name: "Vine Boom".to_string(), path: "assets/vine_boom.mp3".to_string(), category: ClipCategory::SoundEffect },
-        MediaClip { name: "Sad Violin".to_string(), path: "assets/sad_violin.mp3".to_string(), category: ClipCategory::SoundEffect },
-        MediaClip { name: "Glitch Transition".to_string(), path: "assets/glitch.mov".to_string(), category: ClipCategory::Transition },
-        MediaClip { name: "Confused Math Lady".to_string(), path: "assets/math_lady.gif".to_string(), category: ClipCategory::Meme },
+        MediaClip {
+            name: "Vine Boom".to_string(),
+            path: "assets/vine_boom.mp3".to_string(),
+            category: ClipCategory::SoundEffect,
+        },
+        MediaClip {
+            name: "Sad Violin".to_string(),
+            path: "assets/sad_violin.mp3".to_string(),
+            category: ClipCategory::SoundEffect,
+        },
+        MediaClip {
+            name: "Glitch Transition".to_string(),
+            path: "assets/glitch.mov".to_string(),
+            category: ClipCategory::Transition,
+        },
+        MediaClip {
+            name: "Confused Math Lady".to_string(),
+            path: "assets/math_lady.gif".to_string(),
+            category: ClipCategory::Meme,
+        },
     ]
 }
 
@@ -126,11 +142,11 @@ pub fn get_curated_tips() -> Vec<ResearchFinding> {
 /// Research AI editing tips based on a topic
 pub async fn research_tips(topic: ResearchTopic) -> Vec<ResearchFinding> {
     info!("[RESEARCH] Researching: {:?}", topic);
-    
+
     // For now, return curated tips filtered by relevance
     // In production, this would call a web search API
     let all_tips = get_curated_tips();
-    
+
     let query_keywords: Vec<&str> = match topic {
         ResearchTopic::CuttingTechniques => vec!["cut", "trim", "action"],
         ResearchTopic::ColorGrading => vec!["color", "grade", "lut"],
@@ -140,21 +156,21 @@ pub async fn research_tips(topic: ResearchTopic) -> Vec<ResearchFinding> {
         ResearchTopic::AIEditing => vec!["ai", "automatic", "detect"],
         ResearchTopic::GeneralTips => vec!["edit", "tip", "technique"],
     };
-    
+
     let mut results: Vec<ResearchFinding> = all_tips
         .into_iter()
         .filter(|tip| {
             let lower_title = tip.title.to_lowercase();
             let lower_summary = tip.summary.to_lowercase();
-            query_keywords.iter().any(|kw| 
-                lower_title.contains(kw) || lower_summary.contains(kw)
-            )
+            query_keywords
+                .iter()
+                .any(|kw| lower_title.contains(kw) || lower_summary.contains(kw))
         })
         .collect();
-    
+
     // Sort by relevance
     results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap());
-    
+
     info!("[RESEARCH] Found {} relevant tips", results.len());
     results
 }
@@ -162,37 +178,49 @@ pub async fn research_tips(topic: ResearchTopic) -> Vec<ResearchFinding> {
 /// Research tips based on user's creative intent
 pub async fn research_for_intent(intent: &str) -> Vec<ResearchFinding> {
     let intent_lower = intent.to_lowercase();
-    
+
     // Determine topic from intent
-    let topic = if intent_lower.contains("fast") || intent_lower.contains("quick") || intent_lower.contains("pace") {
+    let topic = if intent_lower.contains("fast")
+        || intent_lower.contains("quick")
+        || intent_lower.contains("pace")
+    {
         ResearchTopic::CuttingTechniques
-    } else if intent_lower.contains("color") || intent_lower.contains("cinematic") || intent_lower.contains("look") {
+    } else if intent_lower.contains("color")
+        || intent_lower.contains("cinematic")
+        || intent_lower.contains("look")
+    {
         ResearchTopic::ColorGrading
-    } else if intent_lower.contains("music") || intent_lower.contains("beat") || intent_lower.contains("sync") {
+    } else if intent_lower.contains("music")
+        || intent_lower.contains("beat")
+        || intent_lower.contains("sync")
+    {
         ResearchTopic::AudioSync
     } else if intent_lower.contains("transition") || intent_lower.contains("smooth") {
         ResearchTopic::Transitions
-    } else if intent_lower.contains("speed") || intent_lower.contains("slow") || intent_lower.contains("dramatic") {
+    } else if intent_lower.contains("speed")
+        || intent_lower.contains("slow")
+        || intent_lower.contains("dramatic")
+    {
         ResearchTopic::SpeedRamping
     } else if intent_lower.contains("ai") || intent_lower.contains("auto") {
         ResearchTopic::AIEditing
     } else {
         ResearchTopic::GeneralTips
     };
-    
+
     research_tips(topic).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_research_tips() {
         let tips = research_tips(ResearchTopic::AIEditing).await;
         assert!(!tips.is_empty());
     }
-    
+
     #[tokio::test]
     async fn test_research_for_intent() {
         let tips = research_for_intent("make it fast-paced and energetic").await;
