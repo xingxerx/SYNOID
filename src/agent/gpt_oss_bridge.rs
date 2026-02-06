@@ -2,8 +2,8 @@
 // SYNOID MCP Server Bridge
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use std::sync::Arc;
 use crate::agent::multi_agent::NativeTimelineEngine;
+use std::sync::Arc;
 use tracing::info;
 
 /// Agent interface for LLM reasoning
@@ -13,14 +13,19 @@ pub struct SynoidAgent {
 
 impl SynoidAgent {
     pub fn new(api_url: &str) -> Self {
-        Self { api_url: api_url.to_string() }
+        Self {
+            api_url: api_url.to_string(),
+        }
     }
 
     /// Reason about a request using the LLM backend
     pub async fn reason(&self, request: &str) -> Result<String, String> {
         // Stub implementation - would call local LLM API
         info!("[AGENT] Reasoning about: {}", request);
-        Ok(format!("Processed request via {}: {}", self.api_url, request))
+        Ok(format!(
+            "Processed request via {}: {}",
+            self.api_url, request
+        ))
     }
 }
 
@@ -33,7 +38,9 @@ pub struct Tool {
 
 impl Tool {
     pub fn new<F>(name: &str, description: &str, handler: F) -> Self
-    where F: Fn(&str) + Send + Sync + 'static {
+    where
+        F: Fn(&str) + Send + Sync + 'static,
+    {
         Self {
             name: name.to_string(),
             description: description.to_string(),
@@ -98,13 +105,13 @@ impl SynoidMcpServer {
             "Trims a specific clip in the SYNOID timeline",
             |args| {
                 info!("[MCP] Executing native trim: {:?}", args);
-            }
+            },
         ));
 
         // Resource: Exposes the current project media folder
         server.register_resource(Resource::new(
             "media://project/assets",
-            "Access to local raw footage for semantic indexing"
+            "Access to local raw footage for semantic indexing",
         ));
 
         Self {

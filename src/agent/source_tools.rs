@@ -1,14 +1,14 @@
 // SYNOID Source Tools - Video Acquisition
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
-// 
+//
 // This module currently handles:
 // 1. YouTube downloading via yt-dlp (with optional browser auth)
 // 2. Local file duration extraction via ffprobe
 // 3. Directory scanning for video files
 // 4. YouTube Search via ytsearch
 
-use std::process::Command;
 use std::path::{Path, PathBuf};
+use tokio::process::Command;
 use tracing::info;
 
 #[allow(dead_code)]
@@ -24,10 +24,11 @@ pub struct SourceInfo {
 }
 
 /// Check if yt-dlp is installed and accessible
-pub fn check_ytdlp() -> bool {
+pub async fn check_ytdlp() -> bool {
     Command::new("python")
         .args(["-m", "yt_dlp", "--version"])
         .output()
+        .await
         .map(|o| o.status.success())
         .unwrap_or(false)
 }
@@ -38,18 +39,27 @@ pub async fn download_youtube(
     output_dir: &Path,
     auth_browser: Option<&str>,
 ) -> Result<SourceInfo, Box<dyn std::error::Error>> {
-    info!("[SOURCE] Downloading from YouTube: {} (Auth: {:?})", url, auth_browser);
-    
-    // Create output directory if it doesn't exist
-    std::fs::create_dir_all(output_dir)?;
-    
+    info!(
+        "[SOURCE] Downloading from YouTube: {} (Auth: {:?})",
+        url, auth_browser
+    );
+
+    // Create output directory if it doesn't exist (std::fs is blocking but acceptable here for simple dir creation, or switch to tokio::fs)
+    // For strict async, use tokio::fs
+    tokio::fs::create_dir_all(output_dir).await?;
+
     // Construct base arguments
     let mut args = vec![
-        "-m", "yt_dlp",
-        "--print", "%(title)s",
-        "--print", "%(duration)s",
-        "--print", "%(width)s",
-        "--print", "%(height)s",
+        "-m",
+        "yt_dlp",
+        "--print",
+        "%(title)s",
+        "--print",
+        "%(duration)s",
+        "--print",
+        "%(width)s",
+        "--print",
+        "%(height)s",
         "--no-download",
     ];
 
@@ -62,25 +72,34 @@ pub async fn download_youtube(
     args.push(url);
 
     // First, get video info without downloading
-    let info_output = Command::new("python")
-        .args(&args)
-        .output()?;
-        
+    let info_output = Command::new("python").args(&args).output().await?;
+
     if !info_output.status.success() {
-        return Err(format!("yt-dlp info failed: {}", String::from_utf8_lossy(&info_output.stderr)).into());
+        return Err(format!(
+            "yt-dlp info failed: {}",
+            String::from_utf8_lossy(&info_output.stderr)
+        )
+        .into());
     }
 
     let stdout = String::from_utf8_lossy(&info_output.stdout);
     let mut lines = stdout.lines();
-    
+
     let title = lines.next().unwrap_or("Unknown").to_string();
     let duration: f64 = lines.next().unwrap_or("0").parse().unwrap_or(0.0);
     let width: u32 = lines.next().unwrap_or("0").parse().unwrap_or(0);
     let height: u32 = lines.next().unwrap_or("0").parse().unwrap_or(0);
 
     // Prepare output filename (sanitized)
-    let safe_title: String = title.chars()
-        .map(|c| if c.is_alphanumeric() || c == ' ' { c } else { '_' })
+    let safe_title: String = title
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let filename = format!("{}.mp4", safe_title);
     let output_path = output_dir.join(&filename);
@@ -88,22 +107,23 @@ pub async fn download_youtube(
 
     // Now download
     let mut download_args = vec![
-        "-m", "yt_dlp",
-        "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-        "-o", &output_template,
+        "-m",
+        "yt_dlp",
+        "-f",
+        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "-o",
+        &output_template,
     ];
 
     if let Some(browser) = auth_browser {
         download_args.push("--cookies-from-browser");
         download_args.push(browser);
     }
-    
+
     download_args.push(url);
 
     info!("[SOURCE] Starting download to: {}", output_template);
-    let status = Command::new("python")
-        .args(&download_args)
-        .status()?;
+    let status = Command::new("python").args(&download_args).status().await?;
 
     if !status.success() {
         return Err("Download process failed".into());
@@ -130,12 +150,15 @@ pub async fn search_youtube(
 
     let output = Command::new("python")
         .args([
-            "-m", "yt_dlp",
-            "--print", "%(title)s|%(id)s|%(duration)s|%(webpage_url)s",
+            "-m",
+            "yt_dlp",
+            "--print",
+            "%(title)s|%(id)s|%(duration)s|%(webpage_url)s",
             "--no-download",
             &search_query,
         ])
-        .output()?;
+        .output()
+        .await?;
 
     if !output.status.success() {
         return Err(format!("Search failed: {}", String::from_utf8_lossy(&output.stderr)).into());
@@ -172,18 +195,27 @@ pub async fn search_youtube(
 }
 
 /// Get video duration using ffprobe
-pub fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
+pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
     let output = Command::new("ffprobe")
         .args([
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            path.to_str().unwrap()
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            path.to_str().unwrap(),
         ])
-        .output()?;
-        
+        .output()
+        .await?;
+
     let output_str = String::from_utf8_lossy(&output.stdout);
-    let duration: f64 = output_str.trim().parse()?;
+    let duration: f64 = output_str.trim().parse().map_err(|_| {
+        format!(
+            "Failed to parse duration from ffprobe output: '{}'",
+            output_str
+        )
+    })?;
     Ok(duration)
 }
 
@@ -192,7 +224,10 @@ pub fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>
 pub fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
     let mut videos = Vec::new();
     let extensions = ["mp4", "mov", "mkv", "avi", "webm"];
-    
+
+    // This function remains synchronous as it uses std::fs::read_dir and is likely used in a non-async context or wrapped
+    // But to be consistent with modern rust async, if this is called from async context, it blocks the thread.
+    // However, refactoring this to async stream is out of scope for "Trim Video" task, so leaving as is.
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
