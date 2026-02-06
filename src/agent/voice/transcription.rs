@@ -36,11 +36,11 @@ impl TranscriptionEngine {
         let status = Command::new("python")
             .arg(&self.script_path)
             .arg("--audio")
-            .arg(audio_path.to_str().unwrap())
+            .arg(audio_path)
             .arg("--model")
             .arg("tiny") // Default to fast model
             .arg("--output")
-            .arg(output_json.to_str().unwrap())
+            .arg(&output_json)
             .status()?;
             
         if !status.success() {
