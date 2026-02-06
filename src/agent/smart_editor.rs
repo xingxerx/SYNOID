@@ -34,8 +34,10 @@ impl EditIntent {
                         lower.contains("fast") || lower.contains("intense"),
             remove_silence: lower.contains("silence") || lower.contains("quiet") ||
                            lower.contains("dead air"),
+            // ADDED: "voice" and "transcript" to triggers
             keep_speech: lower.contains("speech") || lower.contains("talking") ||
-                        lower.contains("dialogue") || lower.contains("conversation"),
+                        lower.contains("dialogue") || lower.contains("conversation") ||
+                        lower.contains("voice") || lower.contains("transcript"),
             custom_keywords: vec![],
         }
     }
@@ -149,80 +151,110 @@ pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::erro
     Ok(scenes)
 }
 
-/// Score scenes based on user intent
+/// NEW: Ensure scenes that carry a single sentence are kept together
+fn ensure_speech_continuity(scenes: &mut [Scene], transcript: &[TranscriptSegment]) {
+    info!("[SMART] 🔗 Enforcing Speech Continuity...");
+
+    // 1. Map sentences to scenes
+    // If a sentence overlaps multiple scenes, and ANY of those scenes is 'kept' (score > 0.3),
+    // we must force ALL overlapping scenes to be kept.
+
+    for segment in transcript {
+        // Find all scenes this segment touches
+        let mut overlapping_indices = Vec::new();
+        let mut should_preserve_sentence = false;
+
+        for (i, scene) in scenes.iter().enumerate() {
+            let overlap_start = segment.start.max(scene.start_time);
+            let overlap_end = segment.end.min(scene.end_time);
+
+            if overlap_end > overlap_start {
+                overlapping_indices.push(i);
+                // If any part of this sentence is already good enough to keep, save the whole thing
+                if scene.score > 0.3 {
+                    should_preserve_sentence = true;
+                }
+            }
+        }
+
+        // If we decided this sentence is important, boost all involved scenes
+        if should_preserve_sentence {
+            for i in overlapping_indices {
+                if scenes[i].score <= 0.3 {
+                    info!("[SMART] 🩹 Healing cut at {:.2}s to preserve speech: \"{}\"",
+                          scenes[i].start_time, segment.text);
+                    scenes[i].score = 0.6; // Force keep above threshold
+                }
+            }
+        }
+    }
+}
+
 /// Score scenes based on user intent and transcript
 pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Option<&[TranscriptSegment]>) {
-    info!("[SMART] Scoring {} scenes based on intent and semantic data", scenes.len());
+    info!("[SMART] Scoring {} scenes based on intent...", scenes.len());
 
+    // 1. Base Scoring
     for scene in scenes.iter_mut() {
         let mut score: f64 = 0.5; // Start neutral
 
-        // --- Visual Heuristics ---
+        // Visual Heuristics
         if intent.remove_boring {
-            // Heuristic: Long static scenes are often boring
-            // Short scenes (< 3s) are usually cuts/action
-            if scene.duration > 10.0 {
-                score -= 0.3; // Penalize very long scenes
-            } else if scene.duration > 5.0 {
-                score -= 0.1;
-            } else if scene.duration < 2.0 {
-                score += 0.2; // Favor short/punchy scenes
-            }
+            if scene.duration > 10.0 { score -= 0.3; }
+            else if scene.duration > 5.0 { score -= 0.1; }
+            else if scene.duration < 2.0 { score += 0.2; }
         }
 
-        if intent.keep_action {
-            // Short scenes often indicate action editing
-            if scene.duration < 3.0 {
-                score += 0.3;
-            }
+        if intent.keep_action && scene.duration < 3.0 {
+            score += 0.3;
         }
 
-        // --- Semantic Heuristics (Transcript Analysis) ---
+        // Semantic Heuristics (Transcript Analysis)
         if let Some(segments) = transcript {
-            // Find speech segments overlapping this scene
             let mut speech_duration = 0.0;
             let mut has_keyword = false;
 
             for seg in segments {
-                // Check overlap
                 let seg_start = seg.start.max(scene.start_time);
                 let seg_end = seg.end.min(scene.end_time);
 
                 if seg_end > seg_start {
                     speech_duration += seg_end - seg_start;
-
-                    // Keyword boost
                     if !intent.custom_keywords.is_empty() {
-                        let text_lower = seg.text.to_lowercase();
-                        for keyword in &intent.custom_keywords {
-                            if text_lower.contains(&keyword.to_lowercase()) {
-                                has_keyword = true;
-                            }
-                        }
+                         let text_lower = seg.text.to_lowercase();
+                         for keyword in &intent.custom_keywords {
+                             if text_lower.contains(&keyword.to_lowercase()) {
+                                 has_keyword = true;
+                             }
+                         }
                     }
                 }
             }
 
             let speech_ratio = speech_duration / scene.duration;
 
-            if speech_ratio > 0.3 {
-                // If sufficient speech, boost significantly (User wants to hear voice)
-                score += 0.4;
-            } else if speech_ratio < 0.1 {
-                // Almost silent
-                if intent.remove_silence {
-                    score -= 0.4;
-                }
+            // If user wants to keep speech/voice, we heavily weight audio presence
+            if intent.keep_speech {
+                if speech_ratio > 0.1 { score += 0.4; } // Any significant speech = keep
+            } else {
+                 if speech_ratio > 0.3 { score += 0.4; }
             }
 
-            if has_keyword {
-                score += 0.5; // Strong boost for keywords
-                info!("[SMART] Keyword found in scene {:.1}-{:.1}", scene.start_time, scene.end_time);
+            // Restore silence removal logic (accidentally removed in previous patch)
+            if speech_ratio < 0.1 && intent.remove_silence {
+                score -= 0.4;
             }
+
+            if has_keyword { score += 0.5; }
         }
 
-        // Clamp score to 0-1 range
-        scene.score = score.clamp(0.0_f64, 1.0_f64);
+        scene.score = score.clamp(0.0, 1.0);
+    }
+
+    // 2. Post-Scoring: Integrity Pass
+    // This is the critical fix for "following the transcript"
+    if let Some(segments) = transcript {
+        ensure_speech_continuity(scenes, segments);
     }
 }
 
@@ -455,5 +487,43 @@ mod tests {
 
         let intent2 = EditIntent::from_text("Keep only the action moments");
         assert!(intent2.keep_action);
+    }
+
+    #[test]
+    fn test_speech_continuity_fix() {
+        // This test simulates the issue where a middle boring scene is dropped
+        // even though speech spans across it.
+
+        let mut scenes = vec![
+            Scene { start_time: 0.0, end_time: 5.0, duration: 5.0, score: 0.5 },
+            Scene { start_time: 5.0, end_time: 20.0, duration: 15.0, score: 0.5 }, // Boring duration
+        ];
+
+        let transcript = vec![
+            TranscriptSegment {
+                start: 4.8,
+                end: 5.2,
+                text: "Don't cut me.".to_string(),
+            }
+        ];
+
+        let intent = EditIntent {
+            remove_boring: true,
+            keep_action: false,
+            remove_silence: false,
+            keep_speech: false, // Default
+            custom_keywords: vec![],
+        };
+
+        score_scenes(&mut scenes, &intent, Some(&transcript));
+
+        // Before fix: Scene 2 score would be 0.2 (dropped).
+        // After fix:
+        // Scene 1: Score 0.5 (Kept).
+        // Segment "Don't cut me" touches Scene 1 (Kept).
+        // Therefore Scene 2 (touched by same segment) MUST be kept.
+        // Scene 2 score forced to 0.6.
+
+        assert!(scenes[1].score > 0.3, "Scene 2 should be kept due to continuity fix. Score: {}", scenes[1].score);
     }
 }
