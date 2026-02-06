@@ -59,6 +59,9 @@ pub async fn download_youtube(
         args.push(browser);
     }
 
+    // [SENTINEL] Fix Argument Injection:
+    // Ensure URL is treated as positional argument, not a flag
+    args.push("--");
     args.push(url);
 
     // First, get video info without downloading
@@ -98,6 +101,8 @@ pub async fn download_youtube(
         download_args.push(browser);
     }
     
+    // [SENTINEL] Fix Argument Injection:
+    download_args.push("--");
     download_args.push(url);
 
     info!("[SOURCE] Starting download to: {}", output_template);
