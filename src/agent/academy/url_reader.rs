@@ -44,7 +44,7 @@ impl UrlReader {
         // 1. Download metadata via yt-dlp (requires local install)
         use std::process::Command;
         let output = Command::new("yt-dlp")
-            .args(["--dump-json", url])
+            .args(["--dump-json", "--", url])
             .output()?;
             
         if !output.status.success() {

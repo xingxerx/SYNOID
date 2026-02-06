@@ -138,6 +138,7 @@ pub async fn search_youtube(
             "-m", "yt_dlp",
             "--print", "%(title)s|%(id)s|%(duration)s|%(webpage_url)s",
             "--no-download",
+            "--",
             &search_query,
         ])
         .output()?;
@@ -183,8 +184,9 @@ pub fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>
             "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
-            path.to_str().unwrap()
+            "--",
         ])
+        .arg(path)
         .output()?;
         
     let output_str = String::from_utf8_lossy(&output.stdout);

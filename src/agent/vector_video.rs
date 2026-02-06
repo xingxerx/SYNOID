@@ -80,24 +80,26 @@ impl VectorVideoEngine {
         
         // Use scene detection for smart keyframe extraction
         let ffmpeg_status = std::process::Command::new("ffmpeg")
+            .arg("-i")
+            .arg(input_video)
             .args([
-                "-i", input_video.to_str().unwrap(),
                 "-vf", "select='gt(scene,0.3)',showinfo", // Only extract on scene changes
                 "-vsync", "vfr",
                 "-frame_pts", "true",
-                keyframes_dir.join("kf_%04d.png").to_str().unwrap(),
             ])
+            .arg(keyframes_dir.join("kf_%04d.png"))
             .output()?;
 
         if !ffmpeg_status.status.success() {
             // Fallback: extract at fixed intervals
             warn!("[VECTOR-VIDEO] Scene detection failed, using interval extraction");
             std::process::Command::new("ffmpeg")
+                .arg("-i")
+                .arg(input_video)
                 .args([
-                    "-i", input_video.to_str().unwrap(),
                     "-vf", "fps=2", // 2 keyframes per second
-                    keyframes_dir.join("kf_%04d.png").to_str().unwrap(),
                 ])
+                .arg(keyframes_dir.join("kf_%04d.png"))
                 .output()?;
         }
 
@@ -260,14 +262,15 @@ impl VectorVideoEngine {
         
         // For now, we'll use ffmpeg's SVG support if available
         let status = std::process::Command::new("ffmpeg")
+            .arg("-i")
+            .arg(animated_svg)
             .args([
-                "-i", animated_svg.to_str().unwrap(),
                 "-vf", &format!("scale={}:{}", final_width, final_height),
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
                 "-y",
-                output_video.to_str().unwrap(),
             ])
+            .arg(output_video)
             .output()?;
 
         if !status.status.success() {

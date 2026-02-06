@@ -66,8 +66,9 @@ pub fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::error::Err
             "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
-            input.to_str().unwrap()
+            "--",
         ])
+        .arg(input)
         .output()?;
     
     let total_duration: f64 = String::from_utf8_lossy(&duration_output.stdout)
@@ -83,8 +84,9 @@ pub fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::error::Err
     
     // Use FFmpeg to detect scene changes
     let output = Command::new("ffmpeg")
+        .arg("-i")
+        .arg(input)
         .args([
-            "-i", input.to_str().unwrap(),
             "-vf", "select='gt(scene,0.25)',showinfo",
             "-f", "null",
             "-"
@@ -354,11 +356,11 @@ pub async fn smart_edit(
         cmd.arg("-y").arg("-nostdin");
         
         // Input 0: Video
-        cmd.arg("-i").arg(input.to_str().unwrap());
+        cmd.arg("-i").arg(input);
         
         // Input 1: Enhanced Audio (if available)
         if use_enhanced_audio {
-            cmd.arg("-i").arg(enhanced_audio_path.to_str().unwrap());
+            cmd.arg("-i").arg(&enhanced_audio_path);
         }
         
         cmd.arg("-ss").arg(&scene.start_time.to_string());
@@ -376,7 +378,7 @@ pub async fn smart_edit(
         }
         
         cmd.arg("-avoid_negative_ts").arg("make_zero");
-        cmd.arg(seg_path.to_str().unwrap());
+        cmd.arg(&seg_path);
 
         let status = cmd.output()?;
         
@@ -404,7 +406,11 @@ pub async fn smart_edit(
     {
         let mut file = fs::File::create(&concat_file)?;
         for seg in &segment_files {
-            writeln!(file, "file '{}'", seg.to_str().unwrap())?;
+            if let Some(s) = seg.to_str() {
+                writeln!(file, "file '{}'", s)?;
+            } else {
+                return Err("Invalid path encoding for segment file".into());
+            }
         }
     }
     
@@ -417,10 +423,13 @@ pub async fn smart_edit(
             "-nostdin",
             "-f", "concat",
             "-safe", "0",
-            "-i", concat_file.to_str().unwrap(),
-            "-c", "copy",
-            output.to_str().unwrap(),
         ])
+        .arg("-i")
+        .arg(&concat_file)
+        .args([
+            "-c", "copy",
+        ])
+        .arg(output)
         .output()?;
         
     // Clean up

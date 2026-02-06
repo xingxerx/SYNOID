@@ -21,13 +21,17 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     info!("[EYES] Scanning visual content: {:?}", path);
 
     // Using ffprobe to detect scene changes (>0.3 difference)
+    // Escaping single quotes to prevent injection in the filter string
+    let path_str = path.to_string_lossy().replace("\\", "/").replace("'", "'\\''");
+    let filter_graph = format!("movie='{}',select='gt(scene,0.3)'", path_str);
+
     let _output = Command::new("ffprobe")
         .args([
             "-show_frames",
             "-of", "compact=p=0:nk=1",
             "-f", "lavfi",
-            &format!("movie='{}',select='gt(scene,0.3)'", path.to_str().unwrap().replace("\\", "/")),
         ])
+        .arg(&filter_graph)
         .output();
 
     // Mocking return for stability if ffmpeg call gets complex parsing

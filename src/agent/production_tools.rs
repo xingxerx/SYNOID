@@ -26,15 +26,16 @@ pub async fn trim_video(
     info!("[PROD] Trimming video: {:?} ({:.2}s + {:.2}s)", input, start_time, duration);
 
     let status = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-i")
+        .arg(input)
         .args([
-            "-y",
-            "-i", input.to_str().unwrap(),
             "-ss", &start_time.to_string(),
             "-t", &duration.to_string(),
             "-c", "copy", // Fast stream copy
             "-avoid_negative_ts", "make_zero",
-            output.to_str().unwrap(),
         ])
+        .arg(output)
         .status()?;
 
     if !status.success() {
@@ -54,12 +55,14 @@ pub async fn trim_video(
 pub async fn apply_anamorphic_mask(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error>> {
     info!("[PROD] Applying 2.39:1 Cinematic Mask");
     let status = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-i")
+        .arg(input)
         .args([
-            "-y", "-i", input.to_str().unwrap(),
             "-vf", "crop=in_w:in_w/2.39",
             "-c:a", "copy",
-            output.to_str().unwrap(),
         ])
+        .arg(output)
         .status()?;
     if !status.success() { return Err("Anamorphic mask failed".into()); }
     Ok(())
@@ -94,9 +97,10 @@ pub async fn compress_video(
     // unless strict control is requested.
     
     let status = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-i")
+        .arg(input)
         .args([
-            "-y",
-            "-i", input.to_str().unwrap(),
             "-c:v", "libx264",
             "-b:v", &format!("{:.0}k", video_bitrate_kbps),
             "-maxrate", &format!("{:.0}k", video_bitrate_kbps * 1.5),
@@ -104,8 +108,8 @@ pub async fn compress_video(
             "-preset", "medium",
             "-c:a", "aac",
             "-b:a", &format!("{:.0}k", audio_bitrate_kbps),
-            output.to_str().unwrap(),
         ])
+        .arg(output)
         .status()?;
 
     if !status.success() {
@@ -138,14 +142,17 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
         .args([
             "-y",
             "-nostdin",
-            "-i", input.to_str().unwrap(),
+        ])
+        .arg("-i")
+        .arg(input)
+        .args([
             "-vn", // Disable video (audio only)
             "-map", "0:a:0", // Take first audio track
             "-af", filter_complex,
             "-c:a", "pcm_s16le", // Use PCM for WAV (lossless intermediate)
             "-ar", "48000", // Force 48kHz (prevent 192kHz upsampling)
-            output.to_str().unwrap(),
         ])
+        .arg(output)
         .status()?;
 
     if !status.success() {
