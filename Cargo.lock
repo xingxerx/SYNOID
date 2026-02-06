@@ -5619,6 +5619,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "vtracer",
  "walkdir",
 ]

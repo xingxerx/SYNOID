@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use scraper::{Html, Selector};
 use tracing::info;
+use url::Url;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LearnedPattern {
@@ -30,10 +31,17 @@ impl UrlReader {
     pub async fn ingest(&self, url: &str) -> Result<LearnedPattern, Box<dyn std::error::Error>> {
         info!("[SENSES] Ingesting URL: {}", url);
 
-        if url.contains("youtube.com") || url.contains("youtu.be") || url.contains("vimeo.com") {
-            self.ingest_video(url).await
+        let parsed_url = Url::parse(url)?;
+        let host = parsed_url.host_str().unwrap_or("");
+
+        let is_video_platform = host == "youtube.com" || host.ends_with(".youtube.com") ||
+                                host == "youtu.be" || host.ends_with(".youtu.be") ||
+                                host == "vimeo.com" || host.ends_with(".vimeo.com");
+
+        if is_video_platform {
+            self.ingest_video(parsed_url.as_str()).await
         } else {
-            self.ingest_article(url).await
+            self.ingest_article(parsed_url.as_str()).await
         }
     }
 
@@ -44,7 +52,7 @@ impl UrlReader {
         // 1. Download metadata via yt-dlp (requires local install)
         use std::process::Command;
         let output = Command::new("yt-dlp")
-            .args(["--dump-json", url])
+            .args(["--dump-json", "--", url])
             .output()?;
             
         if !output.status.success() {
@@ -103,4 +111,55 @@ impl UrlReader {
             confidence: 0.90,
         })
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_ingest_invalid_url() {
+        let reader = UrlReader::new("http://dummy-api");
+        let result = reader.ingest("not-a-url").await;
+        assert!(result.is_err());
+        // Verify it is a parse error
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("URL")); // "relative URL without a base" or similar
+    }
+
+    #[tokio::test]
+    async fn test_ingest_malformed_injection_attempt() {
+        let reader = UrlReader::new("http://dummy-api");
+        // A string that looks like a flag but isn't a valid URL should be rejected by parser
+        let result = reader.ingest("--bad-flag").await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_domain_logic_unit() {
+        // Since the method logic is embedded in `ingest`, we can verify using the parser logic directly here
+        // to ensure our assumption about `host_str` and matching is correct.
+
+        let cases = vec![
+            ("https://youtube.com/watch?v=123", true),
+            ("https://www.youtube.com/watch?v=123", true),
+            ("https://youtu.be/123", true),
+            ("https://vimeo.com/123", true),
+            ("https://player.vimeo.com/123", true),
+            ("https://example.com", false),
+            ("https://evilyoutube.com", false),
+            ("https://youtube.com.evil.com", false),
+        ];
+
+        for (url_str, expected) in cases {
+            let parsed = Url::parse(url_str).expect("Failed to parse test url");
+            let host = parsed.host_str().unwrap_or("");
+            let is_video = host == "youtube.com" || host.ends_with(".youtube.com") ||
+                           host == "youtu.be" || host.ends_with(".youtu.be") ||
+                           host == "vimeo.com" || host.ends_with(".vimeo.com");
+
+            assert_eq!(is_video, expected, "Failed for URL: {}", url_str);
+        }
+    }
+
 }
