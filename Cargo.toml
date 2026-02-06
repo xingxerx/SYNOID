@@ -26,6 +26,7 @@ sha2 = "0.10"    # File integrity hashing
 walkdir = "2.3"  # Efficient directory traversal
 num_cpus = "1.0"
 # cudarc = "0.9" # Disabled: CUDA 13.1 not yet supported by cudarc
+ffmpeg-next = "6.0"
 
 # Voice Cloning & Neural TTS
 rand = "0.8"      # Pin to 0.8 for candle compatibility
