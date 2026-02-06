@@ -1,8 +1,8 @@
 // SYNOID Main Entry Point
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-mod agent;
-mod window;
+use synoid_core::agent;
+use synoid_core::window;
 
 use clap::{Parser, Subcommand};
 use dotenv::dotenv;

@@ -105,8 +105,7 @@ pub async fn download_youtube(
     );
 
     // Create output directory if it doesn't exist
-    // Note: std::fs::create_dir_all is blocking, but typically fast enough for this context.
-    std::fs::create_dir_all(output_dir)?;
+    tokio::fs::create_dir_all(output_dir).await?;
 
     // Construct base arguments
     let mut args = vec![
@@ -135,11 +134,7 @@ pub async fn download_youtube(
     args.push(url);
 
     // First, get video info without downloading
-    let info_output = Command::new("python")
-        .args(&args)
-        .output()
-        .await?;
-        
+    let info_output = Command::new("python").args(&args).output().await?;
     if !info_output.status.success() {
         return Err(format!(
             "yt-dlp info failed: {}",
@@ -280,9 +275,18 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
         ])
         .output()
         .await?;
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> pr-12
     let output_str = String::from_utf8_lossy(&output.stdout);
-    let duration: f64 = output_str.trim().parse()?;
+    let duration: f64 = output_str.trim().parse().map_err(|_| {
+        format!(
+            "Failed to parse duration from ffprobe output: '{}'",
+            output_str
+        )
+    })?;
     Ok(duration)
 }
 
@@ -291,6 +295,7 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
 pub fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
     let mut videos = Vec::new();
     let extensions = ["mp4", "mov", "mkv", "avi", "webm"];
+
 
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {

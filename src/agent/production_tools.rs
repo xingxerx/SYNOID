@@ -33,6 +33,12 @@ pub async fn trim_video(
         .arg("-i")
         .arg(input)
         .args([
+<<<<<<< HEAD
+=======
+            "-y",
+            "-i",
+            input.to_str().unwrap(),
+>>>>>>> pr-12
             "-ss",
             &start_time.to_string(),
             "-t",
@@ -50,7 +56,7 @@ pub async fn trim_video(
         return Err("FFmpeg trim failed".into());
     }
 
-    let metadata = std::fs::metadata(output)?;
+    let metadata = tokio::fs::metadata(output).await?;
     let size_mb = metadata.len() as f64 / 1_048_576.0;
 
     Ok(ProductionResult {
@@ -70,6 +76,12 @@ pub async fn apply_anamorphic_mask(
         .arg("-i")
         .arg(input)
         .args([
+<<<<<<< HEAD
+=======
+            "-y",
+            "-i",
+            input.to_str().unwrap(),
+>>>>>>> pr-12
             "-vf",
             "crop=in_w:in_w/2.39",
             "-c:a",
@@ -139,7 +151,7 @@ pub async fn compress_video(
         return Err("FFmpeg compression failed".into());
     }
 
-    let metadata = std::fs::metadata(output)?;
+    let metadata = tokio::fs::metadata(output).await?;
     let size_mb = metadata.len() as f64 / 1_048_576.0;
 
     info!("[PROD] Compression Complete. Final Size: {:.2} MB", size_mb);

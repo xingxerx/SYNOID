@@ -63,6 +63,7 @@ pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::erro
     // Get total duration first
     let duration_output = Command::new("ffprobe")
         .args([
+<<<<<<< HEAD
             "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
@@ -70,6 +71,17 @@ pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::erro
         ])
         .output()
         .await?;
+=======
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            input.to_str().unwrap(),
+        ])
+        .output()?;
+>>>>>>> pr-12
 
     let total_duration: f64 = String::from_utf8_lossy(&duration_output.stdout)
         .trim()
@@ -85,6 +97,7 @@ pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::erro
     // Use FFmpeg to detect scene changes
     let output = Command::new("ffmpeg")
         .args([
+<<<<<<< HEAD
             "-i", input.to_str().unwrap(),
             "-vf", "select='gt(scene,0.25)',showinfo",
             "-f", "null",
@@ -92,6 +105,17 @@ pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::erro
         ])
         .output()
         .await?;
+=======
+            "-i",
+            input.to_str().unwrap(),
+            "-vf",
+            "select='gt(scene,0.25)',showinfo",
+            "-f",
+            "null",
+            "-",
+        ])
+        .output()?;
+>>>>>>> pr-12
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -151,8 +175,20 @@ pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::erro
 
 /// Score scenes based on user intent
 /// Score scenes based on user intent and transcript
+<<<<<<< HEAD
 pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Option<&[TranscriptSegment]>) {
     info!("[SMART] Scoring {} scenes based on intent and semantic data", scenes.len());
+=======
+pub fn score_scenes(
+    scenes: &mut [Scene],
+    intent: &EditIntent,
+    transcript: Option<&[TranscriptSegment]>,
+) {
+    info!(
+        "[SMART] Scoring {} scenes based on intent and semantic data",
+        scenes.len()
+    );
+>>>>>>> pr-12
 
     for scene in scenes.iter_mut() {
         let mut score: f64 = 0.5; // Start neutral
@@ -217,7 +253,14 @@ pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Optio
 
             if has_keyword {
                 score += 0.5; // Strong boost for keywords
+<<<<<<< HEAD
                 info!("[SMART] Keyword found in scene {:.1}-{:.1}", scene.start_time, scene.end_time);
+=======
+                info!(
+                    "[SMART] Keyword found in scene {:.1}-{:.1}",
+                    scene.start_time, scene.end_time
+                );
+>>>>>>> pr-12
             }
         }
 
@@ -248,11 +291,25 @@ pub async fn smart_edit(
         let ext_str = ext.to_string_lossy().to_lowercase();
         if ext_str == "txt" || !["mp4", "mkv", "mov", "avi"].contains(&ext_str.as_str()) {
             output_buf.set_extension("mp4");
+<<<<<<< HEAD
             log(&format!("[SMART] ⚠️ Correcting output extension to .mp4: {:?}", output_buf));
         }
     } else {
         output_buf.set_extension("mp4");
         log(&format!("[SMART] ⚠️ Adding .mp4 extension: {:?}", output_buf));
+=======
+            log(&format!(
+                "[SMART] ⚠️ Correcting output extension to .mp4: {:?}",
+                output_buf
+            ));
+        }
+    } else {
+        output_buf.set_extension("mp4");
+        log(&format!(
+            "[SMART] ⚠️ Adding .mp4 extension: {:?}",
+            output_buf
+        ));
+>>>>>>> pr-12
     }
     let output = output_buf.as_path();
 
@@ -279,12 +336,24 @@ pub async fn smart_edit(
     // Transcribe
     log("[SMART] 📝 Transcribing audio for semantic understanding...");
     let transcript = if use_enhanced_audio {
+<<<<<<< HEAD
         let engine = TranscriptionEngine::new().map_err(|e| e.to_string())?;
         match engine.transcribe(&enhanced_audio_path).await {
             Ok(t) => {
                 log(&format!("[SMART] Transcription complete: {} segments", t.len()));
                 Some(t)
             },
+=======
+        let engine = TranscriptionEngine::new();
+        match engine.transcribe(&enhanced_audio_path) {
+            Ok(t) => {
+                log(&format!(
+                    "[SMART] Transcription complete: {} segments",
+                    t.len()
+                ));
+                Some(t)
+            }
+>>>>>>> pr-12
             Err(e) => {
                 warn!("[SMART] Transcription failed: {}", e);
                 None
@@ -302,12 +371,23 @@ pub async fn smart_edit(
         intent.remove_silence = true;
     }
 
+<<<<<<< HEAD
     log(&format!("[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}",
                  intent.remove_boring, intent.keep_action, intent.keep_speech));
 
     // 2. Detect scenes
     log("[SMART] 🔍 Analyzing video scenes...");
     let mut scenes = detect_scenes(input).await?;
+=======
+    log(&format!(
+        "[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}",
+        intent.remove_boring, intent.keep_action, intent.keep_speech
+    ));
+
+    // 2. Detect scenes
+    log("[SMART] 🔍 Analyzing video scenes...");
+    let mut scenes = detect_scenes(input)?;
+>>>>>>> pr-12
 
     // 3. Score scenes based on intent AND transcript
     log("[SMART] 📊 Scoring scenes based on semantic data...");
@@ -315,16 +395,27 @@ pub async fn smart_edit(
 
     // 4. Filter scenes to keep (score > 0.3)
     let keep_threshold = 0.3;
+<<<<<<< HEAD
     let scenes_to_keep: Vec<&Scene> = scenes.iter()
         .filter(|s| s.score > keep_threshold)
         .collect();
+=======
+    let scenes_to_keep: Vec<&Scene> = scenes.iter().filter(|s| s.score > keep_threshold).collect();
+>>>>>>> pr-12
 
     let total_kept = scenes_to_keep.len();
     let total_original = scenes.len();
     let removed = total_original - total_kept;
 
+<<<<<<< HEAD
     log(&format!("[SMART] Keeping {}/{} scenes (removing {} boring/silent segments)",
                  total_kept, total_original, removed));
+=======
+    log(&format!(
+        "[SMART] Keeping {}/{} scenes (removing {} boring/silent segments)",
+        total_kept, total_original, removed
+    ));
+>>>>>>> pr-12
 
     if scenes_to_keep.is_empty() {
         return Err("All scenes were filtered out! Try a less aggressive intent.".into());
@@ -363,26 +454,52 @@ pub async fn smart_edit(
         cmd.arg("-map").arg("0:v"); // Video from input 0
         if use_enhanced_audio {
             cmd.arg("-map").arg("1:a:0"); // Audio from input 1 (enhanced)
+<<<<<<< HEAD
             cmd.arg("-c:v").arg("copy");  // Copy video stream (fast)
             cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k"); // Re-encode audio to mux
         } else {
             cmd.arg("-map").arg("0:a:0"); // Original audio
             cmd.arg("-c").arg("copy");    // Copy both
+=======
+            cmd.arg("-c:v").arg("copy"); // Copy video stream (fast)
+            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k"); // Re-encode audio to mux
+        } else {
+            cmd.arg("-map").arg("0:a:0"); // Original audio
+            cmd.arg("-c").arg("copy"); // Copy both
+>>>>>>> pr-12
         }
 
         cmd.arg("-avoid_negative_ts").arg("make_zero");
         cmd.arg(seg_path.to_str().unwrap());
 
+<<<<<<< HEAD
         let status = cmd.output().await?;
 
         if !status.status.success() {
            continue;
+=======
+        let status = cmd.output()?;
+
+        if !status.status.success() {
+            // warn!("[SMART] Failed to extract segment {}", i);
+            // Retry without enhanced audio if that was the cause?
+            // For now, simple fail safe
+            continue;
+>>>>>>> pr-12
         }
 
         segment_files.push(seg_path);
 
         if i < 3 || i % 10 == 0 || i == total_segments - 1 {
+<<<<<<< HEAD
              log(&format!("[SMART] ⏳ Segment {}/{} processed", i + 1, total_segments));
+=======
+            log(&format!(
+                "[SMART] ⏳ Segment {}/{} processed",
+                i + 1,
+                total_segments
+            ));
+>>>>>>> pr-12
         }
     }
 
@@ -407,6 +524,7 @@ pub async fn smart_edit(
         .args([
             "-y",
             "-nostdin",
+<<<<<<< HEAD
             "-f", "concat",
             "-safe", "0",
             "-i", concat_file.to_str().unwrap(),
@@ -415,10 +533,27 @@ pub async fn smart_edit(
         ])
         .output()
         .await?;
+=======
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concat_file.to_str().unwrap(),
+            "-c",
+            "copy",
+            output.to_str().unwrap(),
+        ])
+        .output()?;
+>>>>>>> pr-12
 
     // Clean up
     fs::remove_dir_all(&segments_dir)?;
     if use_enhanced_audio {
+<<<<<<< HEAD
+=======
+        // fs::remove_file(enhanced_audio_path)?; // Keep for debug if needed, or delete
+>>>>>>> pr-12
         let _ = fs::remove_file(enhanced_audio_path);
     }
 

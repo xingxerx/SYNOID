@@ -43,7 +43,6 @@ pub async fn upscale_video(
             "-i",
             input.to_str().unwrap(),
             "-vf",
-            "fps=12",
             frames_src.join("frame_%04d.png").to_str().unwrap(),
         ])
         .output()
@@ -171,6 +170,7 @@ fn process_frames_core(
         });
     }
 
+
 }
 
 pub async fn upscale_video_cuda(
@@ -247,7 +247,6 @@ pub async fn vectorize_video(
         ])
         .output()
         .await?;
-        
     if !status.status.success() {
         return Err("FFmpeg frame extraction failed".into());
     }
