@@ -25,7 +25,10 @@ impl ReasoningManager {
     /// High effort increases latency but provides deeper narrative CoT.
     pub fn set_effort(&mut self, effort: ReasoningEffort) {
         if self.current_effort != effort {
-            info!("[REASONING] Switching effort level: {:?} -> {:?}", self.current_effort, effort);
+            info!(
+                "[REASONING] Switching effort level: {:?} -> {:?}",
+                self.current_effort, effort
+            );
             self.current_effort = effort;
             // In a real implementation, this would update the 'reasoning_effort' parameter
             // in the gpt-oss API config payload.

@@ -1,9 +1,9 @@
 // SYNOID Brain - Intent Classification & Heuristics
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use crate::agent::gpt_oss_bridge::SynoidAgent;
-use crate::agent::consciousness::Consciousness;
 use crate::agent::body::Body;
+use crate::agent::consciousness::Consciousness;
+use crate::agent::gpt_oss_bridge::SynoidAgent;
 use tracing::info;
 
 /// Intents that the Brain can classify
@@ -41,53 +41,63 @@ impl Brain {
     /// Returns an Intent enum without calling the heavy LLM if possible.
     pub fn fast_classify(&self, request: &str) -> Intent {
         let req_lower = request.to_lowercase();
-        
+
         // 1. YouTube Download Heuristics
-        if (req_lower.contains("download") || req_lower.contains("get")) && 
-           (req_lower.contains("youtube") || req_lower.contains("http")) {
+        if (req_lower.contains("download") || req_lower.contains("get"))
+            && (req_lower.contains("youtube") || req_lower.contains("http"))
+        {
             // Extract URL (simple extraction)
             if let Some(start) = request.find("http") {
                 let rest = &request[start..];
                 let end = rest.find(' ').unwrap_or(rest.len());
-                return Intent::DownloadYoutube { url: rest[0..end].to_string() };
+                return Intent::DownloadYoutube {
+                    url: rest[0..end].to_string(),
+                };
             }
         }
 
         // 2. Visual Scan Heuristics
         if req_lower.contains("scan") || req_lower.contains("analyze") {
-             // If implicit video context or explicit mention
-             return Intent::ScanVideo { path: "input.mp4".to_string() };
+            // If implicit video context or explicit mention
+            return Intent::ScanVideo {
+                path: "input.mp4".to_string(),
+            };
         }
-        
+
         // 3. Learning Heuristics
         if req_lower.contains("learn") {
-            return Intent::LearnStyle { 
-                input: "input.mp4".to_string(), 
-                name: "new_style".to_string() 
+            return Intent::LearnStyle {
+                input: "input.mp4".to_string(),
+                name: "new_style".to_string(),
             };
         }
 
         // 4. Research Heuristics
-        if req_lower.contains("find") || req_lower.contains("search") || req_lower.contains("tutorial") {
-             // Simple topic extraction: everything after key verb
-             let keys = ["find", "search for", "tutorial on", "about"];
-             for key in keys {
-                 if let Some(idx) = req_lower.find(key) {
-                     let topic = request[idx + key.len()..].trim().to_string();
-                     if !topic.is_empty() {
-                         return Intent::Research { topic };
-                     }
-                 }
-             }
+        if req_lower.contains("find")
+            || req_lower.contains("search")
+            || req_lower.contains("tutorial")
+        {
+            // Simple topic extraction: everything after key verb
+            let keys = ["find", "search for", "tutorial on", "about"];
+            for key in keys {
+                if let Some(idx) = req_lower.find(key) {
+                    let topic = request[idx + key.len()..].trim().to_string();
+                    if !topic.is_empty() {
+                        return Intent::Research { topic };
+                    }
+                }
+            }
         }
 
-        Intent::Unknown { request: request.to_string() }
+        Intent::Unknown {
+            request: request.to_string(),
+        }
     }
 
     /// Process a request through the Brain
     pub async fn process(&mut self, request: &str) -> Result<String, String> {
         let intent = self.fast_classify(request);
-        
+
         match intent {
             Intent::DownloadYoutube { url } => {
                 info!("[BRAIN] ⚡ Fast-path activated: YouTube Download");
@@ -99,7 +109,7 @@ impl Brain {
                     Ok(info) => Ok(format!("Downloaded: {}", info.title)),
                     Err(e) => Err(format!("Download failed: {}", e)),
                 }
-            },
+            }
             Intent::ScanVideo { path } => {
                 info!("[BRAIN] ⚡ Fast-path activated: Visual Scan");
                 // Activate Vision Tools ONLY
@@ -109,28 +119,34 @@ impl Brain {
                     Ok(scenes) => Ok(format!("Scanned {} scenes.", scenes.len())),
                     Err(e) => Err(format!("Scan failed: {}", e)),
                 }
-            },
+            }
             Intent::Research { topic } => {
                 info!("[BRAIN] ⚡ Fast-path activated: Research Agent");
                 use crate::agent::source_tools;
                 match source_tools::search_youtube(&topic, 5).await {
                     Ok(results) => {
-                        let mut response = format!("Found {} resources for '{}':\n", results.len(), topic);
+                        let mut response =
+                            format!("Found {} resources for '{}':\n", results.len(), topic);
                         for (i, r) in results.iter().enumerate() {
-                            response.push_str(&format!("{}. {} ({})\n", i+1, r.title, r.original_url.as_deref().unwrap_or("?")));
+                            response.push_str(&format!(
+                                "{}. {} ({})\n",
+                                i + 1,
+                                r.title,
+                                r.original_url.as_deref().unwrap_or("?")
+                            ));
                         }
                         Ok(response)
-                    },
+                    }
                     Err(e) => Err(format!("Research failed: {}", e)),
                 }
-            },
+            }
             Intent::Unknown { request } => {
                 info!("[BRAIN] 🧠 Complex request detected. Waking up Cortex (GPT-OSS)...");
                 // Lazy-load the heavy AI agent only now
                 if self.agent.is_none() {
                     self.agent = Some(SynoidAgent::new(&self.api_url));
                 }
-                
+
                 if let Some(agent) = &self.agent {
                     // Simple passthrough for now - in reality this would call tool use
                     match agent.reason(&request).await {
@@ -140,7 +156,7 @@ impl Brain {
                 } else {
                     Err("Failed to initialize Cortex".to_string())
                 }
-            },
+            }
             _ => Ok("Intent recognized but handler not implemented yet.".to_string()),
         }
     }

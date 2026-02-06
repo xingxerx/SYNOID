@@ -2,10 +2,10 @@
 // SYNOID Multi-Agent Systems (MAS)
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
+use crate::agent::reasoning::{ReasoningEffort, ReasoningManager};
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use tracing::info;
-use crate::agent::reasoning::{ReasoningManager, ReasoningEffort};
 
 #[allow(dead_code)]
 pub struct Swarm {}
@@ -28,7 +28,10 @@ pub struct StoryPlan {
 
 impl StoryPlan {
     pub fn expected_duration(&self) -> f64 {
-        self.scenes.iter().map(|s| s.timestamp_end - s.timestamp_start).sum()
+        self.scenes
+            .iter()
+            .map(|s| s.timestamp_end - s.timestamp_start)
+            .sum()
     }
 }
 
@@ -42,7 +45,8 @@ impl DirectorAgent {
     pub fn new(model: &str) -> Self {
         Self {
             model_id: model.to_string(),
-            system_prompt: "You are the SYNOID Director. Decompose instructions into sub-goals.".into(),
+            system_prompt: "You are the SYNOID Director. Decompose instructions into sub-goals."
+                .into(),
             reasoning: ReasoningManager::new(),
         }
     }
@@ -53,21 +57,24 @@ impl DirectorAgent {
     pub async fn analyze_intent(
         &mut self,
         user_prompt: &str,
-        style_profile: Option<&str>
+        style_profile: Option<&str>,
     ) -> Result<StoryPlan, Box<dyn std::error::Error>> {
-
         // Dynamic Reasoning Adjustment
         if let Some(style) = style_profile {
             if style.to_lowercase().contains("cinematic") {
                 self.reasoning.set_effort(ReasoningEffort::High);
             } else if style.to_lowercase().contains("action") {
-                 self.reasoning.set_effort(ReasoningEffort::Medium);
+                self.reasoning.set_effort(ReasoningEffort::Medium);
             } else {
-                 self.reasoning.set_effort(ReasoningEffort::Low);
+                self.reasoning.set_effort(ReasoningEffort::Low);
             }
         }
 
-        info!("[DIRECTOR] Analyzing intent: '{}' (Effort: {})", user_prompt, self.reasoning.get_config_param());
+        info!(
+            "[DIRECTOR] Analyzing intent: '{}' (Effort: {})",
+            user_prompt,
+            self.reasoning.get_config_param()
+        );
 
         // Mock LLM Response for now
         let plan = StoryPlan {
@@ -115,7 +122,10 @@ pub struct Track {
 
 impl Track {
     pub fn new(name: &str) -> Self {
-        Self { name: name.to_string(), clips: Vec::new() }
+        Self {
+            name: name.to_string(),
+            clips: Vec::new(),
+        }
     }
 
     pub fn append_child(&mut self, clip: Clip) {
@@ -131,7 +141,10 @@ pub struct Timeline {
 
 impl Timeline {
     pub fn new(name: &str) -> Self {
-        Self { name: name.to_string(), tracks: Vec::new() }
+        Self {
+            name: name.to_string(),
+            tracks: Vec::new(),
+        }
     }
 
     pub fn duration(&self) -> f64 {
@@ -150,11 +163,16 @@ pub struct NativeTimelineEngine {
 
 impl NativeTimelineEngine {
     pub fn new(name: &str) -> Self {
-        Self { project_name: name.to_string() }
+        Self {
+            project_name: name.to_string(),
+        }
     }
 
     /// Converts the Director's StoryPlan into a multi-track OTIO timeline.
-    pub fn build_from_plan(&self, plan: &StoryPlan) -> Result<Timeline, Box<dyn std::error::Error>> {
+    pub fn build_from_plan(
+        &self,
+        plan: &StoryPlan,
+    ) -> Result<Timeline, Box<dyn std::error::Error>> {
         let mut timeline = Timeline::new(&self.project_name);
         let mut track = Track::new("Video Track");
 
@@ -163,7 +181,10 @@ impl NativeTimelineEngine {
             let clip = Clip {
                 name: format!("Scene_{}", i),
                 source_path: format!("media/clip_{}.mp4", i),
-                range: TimeRange { start: scene.timestamp_start, duration },
+                range: TimeRange {
+                    start: scene.timestamp_start,
+                    duration,
+                },
             };
             track.append_child(clip);
         }
@@ -207,7 +228,10 @@ impl RenderJob {
         if status.success() {
             Ok(())
         } else {
-            Err(std::io::Error::new(std::io::ErrorKind::Other, "FFmpeg Render Failed"))
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "FFmpeg Render Failed",
+            ))
         }
     }
 }
@@ -220,7 +244,9 @@ pub struct CriticAgent {
 
 impl CriticAgent {
     pub fn new() -> Self {
-        Self { feedback_history: Vec::new() }
+        Self {
+            feedback_history: Vec::new(),
+        }
     }
 
     /// Evaluates a rendered scene based on narrative intent and cinematic rules.
@@ -231,7 +257,10 @@ impl CriticAgent {
         let timeline_dur = timeline.duration();
         let plan_dur = plan.expected_duration();
 
-        info!("[CRITIC] Evaluating: Timeline Dur {:.2}s vs Plan Dur {:.2}s", timeline_dur, plan_dur);
+        info!(
+            "[CRITIC] Evaluating: Timeline Dur {:.2}s vs Plan Dur {:.2}s",
+            timeline_dur, plan_dur
+        );
 
         // Tolerance for float comparison
         if (timeline_dur - plan_dur).abs() > 0.5 {
