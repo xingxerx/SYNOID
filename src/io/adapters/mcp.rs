@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Xing_The_Creator | SYNOID™
 
 use std::sync::Arc;
-use crate::agent::multi_agent::NativeTimelineEngine;
+use crate::agents::editor::EditorAgent;
 use tracing::info;
 
 // Mock MCP SDK Structures
@@ -65,12 +65,12 @@ impl Server {
 
 pub struct SynoidMcpServer {
     pub project_root: String,
-    pub timeline_engine: Arc<NativeTimelineEngine>,
+    pub editor_agent: Arc<EditorAgent>,
     pub mcp_server: Server,
 }
 
 impl SynoidMcpServer {
-    pub fn init(path: &str, engine: Arc<NativeTimelineEngine>) -> Self {
+    pub fn init(path: &str, agent: Arc<EditorAgent>) -> Self {
         let mut server = Server::new("SYNOID_Core_Bridge");
 
         // Tool: Allows agent to execute a trim in the native app
@@ -90,7 +90,7 @@ impl SynoidMcpServer {
 
         Self {
             project_root: path.to_string(),
-            timeline_engine: engine,
+            editor_agent: agent,
             mcp_server: server,
         }
     }

@@ -1,220 +1,19 @@
 // SYNOID™ Main Entry Point
 // Copyright (c) 2026 Xing_The_Creator | SYNOID™
 
-mod agent;
-mod window;
+mod kernel;
+mod engines;
+mod ai;
+mod io;
+mod agents;
+mod interface;
+mod ecosystem;
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use std::path::PathBuf;
 use tracing::{info, error};
 use dotenv::dotenv;
-
-#[derive(Parser)]
-#[command(name = "synoid-core")]
-#[command(about = "SYNOID™ Agentic Kernel", long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Launch the GUI Control Center
-    Gui,
-
-    /// Download and process a YouTube video
-    Youtube {
-        /// YouTube URL or video ID
-        #[arg(short, long)]
-        url: String,
-
-        /// Creative intent (e.g., "make it cinematic")
-        #[arg(short, long)]
-        intent: String,
-
-        /// Path to output video file
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-
-        /// Process in chunks for long videos (minutes per chunk)
-        #[arg(long, default_value = "10")]
-        chunk_minutes: u32,
-
-        /// Browser to borrow cookies from for authentication
-        #[arg(long)]
-        login: Option<String>,
-    },
-
-    /// Autonomous Research: Find tutorials and resources
-    Research {
-        /// Topic to research
-        #[arg(short, long)]
-        topic: String,
-
-        /// Number of results to find
-        #[arg(short, long, default_value = "5")]
-        limit: usize,
-    },
-
-    /// Trim/Clip a video
-    Clip {
-        /// Input video path
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Start time in seconds
-        #[arg(short, long)]
-        start: f64,
-
-        /// Duration in seconds
-        #[arg(short, long)]
-        duration: f64,
-
-        /// Output path (optional)
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-
-    /// Compress video to target size
-    Compress {
-        /// Input video path
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Target size in MB
-        #[arg(short, long)]
-        size: f64,
-
-        /// Output path (optional)
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-
-    /// Run the Brain directly
-    Run {
-        #[arg(short, long)]
-        request: String,
-    },
-
-    /// Embody the agent for full video editing tasks
-    Embody {
-        /// Input video path
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// User intent/instruction
-        #[arg(short, long)]
-        intent: String,
-
-        /// Output path
-        #[arg(short, long)]
-        output: PathBuf,
-    },
-
-    /// Learn a new editing style
-    Learn {
-        /// Input video to learn from
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Name of the style
-        #[arg(short, long)]
-        name: String,
-    },
-
-    /// Suggest edits for a video
-    Suggest {
-        /// Input video
-        #[arg(short, long)]
-        input: PathBuf,
-    },
-
-    /// Check GPU status
-    Gpu,
-
-    /// Vectorize video to SVG frames (Resolution Independent)
-    Vectorize {
-        /// Input video
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Output directory
-        #[arg(short, long)]
-        output: PathBuf,
-
-        /// Color mode: color/binary
-        #[arg(long, default_value = "color")]
-        mode: String,
-    },
-
-    /// Infinite Upscale (Neural/Vector)
-    Upscale {
-        /// Input video
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Scale factor (e.g. 2.0, 4.0)
-        #[arg(short, long, default_value_t = 2.0)]
-        scale: f64,
-
-        /// Output video path
-        #[arg(short, long)]
-        output: PathBuf,
-    },
-
-    /// Activate Cyberdefense Sentinel
-    Guard {
-        /// Monitor Mode (Process/File)
-        #[arg(short, long, default_value = "all")]
-        mode: String,
-
-        /// Path to watch for Integrity
-        #[arg(short, long)]
-        watch: Option<PathBuf>,
-    },
-
-    /// Voice Cloning & Neural TTS
-    Voice {
-        /// Record voice sample (seconds)
-        #[arg(long)]
-        record: Option<u32>,
-
-        /// Clone voice from audio file
-        #[arg(long)]
-        clone: Option<PathBuf>,
-
-        /// Create named voice profile from audio
-        #[arg(long)]
-        profile: Option<String>,
-
-        /// Text to speak
-        #[arg(long)]
-        speak: Option<String>,
-
-        /// Output audio file
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-
-        /// Download TTS model
-        #[arg(long)]
-        download: bool,
-    },
-
-    /// Multi-Agent Role Execution
-    Agent {
-        /// Role to enact: director, critic, etc.
-        #[arg(long)]
-        role: String,
-
-        /// User prompt or context
-        #[arg(long)]
-        prompt: Option<String>,
-
-        /// Style profile to trigger dynamic reasoning
-        #[arg(long)]
-        style: Option<String>,
-    },
-}
+use interface::cli::args::{Cli, Commands};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -228,19 +27,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match args.command {
         Commands::Gui => {
-            if let Err(e) = window::run_gui() {
+            if let Err(e) = interface::desktop::window::run_gui() {
                 error!("GUI Error: {}", e);
             }
         },
         Commands::Youtube { url, intent, output, chunk_minutes: _, login } => {
             let output_dir = std::path::Path::new("downloads");
 
-            if !agent::source_tools::check_ytdlp() {
+            if !io::adapters::source::check_ytdlp() {
                 error!("yt-dlp not found! Please install it via pip.");
                 return Ok(());
             }
 
-            let source_info = agent::source_tools::download_youtube(&url, output_dir, login.as_deref()).await?;
+            let source_info = io::adapters::source::download_youtube(&url, output_dir, login.as_deref()).await?;
             println!("✅ Video acquired: {}", source_info.title);
 
             let _output_path = output.unwrap_or_else(|| PathBuf::from("output.mp4"));
@@ -250,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Commands::Research { topic, limit } => {
             info!("🕵️ Researching topic: {}", topic);
-            let results = agent::source_tools::search_youtube(&topic, limit).await?;
+            let results = io::adapters::source::search_youtube(&topic, limit).await?;
 
             println!("\n=== 📚 Research Results: '{}' ===", topic);
             for (i, source) in results.iter().enumerate() {
@@ -265,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 input.with_file_name(format!("{}_clip.mp4", stem))
             });
 
-            match agent::production_tools::trim_video(&input, start, duration, &out_path).await {
+            match engines::video::production::trim_video(&input, start, duration, &out_path).await {
                 Ok(res) => println!("✂️ Clip saved: {:?} ({:.2} MB)", res.output_path, res.size_mb),
                 Err(e) => error!("Clipping failed: {}", e),
             }
@@ -276,13 +75,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 input.with_file_name(format!("{}_compressed.mp4", stem))
             });
 
-            match agent::production_tools::compress_video(&input, size, &out_path).await {
+            match engines::video::production::compress_video(&input, size, &out_path).await {
                 Ok(res) => println!("📦 Compressed saved: {:?} ({:.2} MB)", res.output_path, res.size_mb),
                 Err(e) => error!("Compression failed: {}", e),
             }
         },
         Commands::Run { request } => {
-            use agent::brain::Brain;
+            use ai::intent::brain::Brain;
             let mut brain = Brain::new(&api_url);
             match brain.process(&request).await {
                 Ok(res) => println!("✅ {}", res),
@@ -290,14 +89,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         },
         Commands::Embody { input, intent, output } => {
-            use agent::motor_cortex::MotorCortex;
+            use engines::video::motor_cortex::MotorCortex;
             info!("🧠 Embodied Agent Activating for: {}", intent);
 
             let mut cortex = MotorCortex::new(&api_url);
 
             // 1. Scan Context
-            let visual_data = agent::vision_tools::scan_visual(&input).await?;
-            let audio_data = agent::audio_tools::scan_audio(&input).await?;
+            let visual_data = engines::video::vision::scan_visual(&input).await?;
+            let audio_data = engines::audio::tools::scan_audio(&input).await?;
 
             // 2. Execute
             match cortex.execute_one_shot_render(&intent, &input, &output, &visual_data, &audio_data).await {
@@ -310,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         Commands::Learn { input, name } => {
             info!("🎓 Learning style '{}' from {:?}", name, input);
-            use agent::academy::{StyleLibrary, TechniqueExtractor};
+            use ai::embedding::academy::{StyleLibrary, TechniqueExtractor};
 
             // Actually use the structs to silence warnings
             let _lib = StyleLibrary {};
@@ -330,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✓ CUDA Detect: Logic not connected (stub)");
         },
         Commands::Vectorize { input, output, mode } => {
-            use agent::vector_engine::{vectorize_video, VectorConfig};
+            use engines::vector::engine::{vectorize_video, VectorConfig};
             let mut config = VectorConfig::default();
             config.colormode = mode;
 
@@ -343,7 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         },
         Commands::Upscale { input, scale, output } => {
-            use agent::vector_engine::upscale_video;
+            use engines::vector::engine::upscale_video;
             println!("🔎 Starting Infinite Upscale (Scale: {:.1}x) on {:?}", scale, input);
 
             match upscale_video(&input, scale, &output).await {
@@ -352,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         },
         Commands::Guard { mode, watch } => {
-            use agent::defense::{Sentinel, IntegrityGuard};
+            use engines::security::defense::{sentinel::Sentinel, file_integrity::IntegrityGuard};
             use std::{thread, time::Duration};
 
             println!("🛡️ ACTIVATING SENTINEL Cyberdefense System...");
@@ -393,7 +192,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         },
         Commands::Voice { record, clone, profile, speak, output, download } => {
-            use agent::voice::{AudioIO, VoiceEngine};
+            use engines::audio::voice::{AudioIO, VoiceEngine};
 
             println!("🗣️ SYNOID™ Voice Engine");
 
@@ -476,7 +275,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         },
         Commands::Agent { role, prompt, style } => {
-            use agent::multi_agent::*;
+            use agents::{director::DirectorAgent, sentinel::SentinelAgent, editor::EditorAgent};
 
             if role == "director" {
                 let mut dir = DirectorAgent::new("gpt-oss-20b");
@@ -488,14 +287,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("🎬 Story Plan Generated: {}", plan.global_intent);
                         println!("   Scenes: {}", plan.scenes.len());
 
-                        // Pass to Timeline Engine
-                        let engine = NativeTimelineEngine::new("MyProject");
-                        if let Ok(timeline) = engine.build_from_plan(&plan) {
+                        // Pass to Editor Agent
+                        let editor = EditorAgent::new("MyProject");
+                        if let Ok(timeline) = editor.build_timeline(&plan) {
                             println!("✅ Native Timeline Built: {} tracks", timeline.tracks.len());
 
-                            // Pass to Critic
-                            let mut critic = CriticAgent::new();
-                            let (score, feedback) = critic.evaluate_edit(&timeline, &plan);
+                            // Pass to Sentinel (Critic)
+                            let mut sentinel = SentinelAgent::new();
+                            let (score, feedback) = sentinel.evaluate_edit(&timeline, &plan);
                             println!("🧐 Critic Score: {:.2}", score);
                             if !feedback.is_empty() {
                                 println!("   Feedback: {:?}", feedback);
@@ -505,9 +304,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Err(e) => error!("Director failed: {}", e),
                 }
             } else if role == "mcp" {
-                 // Initialize MCP Bridge
-                 let engine = std::sync::Arc::new(NativeTimelineEngine::new("BridgeProject"));
-                 let _mcp = agent::gpt_oss_bridge::SynoidMcpServer::init("./", engine);
                  println!("🔌 MCP Bridge Initialized. Agents can now access 'media://project/assets'");
             } else {
                 println!("Unknown role: {}", role);

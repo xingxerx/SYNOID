@@ -1,7 +1,7 @@
 use std::path::Path;
-use crate::agent::vision_tools::VisualScene;
-use crate::agent::audio_tools::AudioAnalysis;
-use crate::agent::academy::{StyleLibrary, StyleProfile};
+use crate::engines::video::vision::VisualScene;
+use crate::engines::audio::tools::AudioAnalysis;
+use crate::ai::embedding::academy::{StyleLibrary, StyleProfile};
 use tracing::info;
 
 pub struct MotorCortex {
