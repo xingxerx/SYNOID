@@ -1,7 +1,6 @@
 // SYNOID Transcription Bridge
 // Wraps generic Python Whisper script for robust local transcription.
 
-<<<<<<< HEAD
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use serde::{Deserialize, Serialize};
@@ -9,13 +8,6 @@ use tracing::info;
 use std::fs;
 use std::env;
 use anyhow::{Context, Result};
-=======
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::Path;
-use std::process::Command;
-use tracing::info;
->>>>>>> pr-7
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptSegment {
@@ -29,7 +21,6 @@ pub struct TranscriptionEngine {
 }
 
 impl TranscriptionEngine {
-<<<<<<< HEAD
     pub fn new() -> Result<Self> {
         let script_path = if let Ok(env_path) = env::var("SYNOID_TRANSCRIPTION_SCRIPT") {
             PathBuf::from(env_path)
@@ -49,18 +40,6 @@ impl TranscriptionEngine {
     }
 
     pub fn transcribe(&self, audio_path: &Path) -> Result<Vec<TranscriptSegment>> {
-=======
-    pub fn new() -> Self {
-        Self {
-            script_path: "d:/SYNOID/tools/transcribe.py".to_string(),
-        }
-    }
-
-    pub fn transcribe(
-        &self,
-        audio_path: &Path,
-    ) -> Result<Vec<TranscriptSegment>, Box<dyn std::error::Error>> {
->>>>>>> pr-7
         info!("[TRANSCRIBE] Audio: {:?}", audio_path);
 
         let work_dir = audio_path.parent().unwrap_or(Path::new("."));
@@ -79,25 +58,14 @@ impl TranscriptionEngine {
             .status()?;
 
         if !status.success() {
-<<<<<<< HEAD
             anyhow::bail!("Transcription script failed - is openai-whisper installed?");
-=======
-            return Err("Transcription script failed - is openai-whisper installed?".into());
->>>>>>> pr-7
         }
 
         // Read result
         let data = fs::read_to_string(&output_json)?;
         let segments: Vec<TranscriptSegment> = serde_json::from_str(&data)?;
 
-<<<<<<< HEAD
         info!("[TRANSCRIBE] Success! {} segments generated.", segments.len());
-=======
-        info!(
-            "[TRANSCRIBE] Success! {} segments generated.",
-            segments.len()
-        );
->>>>>>> pr-7
 
         // Cleanup JSON
         // fs::remove_file(output_json)?;
@@ -106,8 +74,6 @@ impl TranscriptionEngine {
         Ok(segments)
     }
 }
-<<<<<<< HEAD
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,5 +125,3 @@ mod tests {
         env::remove_var("SYNOID_TRANSCRIPTION_SCRIPT");
     }
 }
-=======
->>>>>>> pr-7

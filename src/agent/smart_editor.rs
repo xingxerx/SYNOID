@@ -460,6 +460,35 @@ pub async fn smart_edit(
     Ok(summary)
 }
 
+        .output()?;
+        
+    // Clean up
+    fs::remove_dir_all(&segments_dir)?;
+    if use_enhanced_audio {
+        // fs::remove_file(enhanced_audio_path)?; // Keep for debug if needed, or delete
+        let _ = fs::remove_file(enhanced_audio_path);
+    }
+    
+    if !status.status.success() {
+        let stderr = String::from_utf8_lossy(&status.stderr);
+        error!("[SMART] FFmpeg concat failed: {}", stderr);
+        return Err("Failed to concatenate segments".into());
+    }
+    
+    // Get output file size
+    let metadata = fs::metadata(output)?;
+    let size_mb = metadata.len() as f64 / 1_048_576.0;
+    
+    let summary = format!(
+        "✅ Smart edit complete! Removed {} boring segments. Output: {:.2} MB",
+        removed, size_mb
+    );
+    
+    log(&format!("[SMART] {}", summary));
+    
+    Ok(summary)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -474,7 +503,6 @@ mod tests {
         assert!(intent2.keep_action);
     }
 }
-=======
 // SYNOID Smart Editor - AI-Powered Intent-Based Video Editing
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 //

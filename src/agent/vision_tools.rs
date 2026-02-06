@@ -28,19 +28,8 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     let _output = Command::new("ffprobe")
         .args([
             "-show_frames",
-<<<<<<< HEAD
             "-of", "compact=p=0:nk=1",
             "-f", "lavfi",
-=======
-            "-of",
-            "compact=p=0:nk=1",
-            "-f",
-            "lavfi",
-            &format!(
-                "movie='{}',select='gt(scene,0.3)'",
-                path.to_str().unwrap().replace("\\", "/")
-            ),
->>>>>>> pr-7
         ])
         .arg(&filter_graph)
         .output();

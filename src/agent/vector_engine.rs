@@ -42,15 +42,7 @@ pub async fn upscale_video(
         .arg("-i")
         .arg(input)
         .args([
-<<<<<<< HEAD
             "-vf", "fps=12", // Lower FPS for "stylized" look
-=======
-            "-i",
-            input.to_str().unwrap(),
-            "-vf",
-            "fps=12", // Lower FPS for "stylized" look
-            frames_src.join("frame_%04d.png").to_str().unwrap(),
->>>>>>> pr-7
         ])
         .arg(frames_src.join("frame_%04d.png"))
         .output()?;
@@ -144,7 +136,6 @@ pub async fn upscale_video(
     info!("[UPSCALE] Encoding high-resolution video...");
     let status_enc = Command::new("ffmpeg")
         .args([
-<<<<<<< HEAD
             "-framerate", "12",
         ])
         .arg("-i")
@@ -153,18 +144,6 @@ pub async fn upscale_video(
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
             "-y",
-=======
-            "-framerate",
-            "12",
-            "-i",
-            frames_out.join("frame_%04d.png").to_str().unwrap(),
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-y",
-            output.to_str().unwrap(),
->>>>>>> pr-7
         ])
         .arg(output)
         .output()?;
@@ -249,15 +228,7 @@ pub async fn vectorize_video(
         .arg("-i")
         .arg(input)
         .args([
-<<<<<<< HEAD
             "-vf", "fps=10",
-=======
-            "-i",
-            input.to_str().unwrap(),
-            "-vf",
-            "fps=10",
-            frames_dir.join("frame_%04d.png").to_str().unwrap(),
->>>>>>> pr-7
         ])
         .arg(frames_dir.join("frame_%04d.png"))
         .output()?;
