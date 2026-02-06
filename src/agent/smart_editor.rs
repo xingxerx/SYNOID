@@ -5,7 +5,7 @@
 // It analyzes scenes, scores them against user intent, and generates trimmed output.
 
 use std::path::Path;
-use std::process::Command;
+use tokio::process::Command;
 use std::fs;
 use std::io::Write;
 use tracing::{info, warn, error};
@@ -28,21 +28,14 @@ impl EditIntent {
         let lower = text.to_lowercase();
 
         Self {
-            remove_boring: lower.contains("boring")
-                || lower.contains("lame")
-                || lower.contains("dull")
-                || lower.contains("slow"),
-            keep_action: lower.contains("action")
-                || lower.contains("exciting")
-                || lower.contains("fast")
-                || lower.contains("intense"),
-            remove_silence: lower.contains("silence")
-                || lower.contains("quiet")
-                || lower.contains("dead air"),
-            keep_speech: lower.contains("speech")
-                || lower.contains("talking")
-                || lower.contains("dialogue")
-                || lower.contains("conversation"),
+            remove_boring: lower.contains("boring") || lower.contains("lame") ||
+                          lower.contains("dull") || lower.contains("slow"),
+            keep_action: lower.contains("action") || lower.contains("exciting") ||
+                        lower.contains("fast") || lower.contains("intense"),
+            remove_silence: lower.contains("silence") || lower.contains("quiet") ||
+                           lower.contains("dead air"),
+            keep_speech: lower.contains("speech") || lower.contains("talking") ||
+                        lower.contains("dialogue") || lower.contains("conversation"),
             custom_keywords: vec![],
         }
     }
@@ -60,25 +53,23 @@ pub struct Scene {
     pub start_time: f64,
     pub end_time: f64,
     pub duration: f64,
-    pub score: f64, // 0.0 = definitely remove, 1.0 = definitely keep
+    pub score: f64,  // 0.0 = definitely remove, 1.0 = definitely keep
 }
 
 /// Detect scenes in a video using FFmpeg scene detection
-pub fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::error::Error>> {
+pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::error::Error>> {
     info!("[SMART] Detecting scenes in {:?}", input);
 
     // Get total duration first
     let duration_output = Command::new("ffprobe")
         .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            input.to_str().unwrap(),
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            input.to_str().unwrap()
         ])
-        .output()?;
+        .output()
+        .await?;
 
     let total_duration: f64 = String::from_utf8_lossy(&duration_output.stdout)
         .trim()
@@ -94,15 +85,13 @@ pub fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::error::Err
     // Use FFmpeg to detect scene changes
     let output = Command::new("ffmpeg")
         .args([
-            "-i",
-            input.to_str().unwrap(),
-            "-vf",
-            "select='gt(scene,0.25)',showinfo",
-            "-f",
-            "null",
-            "-",
+            "-i", input.to_str().unwrap(),
+            "-vf", "select='gt(scene,0.25)',showinfo",
+            "-f", "null",
+            "-"
         ])
-        .output()?;
+        .output()
+        .await?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -162,15 +151,8 @@ pub fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::error::Err
 
 /// Score scenes based on user intent
 /// Score scenes based on user intent and transcript
-pub fn score_scenes(
-    scenes: &mut [Scene],
-    intent: &EditIntent,
-    transcript: Option<&[TranscriptSegment]>,
-) {
-    info!(
-        "[SMART] Scoring {} scenes based on intent and semantic data",
-        scenes.len()
-    );
+pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Option<&[TranscriptSegment]>) {
+    info!("[SMART] Scoring {} scenes based on intent and semantic data", scenes.len());
 
     for scene in scenes.iter_mut() {
         let mut score: f64 = 0.5; // Start neutral
@@ -235,10 +217,7 @@ pub fn score_scenes(
 
             if has_keyword {
                 score += 0.5; // Strong boost for keywords
-                info!(
-                    "[SMART] Keyword found in scene {:.1}-{:.1}",
-                    scene.start_time, scene.end_time
-                );
+                info!("[SMART] Keyword found in scene {:.1}-{:.1}", scene.start_time, scene.end_time);
             }
         }
 
@@ -269,17 +248,11 @@ pub async fn smart_edit(
         let ext_str = ext.to_string_lossy().to_lowercase();
         if ext_str == "txt" || !["mp4", "mkv", "mov", "avi"].contains(&ext_str.as_str()) {
             output_buf.set_extension("mp4");
-            log(&format!(
-                "[SMART] ⚠️ Correcting output extension to .mp4: {:?}",
-                output_buf
-            ));
+            log(&format!("[SMART] ⚠️ Correcting output extension to .mp4: {:?}", output_buf));
         }
     } else {
         output_buf.set_extension("mp4");
-        log(&format!(
-            "[SMART] ⚠️ Adding .mp4 extension: {:?}",
-            output_buf
-        ));
+        log(&format!("[SMART] ⚠️ Adding .mp4 extension: {:?}", output_buf));
     }
     let output = output_buf.as_path();
 
@@ -306,15 +279,12 @@ pub async fn smart_edit(
     // Transcribe
     log("[SMART] 📝 Transcribing audio for semantic understanding...");
     let transcript = if use_enhanced_audio {
-        let engine = TranscriptionEngine::new().map_err(|e| e.to_string())?; // Simple fallback for Error mismatch
-        match engine.transcribe(&enhanced_audio_path) {
+        let engine = TranscriptionEngine::new().map_err(|e| e.to_string())?;
+        match engine.transcribe(&enhanced_audio_path).await {
             Ok(t) => {
-                log(&format!(
-                    "[SMART] Transcription complete: {} segments",
-                    t.len()
-                ));
+                log(&format!("[SMART] Transcription complete: {} segments", t.len()));
                 Some(t)
-            }
+            },
             Err(e) => {
                 warn!("[SMART] Transcription failed: {}", e);
                 None
@@ -332,14 +302,12 @@ pub async fn smart_edit(
         intent.remove_silence = true;
     }
 
-    log(&format!(
-        "[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}",
-        intent.remove_boring, intent.keep_action, intent.keep_speech
-    ));
+    log(&format!("[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}",
+                 intent.remove_boring, intent.keep_action, intent.keep_speech));
 
     // 2. Detect scenes
     log("[SMART] 🔍 Analyzing video scenes...");
-    let mut scenes = detect_scenes(input)?;
+    let mut scenes = detect_scenes(input).await?;
 
     // 3. Score scenes based on intent AND transcript
     log("[SMART] 📊 Scoring scenes based on semantic data...");
@@ -347,16 +315,16 @@ pub async fn smart_edit(
 
     // 4. Filter scenes to keep (score > 0.3)
     let keep_threshold = 0.3;
-    let scenes_to_keep: Vec<&Scene> = scenes.iter().filter(|s| s.score > keep_threshold).collect();
+    let scenes_to_keep: Vec<&Scene> = scenes.iter()
+        .filter(|s| s.score > keep_threshold)
+        .collect();
 
     let total_kept = scenes_to_keep.len();
     let total_original = scenes.len();
     let removed = total_original - total_kept;
 
-    log(&format!(
-        "[SMART] Keeping {}/{} scenes (removing {} boring/silent segments)",
-        total_kept, total_original, removed
-    ));
+    log(&format!("[SMART] Keeping {}/{} scenes (removing {} boring/silent segments)",
+                 total_kept, total_original, removed));
 
     if scenes_to_keep.is_empty() {
         return Err("All scenes were filtered out! Try a less aggressive intent.".into());
@@ -395,33 +363,26 @@ pub async fn smart_edit(
         cmd.arg("-map").arg("0:v"); // Video from input 0
         if use_enhanced_audio {
             cmd.arg("-map").arg("1:a:0"); // Audio from input 1 (enhanced)
-            cmd.arg("-c:v").arg("copy"); // Copy video stream (fast)
+            cmd.arg("-c:v").arg("copy");  // Copy video stream (fast)
             cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k"); // Re-encode audio to mux
         } else {
             cmd.arg("-map").arg("0:a:0"); // Original audio
-            cmd.arg("-c").arg("copy"); // Copy both
+            cmd.arg("-c").arg("copy");    // Copy both
         }
 
         cmd.arg("-avoid_negative_ts").arg("make_zero");
         cmd.arg(seg_path.to_str().unwrap());
 
-        let status = cmd.output()?;
+        let status = cmd.output().await?;
 
         if !status.status.success() {
-            // warn!("[SMART] Failed to extract segment {}", i);
-            // Retry without enhanced audio if that was the cause?
-            // For now, simple fail safe
-            continue;
+           continue;
         }
 
         segment_files.push(seg_path);
 
         if i < 3 || i % 10 == 0 || i == total_segments - 1 {
-            log(&format!(
-                "[SMART] ⏳ Segment {}/{} processed",
-                i + 1,
-                total_segments
-            ));
+             log(&format!("[SMART] ⏳ Segment {}/{} processed", i + 1, total_segments));
         }
     }
 
@@ -446,22 +407,18 @@ pub async fn smart_edit(
         .args([
             "-y",
             "-nostdin",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            concat_file.to_str().unwrap(),
-            "-c",
-            "copy",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", concat_file.to_str().unwrap(),
+            "-c", "copy",
             output.to_str().unwrap(),
         ])
-        .output()?;
+        .output()
+        .await?;
 
     // Clean up
     fs::remove_dir_all(&segments_dir)?;
     if use_enhanced_audio {
-        // fs::remove_file(enhanced_audio_path)?; // Keep for debug if needed, or delete
         let _ = fs::remove_file(enhanced_audio_path);
     }
 

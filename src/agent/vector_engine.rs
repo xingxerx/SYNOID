@@ -2,13 +2,13 @@
 // SYNOID Vector Engine
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use rayon::prelude::*;
-use resvg::tiny_skia;
-use resvg::usvg;
+use tokio::process::Command;
 use std::fs;
+use tracing::{info, error};
+use rayon::prelude::*;
+use resvg::usvg;
+use resvg::tiny_skia;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use tracing::{error, info};
 
 /// Upscale video by converting to Vector and re-rendering at higher resolution
 pub async fn upscale_video(
@@ -46,11 +46,10 @@ pub async fn upscale_video(
             "fps=12",
             frames_src.join("frame_%04d.png").to_str().unwrap(),
         ])
-        .output()?;
-
-    if !status.status.success() {
-        return Err("FFmpeg extraction failed".into());
-    }
+        .output()
+        .await?;
+        
+    if !status.status.success() { return Err("FFmpeg extraction failed".into()); }
 
     // 3. Resolution Safety Check
     // Calculate theoretical output size based on first frame
@@ -150,7 +149,8 @@ pub async fn upscale_video(
             "-y",
         ])
         .arg(output.to_str().unwrap())
-        .output()?;
+        .output()
+        .await?;
 
     // Cleanup
     fs::remove_dir_all(work_dir)?;
@@ -234,8 +234,9 @@ pub async fn vectorize_video(
             input.to_str().unwrap(),
             frames_dir.join("frame_%04d.png").to_str().unwrap(),
         ])
-        .output()?;
-
+        .output()
+        .await?;
+        
     if !status.status.success() {
         return Err("FFmpeg frame extraction failed".into());
     }

@@ -2,7 +2,7 @@
 // Wraps generic Python Whisper script for robust local transcription.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use tokio::process::Command;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 use std::fs;
@@ -39,7 +39,7 @@ impl TranscriptionEngine {
         })
     }
 
-    pub fn transcribe(&self, audio_path: &Path) -> Result<Vec<TranscriptSegment>> {
+    pub async fn transcribe(&self, audio_path: &Path) -> Result<Vec<TranscriptSegment>> {
         info!("[TRANSCRIBE] Audio: {:?}", audio_path);
 
         let work_dir = audio_path.parent().unwrap_or(Path::new("."));
@@ -55,7 +55,8 @@ impl TranscriptionEngine {
             .arg("tiny") // Default to fast model
             .arg("--output")
             .arg(output_json.to_str().unwrap())
-            .status()?;
+            .status()
+            .await?;
 
         if !status.success() {
             anyhow::bail!("Transcription script failed - is openai-whisper installed?");
@@ -73,7 +74,6 @@ impl TranscriptionEngine {
         Ok(segments)
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

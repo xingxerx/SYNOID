@@ -4,14 +4,10 @@
 // This module provides FFmpeg wrappers for trimming, clipping, and
 // intelligent compression to target file sizes.
 
-use crate::agent::source_tools::get_video_duration;
 use std::path::{Path, PathBuf};
-<<<<<<< HEAD
 use tokio::process::Command;
-=======
-use std::process::Command;
->>>>>>> pr-10
 use tracing::{info, warn};
+use crate::agent::source_tools::get_video_duration;
 
 /// Result of a production operation
 #[derive(Debug)]
@@ -82,10 +78,7 @@ pub async fn apply_anamorphic_mask(
         ])
         .status()
         .await?;
-    if !status.success() {
-        return Err("Anamorphic mask failed".into());
-    }
-    Ok(())
+    if !status.success() { return Err("Anamorphic mask failed".into()); }
 }
 
 /// Compress video to target file size (in MB)
@@ -99,17 +92,8 @@ pub async fn compress_video(
         "[PROD] Compressing video: {:?} -> {:.2} MB",
         input, target_size_mb
     );
-<<<<<<< HEAD
 
     let duration = get_video_duration(input).await?;
-
-=======
-
-    let duration = get_video_duration(input)?;
-
->>>>>>> pr-10
-    // Calculate target bitrate
-    // Bitrate (bits/s) = (Target Size (MB) * 8192) / Duration (s)
     // We reserve ~128kbps for audio, so video bitrate is remainder
     let audio_bitrate_kbps = 128.0;
     let total_bitrate_kbps = (target_size_mb * 8192.0) / duration;
