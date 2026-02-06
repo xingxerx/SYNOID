@@ -5,9 +5,9 @@ mod agent;
 mod window;
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
-use tracing::{info, error};
 use dotenv::dotenv;
+use std::path::PathBuf;
+use tracing::{error, info};
 
 #[derive(Parser)]
 #[command(name = "synoid-core")]
@@ -224,15 +224,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("--- SYNOID AGENTIC KERNEL v0.1.0 ---");
 
     let args = Cli::parse();
-    let api_url = std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
+    let api_url =
+        std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
 
     match args.command {
         Commands::Gui => {
             if let Err(e) = window::run_gui() {
                 error!("GUI Error: {}", e);
             }
-        },
-        Commands::Youtube { url, intent, output, chunk_minutes: _, login } => {
+        }
+        Commands::Youtube {
+            url,
+            intent,
+            output,
+            chunk_minutes: _,
+            login,
+        } => {
             let output_dir = std::path::Path::new("downloads");
 
             if !agent::source_tools::check_ytdlp() {
@@ -240,14 +247,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return Ok(());
             }
 
-            let source_info = agent::source_tools::download_youtube(&url, output_dir, login.as_deref()).await?;
+            let source_info =
+                agent::source_tools::download_youtube(&url, output_dir, login.as_deref()).await?;
             println!("✅ Video acquired: {}", source_info.title);
 
             let _output_path = output.unwrap_or_else(|| PathBuf::from("output.mp4"));
 
             // Placeholder for full pipeline trigger
-            info!("Ready to process '{}' with intent: {}", source_info.title, intent);
-        },
+            info!(
+                "Ready to process '{}' with intent: {}",
+                source_info.title, intent
+            );
+        }
         Commands::Research { topic, limit } => {
             info!("🕵️ Researching topic: {}", topic);
             let results = agent::source_tools::search_youtube(&topic, limit).await?;
@@ -255,32 +266,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("\n=== 📚 Research Results: '{}' ===", topic);
             for (i, source) in results.iter().enumerate() {
                 println!("\n{}. {}", i + 1, source.title);
-                println!("   URL: {}", source.original_url.as_deref().unwrap_or("Unknown"));
+                println!(
+                    "   URL: {}",
+                    source.original_url.as_deref().unwrap_or("Unknown")
+                );
                 println!("   Duration: {:.1} min", source.duration / 60.0);
             }
-        },
-        Commands::Clip { input, start, duration, output } => {
+        }
+        Commands::Clip {
+            input,
+            start,
+            duration,
+            output,
+        } => {
             let out_path = output.unwrap_or_else(|| {
                 let stem = input.file_stem().unwrap().to_string_lossy();
                 input.with_file_name(format!("{}_clip.mp4", stem))
             });
 
             match agent::production_tools::trim_video(&input, start, duration, &out_path).await {
-                Ok(res) => println!("✂️ Clip saved: {:?} ({:.2} MB)", res.output_path, res.size_mb),
+                Ok(res) => println!(
+                    "✂️ Clip saved: {:?} ({:.2} MB)",
+                    res.output_path, res.size_mb
+                ),
                 Err(e) => error!("Clipping failed: {}", e),
             }
-        },
-        Commands::Compress { input, size, output } => {
+        }
+        Commands::Compress {
+            input,
+            size,
+            output,
+        } => {
             let out_path = output.unwrap_or_else(|| {
                 let stem = input.file_stem().unwrap().to_string_lossy();
                 input.with_file_name(format!("{}_compressed.mp4", stem))
             });
 
             match agent::production_tools::compress_video(&input, size, &out_path).await {
-                Ok(res) => println!("📦 Compressed saved: {:?} ({:.2} MB)", res.output_path, res.size_mb),
+                Ok(res) => println!(
+                    "📦 Compressed saved: {:?} ({:.2} MB)",
+                    res.output_path, res.size_mb
+                ),
                 Err(e) => error!("Compression failed: {}", e),
             }
-        },
+        }
         Commands::Run { request } => {
             use agent::brain::Brain;
             let mut brain = Brain::new(&api_url);
@@ -288,8 +317,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(res) => println!("✅ {}", res),
                 Err(e) => error!("Detail: {}", e),
             }
-        },
-        Commands::Embody { input, intent, output } => {
+        }
+        Commands::Embody {
+            input,
+            intent,
+            output,
+        } => {
             use agent::motor_cortex::MotorCortex;
             info!("🧠 Embodied Agent Activating for: {}", intent);
 
@@ -300,66 +333,79 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let audio_data = agent::audio_tools::scan_audio(&input).await?;
 
             // 2. Execute
-            match cortex.execute_one_shot_render(&intent, &input, &output, &visual_data, &audio_data).await {
+            match cortex
+                .execute_one_shot_render(&intent, &input, &output, &visual_data, &audio_data)
+                .await
+            {
                 Ok(cmd) => {
                     println!("🎬 Generated FFmpeg Command: {}", cmd);
                     // In a real run, we would execute this command here.
-                },
+                }
                 Err(e) => error!("Embodiment failed: {}", e),
             }
-
-        },
+        }
         Commands::Learn { input, name } => {
             info!("🎓 Learning style '{}' from {:?}", name, input);
             use agent::academy::{StyleLibrary, TechniqueExtractor};
-            
+
             // Actually use the structs to silence warnings
             let _lib = StyleLibrary::new();
 
             let _extractor = TechniqueExtractor {};
-            
+
             println!("✅ Analyzed style '{}'. Saved to library.", name);
-        },
+        }
         Commands::Suggest { input } => {
             info!("💡 Analyzing {:?} for suggestions...", input);
             // Placeholder for suggestions
             println!("1. Make it faster paced");
             println!("2. Sync to the beat");
-        },
+        }
         Commands::Gpu => {
             println!("=== SYNOID GPU Status ===");
             // Simple check (mock)
             println!("✓ CUDA Detect: Logic not connected (stub)");
-        },
-        Commands::Vectorize { input, output, mode } => {
+        }
+        Commands::Vectorize {
+            input,
+            output,
+            mode,
+        } => {
             use agent::vector_engine::{vectorize_video, VectorConfig};
             let mut config = VectorConfig::default();
             config.colormode = mode;
-            
+
             println!("🎨 Starting Vectorization Engine on {:?}", input);
             println!("   Engine: SVG (Resolution Independent)");
-            
+
             match vectorize_video(&input, &output, config).await {
                 Ok(msg) => println!("✅ {}", msg),
                 Err(e) => error!("Vectorization failed: {}", e),
             }
-        },
-        Commands::Upscale { input, scale, output } => {
+        }
+        Commands::Upscale {
+            input,
+            scale,
+            output,
+        } => {
             use agent::vector_engine::upscale_video;
-            println!("🔎 Starting Infinite Upscale (Scale: {:.1}x) on {:?}", scale, input);
-            
+            println!(
+                "🔎 Starting Infinite Upscale (Scale: {:.1}x) on {:?}",
+                scale, input
+            );
+
             match upscale_video(&input, scale, &output).await {
                 Ok(msg) => println!("✅ {}", msg),
                 Err(e) => error!("Upscale failed: {}", e),
             }
-        },
+        }
         Commands::Guard { mode, watch } => {
-            use agent::defense::{Sentinel, IntegrityGuard};
+            use agent::defense::{IntegrityGuard, Sentinel};
             use std::{thread, time::Duration};
-            
+
             println!("🛡️ ACTIVATING SENTINEL Cyberdefense System...");
             println!("   Mode: {} | Least Privilege: ENABLED", mode);
-            
+
             // 1. Setup Integrity Guard
             let mut integrity = IntegrityGuard::new();
             if let Some(path) = watch {
@@ -370,9 +416,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // 2. Setup Process Sentinel
             let mut sentinel = Sentinel::new();
-            
+
             println!("✅ Sentinel Online. Monitoring system...");
-            
+
             // Infinite Monitor Loop
             loop {
                 // Check System Health
@@ -390,26 +436,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("❌ [INTEGRITY] {}", v);
                     }
                 }
-                
+
                 thread::sleep(Duration::from_secs(5));
             }
-        },
-        Commands::Voice { record, clone, profile, speak, output, download } => {
+        }
+        Commands::Voice {
+            record,
+            clone,
+            profile,
+            speak,
+            output,
+            download,
+        } => {
             use agent::voice::{AudioIO, VoiceEngine};
-            
+
             println!("🗣️ SYNOID Voice Engine");
-            
+
             let audio_io = AudioIO::new();
-            
+
             // Record voice sample
             if let Some(duration) = record {
-                let out_path = output.clone().unwrap_or_else(|| PathBuf::from("voice_sample.wav"));
+                let out_path = output
+                    .clone()
+                    .unwrap_or_else(|| PathBuf::from("voice_sample.wav"));
                 match audio_io.record_to_file(&out_path, duration) {
                     Ok(_) => println!("✅ Recorded {} seconds to {:?}", duration, out_path),
                     Err(e) => println!("❌ Recording failed: {}", e),
                 }
             }
-            
+
             // Download model
             if download {
                 match VoiceEngine::new() {
@@ -419,39 +474,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Ok(path) => println!("✅ Model ready: {:?}", path),
                             Err(e) => println!("❌ Download failed: {}", e),
                         }
-                    },
+                    }
                     Err(e) => println!("❌ Engine init failed: {}", e),
                 }
             }
-            
+
             // Create voice profile from audio
             if let (Some(profile_name), Some(audio_path)) = (&profile, &clone) {
                 match VoiceEngine::new() {
                     Ok(engine) => {
                         println!("🎭 Creating voice profile '{}'...", profile_name);
                         match engine.create_profile(profile_name, audio_path) {
-                            Ok(p) => println!("✅ Profile '{}' created ({} dims)", p.name, p.embedding.len()),
+                            Ok(p) => println!(
+                                "✅ Profile '{}' created ({} dims)",
+                                p.name,
+                                p.embedding.len()
+                            ),
                             Err(e) => println!("❌ Profile creation failed: {}", e),
                         }
-                    },
+                    }
                     Err(e) => println!("❌ {}", e),
                 }
             } else if let Some(audio_path) = clone {
                 // Clone voice (extract embedding without saving profile)
                 match VoiceEngine::new() {
-                    Ok(engine) => {
-                        match engine.clone_voice(&audio_path) {
-                            Ok(embedding) => println!("✅ Voice cloned. Embedding: {} dims", embedding.len()),
-                            Err(e) => println!("⚠️ {}", e),
+                    Ok(engine) => match engine.clone_voice(&audio_path) {
+                        Ok(embedding) => {
+                            println!("✅ Voice cloned. Embedding: {} dims", embedding.len())
                         }
+                        Err(e) => println!("⚠️ {}", e),
                     },
                     Err(e) => println!("❌ {}", e),
                 }
             }
-            
+
             // Speak text
             if let Some(text) = speak {
-                let out_path = output.clone().unwrap_or_else(|| PathBuf::from("tts_output.wav"));
+                let out_path = output
+                    .clone()
+                    .unwrap_or_else(|| PathBuf::from("tts_output.wav"));
                 match VoiceEngine::new() {
                     Ok(engine) => {
                         // If profile specified, use speak_as
@@ -460,7 +521,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 Ok(_) => {
                                     println!("✅ Speech saved to {:?}", out_path);
                                     let _ = audio_io.play_file(&out_path);
-                                },
+                                }
                                 Err(e) => println!("⚠️ {}", e),
                             }
                         } else {
@@ -468,16 +529,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 Ok(_) => {
                                     println!("✅ Speech saved to {:?}", out_path);
                                     let _ = audio_io.play_file(&out_path);
-                                },
+                                }
                                 Err(e) => println!("⚠️ {}", e),
                             }
                         }
-                    },
+                    }
                     Err(e) => println!("❌ {}", e),
                 }
             }
-        },
-        Commands::Agent { role, prompt, style } => {
+        }
+        Commands::Agent {
+            role,
+            prompt,
+            style,
+        } => {
             use agent::multi_agent::*;
 
             if role == "director" {
@@ -503,14 +568,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("   Feedback: {:?}", feedback);
                             }
                         }
-                    },
+                    }
                     Err(e) => error!("Director failed: {}", e),
                 }
             } else if role == "mcp" {
-                 // Initialize MCP Bridge
-                 let engine = std::sync::Arc::new(NativeTimelineEngine::new("BridgeProject"));
-                 let _mcp = agent::gpt_oss_bridge::SynoidMcpServer::init("./", engine);
-                 println!("🔌 MCP Bridge Initialized. Agents can now access 'media://project/assets'");
+                // Initialize MCP Bridge
+                let engine = std::sync::Arc::new(NativeTimelineEngine::new("BridgeProject"));
+                let _mcp = agent::gpt_oss_bridge::SynoidMcpServer::init("./", engine);
+                println!(
+                    "🔌 MCP Bridge Initialized. Agents can now access 'media://project/assets'"
+                );
             } else {
                 println!("Unknown role: {}", role);
             }

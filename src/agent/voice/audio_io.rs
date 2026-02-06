@@ -1,9 +1,9 @@
 // SYNOID Audio I/O Module
 // Microphone Recording & Speaker Playback
 
+use std::fs::File;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::fs::File;
 
 use tracing::info;
 
@@ -18,15 +18,23 @@ impl AudioIO {
     }
 
     /// Record audio from microphone to WAV file
-    pub fn record_to_file(&self, output_path: &Path, duration_secs: u32) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn record_to_file(
+        &self,
+        output_path: &Path,
+        duration_secs: u32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-        
-        info!("[VOICE] Recording {} seconds to {:?}...", duration_secs, output_path);
-        
+
+        info!(
+            "[VOICE] Recording {} seconds to {:?}...",
+            duration_secs, output_path
+        );
+
         let host = cpal::default_host();
-        let device = host.default_input_device()
+        let device = host
+            .default_input_device()
             .ok_or("No input device available")?;
-        
+
         let config = cpal::StreamConfig {
             channels: 1,
             sample_rate: cpal::SampleRate(self.sample_rate),
@@ -52,7 +60,7 @@ impl AudioIO {
         // Write to WAV
         let samples = samples.lock().unwrap();
         self.write_wav(output_path, &samples)?;
-        
+
         info!("[VOICE] Recording saved: {} samples", samples.len());
         Ok(())
     }
@@ -60,18 +68,18 @@ impl AudioIO {
     /// Play audio file through speakers
     pub fn play_file(&self, audio_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         use rodio::{Decoder, OutputStream, Sink};
-        
+
         info!("[VOICE] Playing {:?}...", audio_path);
-        
+
         let (_stream, stream_handle) = OutputStream::try_default()?;
         let sink = Sink::try_new(&stream_handle)?;
-        
+
         let file = File::open(audio_path)?;
         let source = Decoder::new(std::io::BufReader::new(file))?;
-        
+
         sink.append(source);
         sink.sleep_until_end();
-        
+
         Ok(())
     }
 
@@ -82,7 +90,7 @@ impl AudioIO {
             bits_per_sample: 16,
             sample_format: hound::SampleFormat::Int,
         };
-        
+
         let mut writer = hound::WavWriter::create(path, spec)?;
         for &sample in samples {
             let amplitude = (sample * i16::MAX as f32) as i16;

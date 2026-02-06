@@ -2,9 +2,9 @@
 // SYNOID Vision Tools
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
-use serde::{Deserialize, Serialize};
 use tracing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,8 +28,19 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     let _output = Command::new("ffprobe")
         .args([
             "-show_frames",
+<<<<<<< HEAD
             "-of", "compact=p=0:nk=1",
             "-f", "lavfi",
+=======
+            "-of",
+            "compact=p=0:nk=1",
+            "-f",
+            "lavfi",
+            &format!(
+                "movie='{}',select='gt(scene,0.3)'",
+                path.to_str().unwrap().replace("\\", "/")
+            ),
+>>>>>>> pr-7
         ])
         .arg(&filter_graph)
         .output();

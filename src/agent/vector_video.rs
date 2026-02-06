@@ -3,8 +3,8 @@
 // True SVG/Vector-based video rendering (not frame-by-frame)
 // Inspired by Rive's real-time vector graphics approach
 
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 /// Configuration for vector video processing
@@ -52,10 +52,12 @@ impl VectorVideoEngine {
     pub fn new(config: VectorVideoConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let work_dir = std::env::temp_dir().join("synoid_vector_video");
         fs::create_dir_all(&work_dir)?;
-        
-        info!("[VECTOR-VIDEO] Engine initialized ({}x{} @ {}fps)", 
-            config.target_width, config.target_height, config.fps);
-        
+
+        info!(
+            "[VECTOR-VIDEO] Engine initialized ({}x{} @ {}fps)",
+            config.target_width, config.target_height, config.fps
+        );
+
         Ok(Self { config, work_dir })
     }
 
@@ -66,26 +68,41 @@ impl VectorVideoEngine {
         input_video: &Path,
         output_path: &Path,
     ) -> Result<String, Box<dyn std::error::Error>> {
-        info!("[VECTOR-VIDEO] Converting {:?} to vector format...", input_video);
-        
-        // Strategy: 
+        info!(
+            "[VECTOR-VIDEO] Converting {:?} to vector format...",
+            input_video
+        );
+
+        // Strategy:
         // 1. Extract key frames from video
         // 2. Vectorize each keyframe using vtracer (edge detection -> bezier curves)
         // 3. Interpolate between keyframes using vector morphing
         // 4. Output as animated SVG or Lottie JSON
-        
+
         // Step 1: Extract keyframes (not every frame - only scene changes)
         let keyframes_dir = self.work_dir.join("keyframes");
         fs::create_dir_all(&keyframes_dir)?;
-        
+
         // Use scene detection for smart keyframe extraction
         let ffmpeg_status = std::process::Command::new("ffmpeg")
             .arg("-i")
             .arg(input_video)
             .args([
+<<<<<<< HEAD
                 "-vf", "select='gt(scene,0.3)',showinfo", // Only extract on scene changes
                 "-vsync", "vfr",
                 "-frame_pts", "true",
+=======
+                "-i",
+                input_video.to_str().unwrap(),
+                "-vf",
+                "select='gt(scene,0.3)',showinfo", // Only extract on scene changes
+                "-vsync",
+                "vfr",
+                "-frame_pts",
+                "true",
+                keyframes_dir.join("kf_%04d.png").to_str().unwrap(),
+>>>>>>> pr-7
             ])
             .arg(keyframes_dir.join("kf_%04d.png"))
             .output()?;
@@ -97,7 +114,15 @@ impl VectorVideoEngine {
                 .arg("-i")
                 .arg(input_video)
                 .args([
+<<<<<<< HEAD
                     "-vf", "fps=2", // 2 keyframes per second
+=======
+                    "-i",
+                    input_video.to_str().unwrap(),
+                    "-vf",
+                    "fps=2", // 2 keyframes per second
+                    keyframes_dir.join("kf_%04d.png").to_str().unwrap(),
+>>>>>>> pr-7
                 ])
                 .arg(keyframes_dir.join("kf_%04d.png"))
                 .output()?;
@@ -106,14 +131,17 @@ impl VectorVideoEngine {
         // Step 2: Vectorize keyframes
         let svg_dir = self.work_dir.join("vector_frames");
         fs::create_dir_all(&svg_dir)?;
-        
+
         let keyframes: Vec<PathBuf> = fs::read_dir(&keyframes_dir)?
             .filter_map(|e| e.ok())
             .map(|e| e.path())
             .filter(|p| p.extension().map_or(false, |e| e == "png"))
             .collect();
 
-        info!("[VECTOR-VIDEO] Extracted {} keyframes, vectorizing...", keyframes.len());
+        info!(
+            "[VECTOR-VIDEO] Extracted {} keyframes, vectorizing...",
+            keyframes.len()
+        );
 
         for (i, kf_path) in keyframes.iter().enumerate() {
             let svg_path = svg_dir.join(format!("frame_{:04}.svg", i));
@@ -124,13 +152,17 @@ impl VectorVideoEngine {
         // For true vector video, we create a master SVG with SMIL animation
         // or output as Lottie JSON for maximum compatibility
         let result = self.create_animated_svg(&svg_dir, output_path)?;
-        
+
         info!("[VECTOR-VIDEO] ✅ Vector video created: {:?}", output_path);
         Ok(result)
     }
 
     /// Vectorize a single frame using vtracer
-    fn vectorize_frame(&self, input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    fn vectorize_frame(
+        &self,
+        input: &Path,
+        output: &Path,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Use vtracer's convert function (same API as vector_engine.rs)
         let config = vtracer::Config {
             color_mode: vtracer::ColorMode::Color,
@@ -166,7 +198,7 @@ impl VectorVideoEngine {
 
         // Read first SVG to get dimensions
         let first_svg = fs::read_to_string(&svg_files[0])?;
-        
+
         // Calculate frame duration based on FPS
         let frame_duration = 1.0 / self.config.fps as f64;
         let total_duration = frame_duration * svg_files.len() as f64;
@@ -183,8 +215,10 @@ impl VectorVideoEngine {
   <!-- Frame Container -->
   <g id="frames">
 "#,
-            self.config.target_width, self.config.target_height,
-            self.config.target_width, self.config.target_height
+            self.config.target_width,
+            self.config.target_height,
+            self.config.target_width,
+            self.config.target_height
         );
 
         // Add each frame as a group with animation
@@ -192,10 +226,10 @@ impl VectorVideoEngine {
             let svg_content = fs::read_to_string(svg_path)?;
             // Extract just the inner content (skip XML declaration and outer SVG tag)
             let inner = self.extract_svg_content(&svg_content);
-            
+
             let begin_time = i as f64 * frame_duration;
             let visibility = if i == 0 { "visible" } else { "hidden" };
-            
+
             animated_svg.push_str(&format!(
                 r#"    <g id="frame_{}" style="visibility: {}">
       {}
@@ -203,8 +237,11 @@ impl VectorVideoEngine {
       <set attributeName="visibility" to="hidden" begin="{}s" fill="freeze"/>
     </g>
 "#,
-                i, visibility, inner, 
-                begin_time, frame_duration,
+                i,
+                visibility,
+                inner,
+                begin_time,
+                frame_duration,
                 begin_time + frame_duration
             ));
         }
@@ -220,9 +257,13 @@ impl VectorVideoEngine {
 
         // Write animated SVG
         fs::write(output, &animated_svg)?;
-        
-        Ok(format!("Created {} frame animated SVG ({:.1}s @ {}fps)", 
-            svg_files.len(), total_duration, self.config.fps))
+
+        Ok(format!(
+            "Created {} frame animated SVG ({:.1}s @ {}fps)",
+            svg_files.len(),
+            total_duration,
+            self.config.fps
+        ))
     }
 
     /// Extract inner content from an SVG file (skip XML declaration and outer tag)
@@ -246,28 +287,42 @@ impl VectorVideoEngine {
         let final_width = (self.config.target_width as f64 * scale) as u32;
         let final_height = (self.config.target_height as f64 * scale) as u32;
 
-        info!("[VECTOR-VIDEO] Rendering to {}x{} ({}x scale)", 
-            final_width, final_height, scale);
+        info!(
+            "[VECTOR-VIDEO] Rendering to {}x{} ({}x scale)",
+            final_width, final_height, scale
+        );
 
         // Safety check
         if final_width > 16384 || final_height > 16384 {
             return Err(format!(
-                "Safety Stop: {}x{} exceeds 16K limit. Reduce scale.", 
+                "Safety Stop: {}x{} exceeds 16K limit. Reduce scale.",
                 final_width, final_height
-            ).into());
+            )
+            .into());
         }
 
         // Use Chromium/headless browser to render animated SVG to video
         // Alternative: use resvg frame-by-frame rendering
-        
+
         // For now, we'll use ffmpeg's SVG support if available
         let status = std::process::Command::new("ffmpeg")
             .arg("-i")
             .arg(animated_svg)
             .args([
+<<<<<<< HEAD
                 "-vf", &format!("scale={}:{}", final_width, final_height),
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
+=======
+                "-i",
+                animated_svg.to_str().unwrap(),
+                "-vf",
+                &format!("scale={}:{}", final_width, final_height),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+>>>>>>> pr-7
                 "-y",
             ])
             .arg(output_video)

@@ -1,13 +1,13 @@
 // SYNOID Production Tools - Editing & Compression
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 //
-// This module provides FFmpeg wrappers for trimming, clipping, and 
+// This module provides FFmpeg wrappers for trimming, clipping, and
 // intelligent compression to target file sizes.
 
+use crate::agent::source_tools::get_video_duration;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::{info, warn};
-use crate::agent::source_tools::get_video_duration;
 
 /// Result of a production operation
 #[derive(Debug)]
@@ -23,17 +23,35 @@ pub async fn trim_video(
     duration: f64,
     output: &Path,
 ) -> Result<ProductionResult, Box<dyn std::error::Error>> {
-    info!("[PROD] Trimming video: {:?} ({:.2}s + {:.2}s)", input, start_time, duration);
+    info!(
+        "[PROD] Trimming video: {:?} ({:.2}s + {:.2}s)",
+        input, start_time, duration
+    );
 
     let status = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
         .arg(input)
         .args([
+<<<<<<< HEAD
             "-ss", &start_time.to_string(),
             "-t", &duration.to_string(),
             "-c", "copy", // Fast stream copy
             "-avoid_negative_ts", "make_zero",
+=======
+            "-y",
+            "-i",
+            input.to_str().unwrap(),
+            "-ss",
+            &start_time.to_string(),
+            "-t",
+            &duration.to_string(),
+            "-c",
+            "copy", // Fast stream copy
+            "-avoid_negative_ts",
+            "make_zero",
+            output.to_str().unwrap(),
+>>>>>>> pr-7
         ])
         .arg(output)
         .status()?;
@@ -52,19 +70,35 @@ pub async fn trim_video(
 }
 
 #[allow(dead_code)]
-pub async fn apply_anamorphic_mask(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn apply_anamorphic_mask(
+    input: &Path,
+    output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     info!("[PROD] Applying 2.39:1 Cinematic Mask");
     let status = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
         .arg(input)
         .args([
+<<<<<<< HEAD
             "-vf", "crop=in_w:in_w/2.39",
             "-c:a", "copy",
+=======
+            "-y",
+            "-i",
+            input.to_str().unwrap(),
+            "-vf",
+            "crop=in_w:in_w/2.39",
+            "-c:a",
+            "copy",
+            output.to_str().unwrap(),
+>>>>>>> pr-7
         ])
         .arg(output)
         .status()?;
-    if !status.success() { return Err("Anamorphic mask failed".into()); }
+    if !status.success() {
+        return Err("Anamorphic mask failed".into());
+    }
     Ok(())
 }
 
@@ -75,10 +109,13 @@ pub async fn compress_video(
     target_size_mb: f64,
     output: &Path,
 ) -> Result<ProductionResult, Box<dyn std::error::Error>> {
-    info!("[PROD] Compressing video: {:?} -> {:.2} MB", input, target_size_mb);
+    info!(
+        "[PROD] Compressing video: {:?} -> {:.2} MB",
+        input, target_size_mb
+    );
 
     let duration = get_video_duration(input)?;
-    
+
     // Calculate target bitrate
     // Bitrate (bits/s) = (Target Size (MB) * 8192) / Duration (s)
     // We reserve ~128kbps for audio, so video bitrate is remainder
@@ -90,17 +127,21 @@ pub async fn compress_video(
         warn!("[PROD] Warning: Target size very small for duration. Quality will be low.");
     }
 
-    info!("[PROD] Calculated Bitrates - Video: {:.0}k, Audio: {:.0}k", video_bitrate_kbps, audio_bitrate_kbps);
+    info!(
+        "[PROD] Calculated Bitrates - Video: {:.0}k, Audio: {:.0}k",
+        video_bitrate_kbps, audio_bitrate_kbps
+    );
 
     // Single pass CRF (Consistant Rate Factor) capped by maxrate is usually better/faster for modern codecs
     // but 2-pass is standard for strict size. Let's do a smart single pass with bufsize for now for speed/simplicity
     // unless strict control is requested.
-    
+
     let status = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
         .arg(input)
         .args([
+<<<<<<< HEAD
             "-c:v", "libx264",
             "-b:v", &format!("{:.0}k", video_bitrate_kbps),
             "-maxrate", &format!("{:.0}k", video_bitrate_kbps * 1.5),
@@ -108,6 +149,26 @@ pub async fn compress_video(
             "-preset", "medium",
             "-c:a", "aac",
             "-b:a", &format!("{:.0}k", audio_bitrate_kbps),
+=======
+            "-y",
+            "-i",
+            input.to_str().unwrap(),
+            "-c:v",
+            "libx264",
+            "-b:v",
+            &format!("{:.0}k", video_bitrate_kbps),
+            "-maxrate",
+            &format!("{:.0}k", video_bitrate_kbps * 1.5),
+            "-bufsize",
+            &format!("{:.0}k", video_bitrate_kbps * 2.0),
+            "-preset",
+            "medium",
+            "-c:a",
+            "aac",
+            "-b:a",
+            &format!("{:.0}k", audio_bitrate_kbps),
+            output.to_str().unwrap(),
+>>>>>>> pr-7
         ])
         .arg(output)
         .status()?;
@@ -142,6 +203,7 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
         .args([
             "-y",
             "-nostdin",
+<<<<<<< HEAD
         ])
         .arg("-i")
         .arg(input)
@@ -151,6 +213,20 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
             "-af", filter_complex,
             "-c:a", "pcm_s16le", // Use PCM for WAV (lossless intermediate)
             "-ar", "48000", // Force 48kHz (prevent 192kHz upsampling)
+=======
+            "-i",
+            input.to_str().unwrap(),
+            "-vn", // Disable video (audio only)
+            "-map",
+            "0:a:0", // Take first audio track
+            "-af",
+            filter_complex,
+            "-c:a",
+            "pcm_s16le", // Use PCM for WAV (lossless intermediate)
+            "-ar",
+            "48000", // Force 48kHz (prevent 192kHz upsampling)
+            output.to_str().unwrap(),
+>>>>>>> pr-7
         ])
         .arg(output)
         .status()?;

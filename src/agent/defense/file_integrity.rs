@@ -1,10 +1,10 @@
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::collections::HashMap;
-use walkdir::WalkDir;
 use tracing::{info, warn};
+use walkdir::WalkDir;
 
 /// Monitor changes to critical files by hashing them
 pub struct IntegrityGuard {
@@ -31,7 +31,7 @@ impl IntegrityGuard {
     pub fn build_baseline(&mut self) -> std::io::Result<()> {
         self.hashes.clear();
         info!("[DEFENSE] Building integrity baseline...");
-        
+
         for path in &self.watched_paths {
             if path.is_file() {
                 if let Ok(hash) = self.hash_file(path) {
@@ -48,14 +48,17 @@ impl IntegrityGuard {
                 }
             }
         }
-        info!("[DEFENSE] Baseline complete. monitoring {} files.", self.hashes.len());
+        info!(
+            "[DEFENSE] Baseline complete. monitoring {} files.",
+            self.hashes.len()
+        );
         Ok(())
     }
 
     /// Check for changes against the baseline
     pub fn verify_integrity(&self) -> Vec<String> {
         let mut violations = Vec::new();
-        
+
         for (path, original_hash) in &self.hashes {
             if !path.exists() {
                 let msg = format!("MISSING FILE: {:?}", path);
@@ -71,15 +74,18 @@ impl IntegrityGuard {
                         warn!("[DEFENSE] ⚠️ {}", msg);
                         violations.push(msg);
                     }
-                },
+                }
                 Err(e) => {
                     warn!("[DEFENSE] Could not read file {:?}: {}", path, e);
                 }
             }
         }
-        
+
         if violations.is_empty() {
-             info!("[DEFENSE] Integrity Check Passed. {} files verified.", self.hashes.len());
+            info!(
+                "[DEFENSE] Integrity Check Passed. {} files verified.",
+                self.hashes.len()
+            );
         }
 
         violations
@@ -97,7 +103,7 @@ impl IntegrityGuard {
             }
             hasher.update(&buffer[..count]);
         }
-        
+
         Ok(format!("{:x}", hasher.finalize()))
     }
 }

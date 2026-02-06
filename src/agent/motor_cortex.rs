@@ -1,7 +1,7 @@
-use std::path::Path;
-use crate::agent::vision_tools::VisualScene;
-use crate::agent::audio_tools::AudioAnalysis;
 use crate::agent::academy::StyleLibrary;
+use crate::agent::audio_tools::AudioAnalysis;
+use crate::agent::vision_tools::VisualScene;
+use std::path::Path;
 use tracing::info;
 
 #[allow(dead_code)]
@@ -16,7 +16,9 @@ pub struct EditGraph {
 
 impl MotorCortex {
     pub fn new(api_url: &str) -> Self {
-        Self { api_url: api_url.to_string() }
+        Self {
+            api_url: api_url.to_string(),
+        }
     }
 
     pub async fn execute_one_shot_render(
