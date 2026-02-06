@@ -18,7 +18,7 @@ pub async fn scan_audio(path: &Path) -> Result<AudioAnalysis, Box<dyn std::error
 
     // TODO: Integrate FFmpeg 'ebur128' or 'showwavespic' to extract real waveform data
     // For now, we utilize a refined heuristic for beat-snapping
-    let duration = crate::agent::source_tools::get_video_duration(path)?;
+    let duration = crate::agent::source_tools::get_video_duration(path).await?;
 
     // Master-style rhythmic anchor: Snap to 120BPM (0.5s) and 60BPM (1.0s) intervals
     // as a fallback while the FFT (Fast Fourier Transform) bridge is finalized.

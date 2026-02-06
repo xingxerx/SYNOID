@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // SYNOID Smart Editor - AI-Powered Intent-Based Video Editing
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 //
@@ -503,6 +504,8 @@ mod tests {
         assert!(intent2.keep_action);
     }
 }
+=======
+>>>>>>> pr-9
 // SYNOID Smart Editor - AI-Powered Intent-Based Video Editing
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 //
@@ -1004,4 +1007,7 @@ mod tests {
         assert!(intent2.keep_action);
     }
 }
+<<<<<<< HEAD
 >>>>>>> pr-7
+=======
+>>>>>>> pr-9

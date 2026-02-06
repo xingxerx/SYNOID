@@ -75,16 +75,12 @@ impl VoiceEngine {
     }
 
     /// Create speaker profile from audio file
-<<<<<<< HEAD
     pub fn create_profile(
         &self,
         name: &str,
         audio_path: &Path,
     ) -> Result<SpeakerProfile, Box<dyn std::error::Error>> {
-=======
-    pub fn create_profile(&self, name: &str, audio_path: &Path) -> Result<SpeakerProfile, Box<dyn std::error::Error>> {
         Self::validate_profile_name(name)?;
->>>>>>> d0cf50e492906a506caf53c5edef4d785b03c084
         info!("[VOICE] Creating profile '{}' from {:?}", name, audio_path);
 
         // For now, we'll create a placeholder embedding

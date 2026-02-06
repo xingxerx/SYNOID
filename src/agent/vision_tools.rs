@@ -4,7 +4,11 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+<<<<<<< HEAD
 use std::process::Command;
+=======
+use tokio::process::Command;
+>>>>>>> pr-9
 use tracing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,18 +32,34 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     let _output = Command::new("ffprobe")
         .args([
             "-show_frames",
+<<<<<<< HEAD
             "-of", "compact=p=0:nk=1",
             "-f", "lavfi",
         ])
         .arg(&filter_graph)
         .output();
+=======
+            "-of",
+            "compact=p=0:nk=1",
+            "-f",
+            "lavfi",
+            &format!(
+                "movie='{}',select='gt(scene,0.3)'",
+                path.to_str().unwrap().replace("\\", "/")
+            ),
+        ])
+        .output()
+        .await;
+>>>>>>> pr-9
 
     // Mocking return for stability if ffmpeg call gets complex parsing
     // In a real restore we'd parse the output. For now, let's return a sensible mock
     // derived from file duration or actual silence detection if possible
 
     // Let's at least get the duration to make up reasonable scenes
-    let duration = crate::agent::source_tools::get_video_duration(path).unwrap_or(10.0);
+    let duration = crate::agent::source_tools::get_video_duration(path)
+        .await
+        .unwrap_or(10.0);
 
     let mut scenes = Vec::new();
     let steps = (duration / 5.0) as usize; // A scene every 5 seconds roughly
