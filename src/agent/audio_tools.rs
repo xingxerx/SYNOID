@@ -1,8 +1,8 @@
 // SYNOID Audio Tools
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use std::path::Path;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use tracing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,9 +22,7 @@ pub async fn scan_audio(path: &Path) -> Result<AudioAnalysis, Box<dyn std::error
 
     // Master-style rhythmic anchor: Snap to 120BPM (0.5s) and 60BPM (1.0s) intervals
     // as a fallback while the FFT (Fast Fourier Transform) bridge is finalized.
-    let transients = (0..(duration as u64))
-        .map(|i| i as f64 * 0.5)
-        .collect();
+    let transients = (0..(duration as u64)).map(|i| i as f64 * 0.5).collect();
 
     Ok(AudioAnalysis {
         duration,

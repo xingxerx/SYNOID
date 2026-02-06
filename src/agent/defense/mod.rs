@@ -1,5 +1,5 @@
-pub mod sentinel;
 pub mod file_integrity;
+pub mod sentinel;
 
-pub use sentinel::Sentinel;
 pub use file_integrity::IntegrityGuard;
+pub use sentinel::Sentinel;

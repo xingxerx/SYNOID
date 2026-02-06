@@ -2,128 +2,180 @@
 // SYNOID Vector Engine
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::fs;
-use tracing::{info, error};
 use rayon::prelude::*;
-use resvg::usvg;
 use resvg::tiny_skia;
-
+use resvg::usvg;
+use std::fs;
+use std::path::{Path, PathBuf};
+use tokio::task;
+use tracing::{error, info};
 
 /// Upscale video by converting to Vector and re-rendering at higher resolution
 pub async fn upscale_video(
     input: &Path,
     scale_factor: f64,
-    output: &Path
+    output: &Path,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    info!("[UPSCALE] Starting Infinite Zoom (Scale: {}x) on {:?}", scale_factor, input);
+    info!(
+        "[UPSCALE] Starting Infinite Zoom (Scale: {}x) on {:?}",
+        scale_factor, input
+    );
 
     // 1. Setup Directories
     let work_dir = input.parent().unwrap().join("synoid_upscale_work");
-    if work_dir.exists() { fs::remove_dir_all(&work_dir)?; }
-    fs::create_dir_all(&work_dir)?;
+    if work_dir.exists() {
+        tokio::fs::remove_dir_all(&work_dir).await?;
+    }
+    tokio::fs::create_dir_all(&work_dir).await?;
 
     let frames_src = work_dir.join("src_frames");
     let frames_svg = work_dir.join("vectors");
     let frames_out = work_dir.join("high_res_frames");
 
-    fs::create_dir_all(&frames_src)?;
-    fs::create_dir_all(&frames_svg)?;
-    fs::create_dir_all(&frames_out)?;
+    tokio::fs::create_dir_all(&frames_src).await?;
+    tokio::fs::create_dir_all(&frames_svg).await?;
+    tokio::fs::create_dir_all(&frames_out).await?;
 
     // 2. Extract Source Frames
     info!("[UPSCALE] Extracting source frames...");
-    let status = Command::new("ffmpeg")
+    let status = tokio::process::Command::new("ffmpeg")
         .args([
-            "-i", input.to_str().unwrap(),
-            "-vf", "fps=12", // Lower FPS for "stylized" look
-            frames_src.join("frame_%04d.png").to_str().unwrap()
+            "-i",
+            input.to_str().unwrap(),
+            "-vf",
+            "fps=12", // Lower FPS for "stylized" look
+            frames_src.join("frame_%04d.png").to_str().unwrap(),
         ])
-        .output()?;
-        
-    if !status.status.success() { return Err("FFmpeg extraction failed".into()); }
+        .output()
+        .await?;
+
+    if !status.status.success() {
+        return Err("FFmpeg extraction failed".into());
+    }
 
     // 3. Resolution Safety Check
     // Calculate theoretical output size based on first frame
-    if let Some(first_frame) = fs::read_dir(&frames_src)?.filter_map(|e| e.ok()).next() {
-        if let Ok(dims) = image::image_dimensions(first_frame.path()) {
-            let (orig_w, orig_h) = dims;
-            let target_w = (orig_w as f64 * scale_factor) as u32;
-            let target_h = (orig_h as f64 * scale_factor) as u32;
+    let frames_src_clone = frames_src.clone();
+    let scale_factor_clone = scale_factor;
 
-            info!("[UPSCALE] Original: {}x{}, Target: {}x{}", orig_w, orig_h, target_w, target_h);
+    task::spawn_blocking(move || -> Result<(), String> {
+        if let Some(first_frame) = fs::read_dir(&frames_src_clone)
+            .map_err(|e| e.to_string())?
+            .filter_map(|e| e.ok())
+            .next()
+        {
+            if let Ok(dims) = image::image_dimensions(first_frame.path()) {
+                let (orig_w, orig_h) = dims;
+                let target_w = (orig_w as f64 * scale_factor_clone) as u32;
+                let target_h = (orig_h as f64 * scale_factor_clone) as u32;
 
-            if target_w > 16384 || target_h > 16384 {
-                return Err(format!(
-                    "Safety Stop: Target resolution {}x{} exceeds 16K limit (16384px). Reduce scale factor.",
-                    target_w, target_h
-                ).into());
+                info!("[UPSCALE] Original: {}x{}, Target: {}x{}", orig_w, orig_h, target_w, target_h);
+
+                if target_w > 16384 || target_h > 16384 {
+                    return Err(format!(
+                        "Safety Stop: Target resolution {}x{} exceeds 16K limit (16384px). Reduce scale factor.",
+                        target_w, target_h
+                    ));
+                }
             }
         }
-    }
+        Ok(())
+    }).await??;
 
     // 4. Vectorize & Render High-Res (Parallel)
-    let paths: Vec<PathBuf> = fs::read_dir(&frames_src)?.filter_map(|e| e.ok()).map(|e| e.path()).collect();
-    info!("[UPSCALE] Processing {} frames (Vectorize -> Render {}x)...", paths.len(), scale_factor);
+    let frames_src_clone2 = frames_src.clone();
+    let frames_svg_clone = frames_svg.clone();
+    let frames_out_clone = frames_out.clone();
+    let scale_factor_clone2 = scale_factor;
 
-    // Memory Guard: Processing in chunks
-    let num_cpus = num_cpus::get();
-    info!("[UPSCALE] Memory Guard: Processing in chunks of {}", num_cpus);
+    task::spawn_blocking(move || -> Result<(), String> {
+        let paths: Vec<PathBuf> = fs::read_dir(&frames_src_clone2)
+            .map_err(|e| e.to_string())?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .collect();
+        info!(
+            "[UPSCALE] Processing {} frames (Vectorize -> Render {}x)...",
+            paths.len(),
+            scale_factor_clone2
+        );
 
-    for chunk in paths.chunks(num_cpus) {
-        chunk.par_iter().for_each(|img_path| {
-            let stem = img_path.file_stem().unwrap().to_string_lossy();
-            let svg_path = frames_svg.join(format!("{}.svg", stem));
-            let out_png = frames_out.join(format!("{}.png", stem));
+        // Memory Guard: Processing in chunks
+        let num_cpus = num_cpus::get();
+        info!(
+            "[UPSCALE] Memory Guard: Processing in chunks of {}",
+            num_cpus
+        );
 
-            // A. Vectorize (Raster -> SVG)
-            let config = vtracer::Config {
-                color_mode: vtracer::ColorMode::Color,
-                hierarchical: vtracer::Hierarchical::Stacked,
-                filter_speckle: 4,
-                color_precision: 6,
-                layer_difference: 16,
-                corner_threshold: 60,
-                splice_threshold: 45,
-                ..Default::default()
-            };
-            
-            if let Ok(_) = vtracer::convert_image_to_svg(img_path, &svg_path, config) {
-                // B. Render (SVG -> High-Res Raster)
-                if let Ok(svg_data) = fs::read(&svg_path) {
-                    let opt = usvg::Options::default();
-                    if let Ok(tree) = usvg::Tree::from_data(&svg_data, &opt) {
-                        let size = tree.size.to_screen_size();
-                        let width = (size.width() as f64 * scale_factor) as u32;
-                        let height = (size.height() as f64 * scale_factor) as u32;
-                        
-                        if let Some(mut pixmap) = tiny_skia::Pixmap::new(width, height) {
-                            let transform = tiny_skia::Transform::from_scale(scale_factor as f32, scale_factor as f32);
-                            resvg::render(&tree, usvg::FitTo::Original, transform, pixmap.as_mut());
-                            pixmap.save_png(out_png).unwrap();
+        for chunk in paths.chunks(num_cpus) {
+            chunk.par_iter().for_each(|img_path| {
+                let stem = img_path.file_stem().unwrap().to_string_lossy();
+                let svg_path = frames_svg_clone.join(format!("{}.svg", stem));
+                let out_png = frames_out_clone.join(format!("{}.png", stem));
+
+                // A. Vectorize (Raster -> SVG)
+                let config = vtracer::Config {
+                    color_mode: vtracer::ColorMode::Color,
+                    hierarchical: vtracer::Hierarchical::Stacked,
+                    filter_speckle: 4,
+                    color_precision: 6,
+                    layer_difference: 16,
+                    corner_threshold: 60,
+                    splice_threshold: 45,
+                    ..Default::default()
+                };
+
+                if let Ok(_) = vtracer::convert_image_to_svg(img_path, &svg_path, config) {
+                    // B. Render (SVG -> High-Res Raster)
+                    if let Ok(svg_data) = fs::read(&svg_path) {
+                        let opt = usvg::Options::default();
+                        if let Ok(tree) = usvg::Tree::from_data(&svg_data, &opt) {
+                            let size = tree.size.to_screen_size();
+                            let width = (size.width() as f64 * scale_factor_clone2) as u32;
+                            let height = (size.height() as f64 * scale_factor_clone2) as u32;
+
+                            if let Some(mut pixmap) = tiny_skia::Pixmap::new(width, height) {
+                                let transform = tiny_skia::Transform::from_scale(
+                                    scale_factor_clone2 as f32,
+                                    scale_factor_clone2 as f32,
+                                );
+                                resvg::render(
+                                    &tree,
+                                    usvg::FitTo::Original,
+                                    transform,
+                                    pixmap.as_mut(),
+                                );
+                                pixmap.save_png(out_png).unwrap();
+                            }
                         }
                     }
                 }
-            }
-        });
-    }
+            });
+        }
+        Ok(())
+    })
+    .await??;
 
     // 5. Encode High-Res Video
     info!("[UPSCALE] Encoding high-resolution video...");
-    let status_enc = Command::new("ffmpeg")
+    let status_enc = tokio::process::Command::new("ffmpeg")
         .args([
-            "-framerate", "12",
-            "-i", frames_out.join("frame_%04d.png").to_str().unwrap(),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
+            "-framerate",
+            "12",
+            "-i",
+            frames_out.join("frame_%04d.png").to_str().unwrap(),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
             "-y",
-            output.to_str().unwrap()
+            output.to_str().unwrap(),
         ])
-        .output()?;
+        .output()
+        .await?;
 
     // Cleanup
-    fs::remove_dir_all(work_dir)?;
+    tokio::fs::remove_dir_all(work_dir).await?;
 
     if status_enc.status.success() {
         Ok(format!("Upscaled video saved to {:?}", output))
@@ -135,7 +187,7 @@ pub async fn upscale_video(
 pub async fn upscale_video_cuda(
     _input: &Path,
     _scale_factor: f64,
-    _output: &Path
+    _output: &Path,
 ) -> Result<String, Box<dyn std::error::Error>> {
     // CUDA 13.1 is not yet supported by cudarc crate
     Err("CUDA acceleration not available: CUDA 13.1 not supported. Use CPU upscale instead.".into())
@@ -185,40 +237,44 @@ impl Default for VectorConfig {
 pub async fn vectorize_video(
     input: &Path,
     output_dir: &Path,
-    config: VectorConfig
+    config: VectorConfig,
 ) -> Result<String, Box<dyn std::error::Error>> {
     info!("[VECTOR] Starting vectorization engine on {:?}", input);
 
     if !output_dir.exists() {
-        fs::create_dir_all(output_dir)?;
+        tokio::fs::create_dir_all(output_dir).await?;
     }
 
     // 1. Extract Frames using FFmpeg
     let frames_dir = output_dir.join("frames_src");
-    fs::create_dir_all(&frames_dir)?;
+    tokio::fs::create_dir_all(&frames_dir).await?;
 
     info!("[VECTOR] Extracting frames...");
-    let status = Command::new("ffmpeg")
+    let status = tokio::process::Command::new("ffmpeg")
         .args([
-            "-i", input.to_str().unwrap(),
-            "-vf", "fps=10",
-            frames_dir.join("frame_%04d.png").to_str().unwrap()
+            "-i",
+            input.to_str().unwrap(),
+            "-vf",
+            "fps=10",
+            frames_dir.join("frame_%04d.png").to_str().unwrap(),
         ])
-        .output()?;
-        
+        .output()
+        .await?;
+
     if !status.status.success() {
         return Err("FFmpeg frame extraction failed".into());
     }
 
     // 2. Vectorize Frames using vtracer (Parallelized)
-    let paths: Vec<PathBuf> = fs::read_dir(&frames_dir)?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .collect();
+    let frames_dir_clone = frames_dir.clone();
+    let output_dir_clone = output_dir.to_path_buf();
 
-    info!("[VECTOR] Vectorizing {} frames (Parallel)...", paths.len());
+    // Config needs to be moved or cloned. It has String fields so it's not Copy.
+    // I can reconstruct it inside or pass the fields.
+    // Or I can just clone the simple types.
+    // Let's pass the processed vtracer::Config instead.
 
-    // Convert Config to vtracer Config
+    // Convert Config to vtracer Config (doing it here to keep closure simpler)
     let vt_config = vtracer::Config {
         color_mode: parse_colormode(&config.colormode),
         hierarchical: parse_hierarchical(&config.hierarchical),
@@ -230,21 +286,36 @@ pub async fn vectorize_video(
         ..Default::default()
     };
 
-    // Parallel processing with Rayon
-    paths.par_iter().for_each(|frame_path| {
-        let stem = frame_path.file_stem().unwrap().to_string_lossy();
-        let out_svg = output_dir.join(format!("{}.svg", stem));
-        
-        match vtracer::convert_image_to_svg(frame_path, &out_svg, vt_config.clone()) {
-            Ok(_) => {}, // Silent success for speed
-            Err(e) => error!("Failed frame {}: {}", stem, e),
-        }
-    });
+    task::spawn_blocking(move || -> Result<(), String> {
+        let paths: Vec<PathBuf> = fs::read_dir(&frames_dir_clone)
+            .map_err(|e| e.to_string())?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .collect();
+
+        info!("[VECTOR] Vectorizing {} frames (Parallel)...", paths.len());
+
+        // Parallel processing with Rayon
+        paths.par_iter().for_each(|frame_path| {
+            let stem = frame_path.file_stem().unwrap().to_string_lossy();
+            let out_svg = output_dir_clone.join(format!("{}.svg", stem));
+
+            match vtracer::convert_image_to_svg(frame_path, &out_svg, vt_config.clone()) {
+                Ok(_) => {} // Silent success for speed
+                Err(e) => error!("Failed frame {}: {}", stem, e),
+            }
+        });
+        Ok(())
+    })
+    .await??;
 
     // 3. Cleanup Source Frames
-    fs::remove_dir_all(&frames_dir)?;
+    tokio::fs::remove_dir_all(&frames_dir).await?;
 
-    Ok(format!("Vectorization complete. SVGs saved in {:?}", output_dir))
+    Ok(format!(
+        "Vectorization complete. SVGs saved in {:?}",
+        output_dir
+    ))
 }
 
 // Helpers to map string configs to vtracer enums
