@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::process::Command;
+use tokio::process::Command;
 use tracing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,11 +28,17 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     let _output = Command::new("ffprobe")
         .args([
             "-show_frames",
-            "-of", "compact=p=0:nk=1",
-            "-f", "lavfi",
+            "-of",
+            "compact=p=0:nk=1",
+            "-f",
+            "lavfi",
+            &format!(
+                "movie='{}',select='gt(scene,0.3)'",
+                path.to_str().unwrap().replace("\\", "/")
+            ),
         ])
-        .arg(&filter_graph)
-        .output();
+        .output()
+        .await;
 
     // Mocking return for stability if ffmpeg call gets complex parsing
     // In a real restore we'd parse the output. For now, let's return a sensible mock

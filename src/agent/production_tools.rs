@@ -33,13 +33,18 @@ pub async fn trim_video(
         .arg("-i")
         .arg(input)
         .args([
-            "-ss", &start_time.to_string(),
-            "-t", &duration.to_string(),
-            "-c", "copy", // Fast stream copy
-            "-avoid_negative_ts", "make_zero",
+            "-ss",
+            &start_time.to_string(),
+            "-t",
+            &duration.to_string(),
+            "-c",
+            "copy", // Fast stream copy
+            "-avoid_negative_ts",
+            "make_zero",
+            output.to_str().unwrap(),
         ])
-        .arg(output)
-        .status().await?;
+        .status()
+        .await?;
 
     if !status.success() {
         return Err("FFmpeg trim failed".into());
@@ -65,11 +70,14 @@ pub async fn apply_anamorphic_mask(
         .arg("-i")
         .arg(input)
         .args([
-            "-vf", "crop=in_w:in_w/2.39",
-            "-c:a", "copy",
+            "-vf",
+            "crop=in_w:in_w/2.39",
+            "-c:a",
+            "copy",
+            output.to_str().unwrap(),
         ])
-        .arg(output)
-        .status().await?;
+        .status()
+        .await?;
     if !status.success() {
         return Err("Anamorphic mask failed".into());
     }
@@ -115,16 +123,24 @@ pub async fn compress_video(
         .arg("-i")
         .arg(input)
         .args([
-            "-c:v", "libx264",
-            "-b:v", &format!("{:.0}k", video_bitrate_kbps),
-            "-maxrate", &format!("{:.0}k", video_bitrate_kbps * 1.5),
-            "-bufsize", &format!("{:.0}k", video_bitrate_kbps * 2.0),
-            "-preset", "medium",
-            "-c:a", "aac",
-            "-b:a", &format!("{:.0}k", audio_bitrate_kbps),
+            "-c:v",
+            "libx264",
+            "-b:v",
+            &format!("{:.0}k", video_bitrate_kbps),
+            "-maxrate",
+            &format!("{:.0}k", video_bitrate_kbps * 1.5),
+            "-bufsize",
+            &format!("{:.0}k", video_bitrate_kbps * 2.0),
+            "-preset",
+            "medium",
+            "-c:a",
+            "aac",
+            "-b:a",
+            &format!("{:.0}k", audio_bitrate_kbps),
+            output.to_str().unwrap(),
         ])
-        .arg(output)
-        .status().await?;
+        .status()
+        .await?;
 
     if !status.success() {
         return Err("FFmpeg compression failed".into());
@@ -156,18 +172,21 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
         .args([
             "-y",
             "-nostdin",
-        ])
-        .arg("-i")
-        .arg(input)
-        .args([
+            "-i",
+            input.to_str().unwrap(),
             "-vn", // Disable video (audio only)
-            "-map", "0:a:0", // Take first audio track
-            "-af", filter_complex,
-            "-c:a", "pcm_s16le", // Use PCM for WAV (lossless intermediate)
-            "-ar", "48000", // Force 48kHz (prevent 192kHz upsampling)
+            "-map",
+            "0:a:0", // Take first audio track
+            "-af",
+            filter_complex,
+            "-c:a",
+            "pcm_s16le", // Use PCM for WAV (lossless intermediate)
+            "-ar",
+            "48000", // Force 48kHz (prevent 192kHz upsampling)
+            output.to_str().unwrap(),
         ])
-        .arg(output)
-        .status().await?;
+        .status()
+        .await?;
 
     if !status.success() {
         return Err("Audio enhancement failed".into());
