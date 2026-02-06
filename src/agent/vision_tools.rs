@@ -2,7 +2,9 @@
 // SYNOID Vision Tools
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use serde::{Deserialize, Serialize};use std::process::Command;acing::info;
+use serde::{Deserialize, Serialize};
+use tokio::process::Command;
+use tracing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VisualScene {
@@ -18,39 +20,61 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     info!("[EYES] Scanning visual content: {:?}", path);
 
     // Using ffprobe to detect scene changes (>0.3 difference)
-    // Escaping single quotes to prevent injection in the filter string
-    let path_str = path.to_string_lossy().replace("\\", "/").replace("'", "'\\''");
-    let filter_graph = format!("movie='{}',select='gt(scene,0.3)'", path_str);
-
-    let _output = Command::new("ffprobe")
+    // We request only the pkt_pts_time (timestamp) of frames that pass the scene change filter
+    // Using default=noprint_wrappers=1:nokey=1 to get clean timestamp output
+    let output = Command::new("ffprobe")
         .args([
-            "-of", "compact=p=0:nk=1",
+            "-v", "error",
+            "-show_entries", "frame=pkt_pts_time",
+            "-of", "default=noprint_wrappers=1:nokey=1",
             "-f", "lavfi",
         ])
-        .arg(&filter_graph)
+        .arg(&format!(
+            "movie='{}',select='gt(scene,0.3)'",
+            path.to_string_lossy().replace("\\", "/").replace("'", "'\\''")
+        ))
         .output()
-        .await; // Re-added .await as it's an async function
+        .await?; // Async execution
 
-    // Mocking return for stability if ffmpeg call gets complex parsing
-    // In a real restore we'd parse the output. For now, let's return a sensible mock
-    // derived from file duration or actual silence detection if possible
+    if !output.status.success() {
+        return Err(format!("FFprobe failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+    }
 
-    // Let's at least get the duration to make up reasonable scenes
-    let duration = crate::agent::source_tools::get_video_duration(path)
-        .await
-        .unwrap_or(10.0);
-
+    let stdout = String::from_utf8_lossy(&output.stdout);
     let mut scenes = Vec::new();
-    let steps = (duration / 5.0) as usize; // A scene every 5 seconds roughly
 
-    for i in 0..steps {
+    // Always add start as a scene
+    scenes.push(VisualScene {
+        timestamp: 0.0,
+        motion_score: 0.0,
+        scene_score: 1.0,
+    });
+
+    for line in stdout.lines() {
+        if let Ok(ts) = line.trim().parse::<f64>() {
+            // Avoid duplicate 0.0 or very close timestamps
+            if !scenes.is_empty() && (ts - scenes.last().unwrap().timestamp).abs() < 0.5 {
+                continue;
+            }
+
+            scenes.push(VisualScene {
+                timestamp: ts,
+                motion_score: 0.5, // We don't have motion data from this simple scan, defaulting
+                scene_score: 1.0,  // It's a detected scene change
+            });
+        }
+    }
+
+    // Fallback if no scenes detected (e.g. short video or no changes) - ensure at least start is there
+    if scenes.is_empty() {
         scenes.push(VisualScene {
-            timestamp: i as f64 * 5.0,
-            motion_score: 0.8, // Placeholder
-            scene_score: 1.0,  // Placeholder
+            timestamp: 0.0,
+            motion_score: 0.0,
+            scene_score: 1.0,
         });
     }
 
+    info!("[EYES] Detected {} scenes.", scenes.len());
     Ok(scenes)
 }
 

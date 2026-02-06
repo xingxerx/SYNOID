@@ -4,7 +4,8 @@
 
 use crate::agent::multi_agent::NativeTimelineEngine;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, error};
+use serde_json::json;
 
 /// Agent interface for LLM reasoning
 pub struct SynoidAgent {
@@ -20,12 +21,54 @@ impl SynoidAgent {
 
     /// Reason about a request using the LLM backend
     pub async fn reason(&self, request: &str) -> Result<String, String> {
-        // Stub implementation - would call local LLM API
         info!("[AGENT] Reasoning about: {}", request);
-        Ok(format!(
-            "Processed request via {}: {}",
-            self.api_url, request
-        ))
+
+        let client = reqwest::Client::new();
+        // Handle trailing slash just in case
+        let base_url = self.api_url.trim_end_matches('/');
+        // Default to chat completions endpoint
+        let url = format!("{}/chat/completions", base_url);
+
+        // Default model - usually 'llama2' or 'mistral' for local Ollama
+        // Ideally this should be configurable
+        let model = "llama3";
+
+        let payload = json!({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are Synoid, an autonomous intelligent video production kernel. Your goal is to assist the user with video editing, analysis, and creative direction. Be concise and technical."},
+                {"role": "user", "content": request}
+            ],
+            "stream": false
+        });
+
+        match client.post(&url)
+            .json(&payload)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    match response.json::<serde_json::Value>().await {
+                        Ok(json_body) => {
+                            // Parse OpenAI-compatible format
+                            if let Some(content) = json_body["choices"][0]["message"]["content"].as_str() {
+                                Ok(content.to_string())
+                            } else {
+                                Err(format!("Unexpected API response structure: {}", json_body))
+                            }
+                        },
+                        Err(e) => Err(format!("Failed to parse JSON response: {}", e))
+                    }
+                } else {
+                    Err(format!("API returned error status: {}", response.status()))
+                }
+            },
+            Err(e) => {
+                error!("LLM Connection Error: {}", e);
+                Err(format!("Could not connect to Brain at {}. Is the LLM server running?", url))
+            }
+        }
     }
 }
 
