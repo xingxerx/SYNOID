@@ -107,31 +107,8 @@ pub async fn download_youtube(
     // Create output directory if it doesn't exist
     tokio::fs::create_dir_all(output_dir).await?;
 
-    // Construct base arguments
-    let mut args = vec![
-        "-m",
-        "yt_dlp",
-        "--print",
-        "%(title)s",
-        "--print",
-        "%(duration)s",
-        "--print",
-        "%(width)s",
-        "--print",
-        "%(height)s",
-        "--no-download",
-    ];
-
-    // Add authentication if provided
-    if let Some(browser) = auth_browser {
-        args.push("--cookies-from-browser");
-        args.push(browser);
-    }
-
-    // [SENTINEL] Fix Argument Injection:
-    // Ensure URL is treated as positional argument, not a flag
-    args.push("--");
-    args.push(url);
+    // Construct info arguments using helper
+    let args = build_ytdlp_info_args(url, auth_browser)?;
 
     // First, get video info without downloading
     let info_output = Command::new("python").args(&args).output().await?;
@@ -166,24 +143,8 @@ pub async fn download_youtube(
     let output_path = output_dir.join(&filename);
     let output_template = output_path.to_string_lossy().to_string();
 
-    // Now download
-    let mut download_args = vec![
-        "-m",
-        "yt_dlp",
-        "-f",
-        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-        "-o",
-        &output_template,
-    ];
-
-    if let Some(browser) = auth_browser {
-        download_args.push("--cookies-from-browser");
-        download_args.push(browser);
-    }
-
-    // [SENTINEL] Fix Argument Injection:
-    download_args.push("--");
-    download_args.push(url);
+    // Construct download arguments using helper
+    let download_args = build_ytdlp_download_args(url, &output_template, auth_browser)?;
 
     info!("[SOURCE] Starting download to: {}", output_template);
     let status = Command::new("python")
@@ -275,11 +236,7 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
         ])
         .output()
         .await?;
-<<<<<<< HEAD
-        
-=======
 
->>>>>>> pr-12
     let output_str = String::from_utf8_lossy(&output.stdout);
     let duration: f64 = output_str.trim().parse().map_err(|_| {
         format!(

@@ -33,12 +33,7 @@ pub async fn trim_video(
         .arg("-i")
         .arg(input)
         .args([
-<<<<<<< HEAD
-=======
-            "-y",
-            "-i",
-            input.to_str().unwrap(),
->>>>>>> pr-12
+
             "-ss",
             &start_time.to_string(),
             "-t",
@@ -76,12 +71,7 @@ pub async fn apply_anamorphic_mask(
         .arg("-i")
         .arg(input)
         .args([
-<<<<<<< HEAD
-=======
-            "-y",
-            "-i",
-            input.to_str().unwrap(),
->>>>>>> pr-12
+
             "-vf",
             "crop=in_w:in_w/2.39",
             "-c:a",
@@ -91,6 +81,7 @@ pub async fn apply_anamorphic_mask(
         .status()
         .await?;
     if !status.success() { return Err("Anamorphic mask failed".into()); }
+    Ok(())
 }
 
 /// Compress video to target file size (in MB)

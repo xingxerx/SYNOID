@@ -13,7 +13,7 @@ pub mod motor_cortex;
 pub mod multi_agent;
 pub mod production_tools;
 pub mod reasoning;
-pub mod muxer;
+
 pub mod research_tools;
 pub mod smart_editor;
 pub mod source_tools;
