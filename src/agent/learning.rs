@@ -62,13 +62,16 @@ impl LearningKernel {
     /// Retrieve the best known editing pattern for a user intent
     pub fn recall_pattern(&self, intent: &str) -> EditingPattern {
         // Simple keyword matching for now
-        let key = if intent.to_lowercase().contains("hype") || intent.to_lowercase().contains("fast") {
-            "fast_paced"
-        } else if intent.to_lowercase().contains("cinematic") || intent.to_lowercase().contains("slow") {
-            "cinematic"
-        } else {
-            "general"
-        };
+        let key =
+            if intent.to_lowercase().contains("hype") || intent.to_lowercase().contains("fast") {
+                "fast_paced"
+            } else if intent.to_lowercase().contains("cinematic")
+                || intent.to_lowercase().contains("slow")
+            {
+                "cinematic"
+            } else {
+                "general"
+            };
 
         if let Some(pattern) = self.patterns.get(key) {
             info!("[KERNEL] 🧠 Recalled pattern for '{}': {:?}", key, pattern);

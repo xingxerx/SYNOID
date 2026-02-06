@@ -2,26 +2,30 @@
 // SYNOID Vector Engine
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
+use rayon::prelude::*;
+use resvg::tiny_skia;
+use resvg::usvg;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::fs;
-use tracing::{info, error};
-use rayon::prelude::*;
-use resvg::usvg;
-use resvg::tiny_skia;
-
+use tracing::{error, info};
 
 /// Upscale video by converting to Vector and re-rendering at higher resolution
 pub async fn upscale_video(
     input: &Path,
     scale_factor: f64,
-    output: &Path
+    output: &Path,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    info!("[UPSCALE] Starting Infinite Zoom (Scale: {}x) on {:?}", scale_factor, input);
+    info!(
+        "[UPSCALE] Starting Infinite Zoom (Scale: {}x) on {:?}",
+        scale_factor, input
+    );
 
     // 1. Setup Directories
     let work_dir = input.parent().unwrap().join("synoid_upscale_work");
-    if work_dir.exists() { fs::remove_dir_all(&work_dir)?; }
+    if work_dir.exists() {
+        fs::remove_dir_all(&work_dir)?;
+    }
     fs::create_dir_all(&work_dir)?;
 
     let frames_src = work_dir.join("src_frames");
@@ -36,13 +40,17 @@ pub async fn upscale_video(
     info!("[UPSCALE] Extracting source frames...");
     let status = Command::new("ffmpeg")
         .args([
-            "-i", input.to_str().unwrap(),
-            "-vf", "fps=12", // Lower FPS for "stylized" look
-            frames_src.join("frame_%04d.png").to_str().unwrap()
+            "-i",
+            input.to_str().unwrap(),
+            "-vf",
+            "fps=12", // Lower FPS for "stylized" look
+            frames_src.join("frame_%04d.png").to_str().unwrap(),
         ])
         .output()?;
-        
-    if !status.status.success() { return Err("FFmpeg extraction failed".into()); }
+
+    if !status.status.success() {
+        return Err("FFmpeg extraction failed".into());
+    }
 
     // 3. Resolution Safety Check
     // Calculate theoretical output size based on first frame
@@ -52,7 +60,10 @@ pub async fn upscale_video(
             let target_w = (orig_w as f64 * scale_factor) as u32;
             let target_h = (orig_h as f64 * scale_factor) as u32;
 
-            info!("[UPSCALE] Original: {}x{}, Target: {}x{}", orig_w, orig_h, target_w, target_h);
+            info!(
+                "[UPSCALE] Original: {}x{}, Target: {}x{}",
+                orig_w, orig_h, target_w, target_h
+            );
 
             if target_w > 16384 || target_h > 16384 {
                 return Err(format!(
@@ -64,12 +75,22 @@ pub async fn upscale_video(
     }
 
     // 4. Vectorize & Render High-Res (Parallel)
-    let paths: Vec<PathBuf> = fs::read_dir(&frames_src)?.filter_map(|e| e.ok()).map(|e| e.path()).collect();
-    info!("[UPSCALE] Processing {} frames (Vectorize -> Render {}x)...", paths.len(), scale_factor);
+    let paths: Vec<PathBuf> = fs::read_dir(&frames_src)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .collect();
+    info!(
+        "[UPSCALE] Processing {} frames (Vectorize -> Render {}x)...",
+        paths.len(),
+        scale_factor
+    );
 
     // Memory Guard: Processing in chunks
     let num_cpus = num_cpus::get();
-    info!("[UPSCALE] Memory Guard: Processing in chunks of {}", num_cpus);
+    info!(
+        "[UPSCALE] Memory Guard: Processing in chunks of {}",
+        num_cpus
+    );
 
     for chunk in paths.chunks(num_cpus) {
         chunk.par_iter().for_each(|img_path| {
@@ -88,7 +109,7 @@ pub async fn upscale_video(
                 splice_threshold: 45,
                 ..Default::default()
             };
-            
+
             if let Ok(_) = vtracer::convert_image_to_svg(img_path, &svg_path, config) {
                 // B. Render (SVG -> High-Res Raster)
                 if let Ok(svg_data) = fs::read(&svg_path) {
@@ -97,9 +118,12 @@ pub async fn upscale_video(
                         let size = tree.size.to_screen_size();
                         let width = (size.width() as f64 * scale_factor) as u32;
                         let height = (size.height() as f64 * scale_factor) as u32;
-                        
+
                         if let Some(mut pixmap) = tiny_skia::Pixmap::new(width, height) {
-                            let transform = tiny_skia::Transform::from_scale(scale_factor as f32, scale_factor as f32);
+                            let transform = tiny_skia::Transform::from_scale(
+                                scale_factor as f32,
+                                scale_factor as f32,
+                            );
                             resvg::render(&tree, usvg::FitTo::Original, transform, pixmap.as_mut());
                             pixmap.save_png(out_png).unwrap();
                         }
@@ -113,12 +137,16 @@ pub async fn upscale_video(
     info!("[UPSCALE] Encoding high-resolution video...");
     let status_enc = Command::new("ffmpeg")
         .args([
-            "-framerate", "12",
-            "-i", frames_out.join("frame_%04d.png").to_str().unwrap(),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
+            "-framerate",
+            "12",
+            "-i",
+            frames_out.join("frame_%04d.png").to_str().unwrap(),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
             "-y",
-            output.to_str().unwrap()
+            output.to_str().unwrap(),
         ])
         .output()?;
 
@@ -135,7 +163,7 @@ pub async fn upscale_video(
 pub async fn upscale_video_cuda(
     _input: &Path,
     _scale_factor: f64,
-    _output: &Path
+    _output: &Path,
 ) -> Result<String, Box<dyn std::error::Error>> {
     // CUDA 13.1 is not yet supported by cudarc crate
     Err("CUDA acceleration not available: CUDA 13.1 not supported. Use CPU upscale instead.".into())
@@ -185,7 +213,7 @@ impl Default for VectorConfig {
 pub async fn vectorize_video(
     input: &Path,
     output_dir: &Path,
-    config: VectorConfig
+    config: VectorConfig,
 ) -> Result<String, Box<dyn std::error::Error>> {
     info!("[VECTOR] Starting vectorization engine on {:?}", input);
 
@@ -200,12 +228,14 @@ pub async fn vectorize_video(
     info!("[VECTOR] Extracting frames...");
     let status = Command::new("ffmpeg")
         .args([
-            "-i", input.to_str().unwrap(),
-            "-vf", "fps=10",
-            frames_dir.join("frame_%04d.png").to_str().unwrap()
+            "-i",
+            input.to_str().unwrap(),
+            "-vf",
+            "fps=10",
+            frames_dir.join("frame_%04d.png").to_str().unwrap(),
         ])
         .output()?;
-        
+
     if !status.status.success() {
         return Err("FFmpeg frame extraction failed".into());
     }
@@ -234,9 +264,9 @@ pub async fn vectorize_video(
     paths.par_iter().for_each(|frame_path| {
         let stem = frame_path.file_stem().unwrap().to_string_lossy();
         let out_svg = output_dir.join(format!("{}.svg", stem));
-        
+
         match vtracer::convert_image_to_svg(frame_path, &out_svg, vt_config.clone()) {
-            Ok(_) => {}, // Silent success for speed
+            Ok(_) => {} // Silent success for speed
             Err(e) => error!("Failed frame {}: {}", stem, e),
         }
     });
@@ -244,7 +274,10 @@ pub async fn vectorize_video(
     // 3. Cleanup Source Frames
     fs::remove_dir_all(&frames_dir)?;
 
-    Ok(format!("Vectorization complete. SVGs saved in {:?}", output_dir))
+    Ok(format!(
+        "Vectorization complete. SVGs saved in {:?}",
+        output_dir
+    ))
 }
 
 // Helpers to map string configs to vtracer enums
