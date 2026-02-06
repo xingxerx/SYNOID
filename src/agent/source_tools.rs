@@ -8,11 +8,7 @@
 // 4. YouTube Search via ytsearch
 
 use std::path::{Path, PathBuf};
-<<<<<<< HEAD
 use std::process::Command;
-=======
-use tokio::process::Command;
->>>>>>> pr-9
 use tracing::info;
 
 #[allow(dead_code)]
@@ -78,11 +74,7 @@ pub async fn download_youtube(
     args.push(url);
 
     // First, get video info without downloading
-<<<<<<< HEAD
     let info_output = Command::new("python").args(&args).output()?;
-=======
-    let info_output = Command::new("python").args(&args).output().await?;
->>>>>>> pr-9
 
     if !info_output.status.success() {
         return Err(format!(
@@ -129,7 +121,6 @@ pub async fn download_youtube(
         download_args.push("--cookies-from-browser");
         download_args.push(browser);
     }
-<<<<<<< HEAD
     
     // [SENTINEL] Fix Argument Injection:
     download_args.push("--");
@@ -137,13 +128,6 @@ pub async fn download_youtube(
 
     info!("[SOURCE] Starting download to: {}", output_template);
     let status = Command::new("python").args(&download_args).status()?;
-=======
-
-    download_args.push(url);
-
-    info!("[SOURCE] Starting download to: {}", output_template);
-    let status = Command::new("python").args(&download_args).status().await?;
->>>>>>> pr-9
 
     if !status.success() {
         return Err("Download process failed".into());
@@ -219,7 +203,6 @@ pub async fn search_youtube(
 pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
     let output = Command::new("ffprobe")
         .args([
-<<<<<<< HEAD
             "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
@@ -227,18 +210,6 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
         ])
         .arg(path)
         .output()?;
-=======
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            path.to_str().unwrap(),
-        ])
-        .output()
-        .await?;
->>>>>>> pr-9
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let duration: f64 = output_str.trim().parse()?;
