@@ -94,7 +94,8 @@ impl IntegrityGuard {
     fn hash_file(&self, path: &Path) -> std::io::Result<String> {
         let mut file = File::open(path)?;
         let mut hasher = Sha256::new();
-        let mut buffer = [0; 1024];
+        // Use 64KB buffer for optimal I/O performance
+        let mut buffer = [0; 65536];
 
         loop {
             let count = file.read(&mut buffer)?;
