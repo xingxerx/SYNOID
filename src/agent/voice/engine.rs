@@ -56,8 +56,23 @@ impl VoiceEngine {
         Ok(model_path)
     }
 
+    /// Validate profile name to prevent path traversal
+    fn validate_profile_name(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        if name.is_empty() {
+            return Err("Profile name cannot be empty".into());
+        }
+
+        // Allow alphanumeric, underscore, hyphen, and space
+        if !name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == ' ') {
+            return Err("Profile name contains invalid characters. Only alphanumeric, underscore, hyphen, and space are allowed.".into());
+        }
+
+        Ok(())
+    }
+
     /// Create speaker profile from audio file
     pub fn create_profile(&self, name: &str, audio_path: &Path) -> Result<SpeakerProfile, Box<dyn std::error::Error>> {
+        Self::validate_profile_name(name)?;
         info!("[VOICE] Creating profile '{}' from {:?}", name, audio_path);
         
         // For now, we'll create a placeholder embedding
@@ -83,6 +98,7 @@ impl VoiceEngine {
 
     /// Load existing speaker profile
     pub fn load_profile(&self, name: &str) -> Result<SpeakerProfile, Box<dyn std::error::Error>> {
+        Self::validate_profile_name(name)?;
         let profile_path = self.profiles_dir.join(format!("{}.json", name));
         let json = fs::read_to_string(&profile_path)?;
         let profile: SpeakerProfile = serde_json::from_str(&json)?;
@@ -148,5 +164,105 @@ impl VoiceEngine {
         let profile = self.load_profile(profile_name)?;
         info!("[VOICE] Synthesizing as '{}': \"{}\"", profile.name, text);
         Err("Voice cloning model not yet loaded".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn create_dummy_wav(path: &Path) {
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 44100,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(path, spec).unwrap();
+        for _ in 0..100 {
+            writer.write_sample(0).unwrap();
+        }
+        writer.finalize().unwrap();
+    }
+
+    #[test]
+    fn test_path_traversal_exploit() {
+        // Setup paths
+        let base_dir = std::env::temp_dir().join("synoid_test_exploit");
+        // Ensure we start clean
+        if base_dir.exists() {
+            let _ = fs::remove_dir_all(&base_dir);
+        }
+
+        let profiles_dir = base_dir.join("profiles");
+        let outside_dir = base_dir.join("outside");
+
+        fs::create_dir_all(&profiles_dir).unwrap();
+        fs::create_dir_all(&outside_dir).unwrap();
+
+        let wav_path = base_dir.join("test.wav");
+        create_dummy_wav(&wav_path);
+
+        // Manually construct engine
+        let engine = VoiceEngine {
+            device: Device::Cpu,
+            model_dir: base_dir.join("models"),
+            profiles_dir: profiles_dir.clone(),
+        };
+
+        // Attempt exploit: Write into 'outside' directory
+        let exploit_name = "../outside/hacked";
+
+        // This call should now fail
+        let result = engine.create_profile(exploit_name, &wav_path);
+
+        // Check if the file was written to the outside directory
+        let hacked_path = outside_dir.join("hacked.json");
+        let exploited = hacked_path.exists();
+
+        // Clean up
+        let _ = fs::remove_dir_all(&base_dir);
+
+        // Assert that the vulnerability is fixed
+        assert!(result.is_err(), "create_profile should fail for invalid name");
+        assert!(!exploited, "File should not be written to outside directory");
+
+        // Check error message
+        let err = result.err().unwrap();
+        assert!(err.to_string().contains("Profile name contains invalid characters"));
+    }
+
+    #[test]
+    fn test_valid_profile_creation() {
+        // Setup paths
+        let base_dir = std::env::temp_dir().join("synoid_test_valid");
+        if base_dir.exists() {
+            let _ = fs::remove_dir_all(&base_dir);
+        }
+
+        let profiles_dir = base_dir.join("profiles");
+        fs::create_dir_all(&profiles_dir).unwrap();
+
+        let wav_path = base_dir.join("test.wav");
+        create_dummy_wav(&wav_path);
+
+        // Manually construct engine
+        let engine = VoiceEngine {
+            device: Device::Cpu,
+            model_dir: base_dir.join("models"),
+            profiles_dir: profiles_dir.clone(),
+        };
+
+        let valid_name = "test_profile_123";
+        let result = engine.create_profile(valid_name, &wav_path);
+
+        assert!(result.is_ok(), "create_profile should succeed for valid name");
+
+        let profile_path = profiles_dir.join(format!("{}.json", valid_name));
+        assert!(profile_path.exists(), "Profile file should be created");
+
+        // Clean up
+        let _ = fs::remove_dir_all(&base_dir);
     }
 }
