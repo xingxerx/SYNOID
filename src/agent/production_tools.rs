@@ -5,7 +5,7 @@
 // intelligent compression to target file sizes.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use tokio::process::Command;
 use tracing::{info, warn};
 use crate::agent::source_tools::get_video_duration;
 
@@ -35,7 +35,8 @@ pub async fn trim_video(
             "-avoid_negative_ts", "make_zero",
             output.to_str().unwrap(),
         ])
-        .status()?;
+        .status()
+        .await?;
 
     if !status.success() {
         return Err("FFmpeg trim failed".into());
@@ -60,7 +61,8 @@ pub async fn apply_anamorphic_mask(input: &Path, output: &Path) -> Result<(), Bo
             "-c:a", "copy",
             output.to_str().unwrap(),
         ])
-        .status()?;
+        .status()
+        .await?;
     if !status.success() { return Err("Anamorphic mask failed".into()); }
     Ok(())
 }
@@ -74,7 +76,7 @@ pub async fn compress_video(
 ) -> Result<ProductionResult, Box<dyn std::error::Error>> {
     info!("[PROD] Compressing video: {:?} -> {:.2} MB", input, target_size_mb);
 
-    let duration = get_video_duration(input)?;
+    let duration = get_video_duration(input).await?;
     
     // Calculate target bitrate
     // Bitrate (bits/s) = (Target Size (MB) * 8192) / Duration (s)
@@ -106,7 +108,8 @@ pub async fn compress_video(
             "-b:a", &format!("{:.0}k", audio_bitrate_kbps),
             output.to_str().unwrap(),
         ])
-        .status()?;
+        .status()
+        .await?;
 
     if !status.success() {
         return Err("FFmpeg compression failed".into());
@@ -146,7 +149,8 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
             "-ar", "48000", // Force 48kHz (prevent 192kHz upsampling)
             output.to_str().unwrap(),
         ])
-        .status()?;
+        .status()
+        .await?;
 
     if !status.success() {
         return Err("Audio enhancement failed".into());

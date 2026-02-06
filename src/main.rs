@@ -235,7 +235,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Youtube { url, intent, output, chunk_minutes: _, login } => {
             let output_dir = std::path::Path::new("downloads");
 
-            if !agent::source_tools::check_ytdlp() {
+            if !agent::source_tools::check_ytdlp().await {
                 error!("yt-dlp not found! Please install it via pip.");
                 return Ok(());
             }

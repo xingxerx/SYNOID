@@ -3,7 +3,7 @@
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use tokio::process::Command;
 use std::fs;
 use tracing::{info, error};
 use rayon::prelude::*;
@@ -40,7 +40,8 @@ pub async fn upscale_video(
             "-vf", "fps=12", // Lower FPS for "stylized" look
             frames_src.join("frame_%04d.png").to_str().unwrap()
         ])
-        .output()?;
+        .output()
+        .await?;
         
     if !status.status.success() { return Err("FFmpeg extraction failed".into()); }
 
@@ -120,7 +121,8 @@ pub async fn upscale_video(
             "-y",
             output.to_str().unwrap()
         ])
-        .output()?;
+        .output()
+        .await?;
 
     // Cleanup
     fs::remove_dir_all(work_dir)?;
@@ -204,7 +206,8 @@ pub async fn vectorize_video(
             "-vf", "fps=10",
             frames_dir.join("frame_%04d.png").to_str().unwrap()
         ])
-        .output()?;
+        .output()
+        .await?;
         
     if !status.status.success() {
         return Err("FFmpeg frame extraction failed".into());

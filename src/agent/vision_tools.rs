@@ -1,9 +1,8 @@
-#![allow(dead_code, unused_variables)]
 // SYNOID Vision Tools
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use std::path::Path;
-use std::process::Command;
+use tokio::process::Command;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -28,14 +27,15 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
             "-f", "lavfi",
             &format!("movie='{}',select='gt(scene,0.3)'", path.to_str().unwrap().replace("\\", "/")),
         ])
-        .output();
+        .output()
+        .await;
 
     // Mocking return for stability if ffmpeg call gets complex parsing
     // In a real restore we'd parse the output. For now, let's return a sensible mock
     // derived from file duration or actual silence detection if possible
 
     // Let's at least get the duration to make up reasonable scenes
-    let duration = crate::agent::source_tools::get_video_duration(path).unwrap_or(10.0);
+    let duration = crate::agent::source_tools::get_video_duration(path).await.unwrap_or(10.0);
 
     let mut scenes = Vec::new();
     let steps = (duration / 5.0) as usize; // A scene every 5 seconds roughly

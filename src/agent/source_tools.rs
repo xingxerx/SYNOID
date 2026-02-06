@@ -7,7 +7,7 @@
 // 3. Directory scanning for video files
 // 4. YouTube Search via ytsearch
 
-use std::process::Command;
+use tokio::process::Command;
 use std::path::{Path, PathBuf};
 use tracing::info;
 
@@ -24,10 +24,11 @@ pub struct SourceInfo {
 }
 
 /// Check if yt-dlp is installed and accessible
-pub fn check_ytdlp() -> bool {
+pub async fn check_ytdlp() -> bool {
     Command::new("python")
         .args(["-m", "yt_dlp", "--version"])
         .output()
+        .await
         .map(|o| o.status.success())
         .unwrap_or(false)
 }
@@ -41,6 +42,8 @@ pub async fn download_youtube(
     info!("[SOURCE] Downloading from YouTube: {} (Auth: {:?})", url, auth_browser);
     
     // Create output directory if it doesn't exist
+    // Note: std::fs::create_dir_all is blocking, but typically fast enough for this context.
+    // Ideally use tokio::fs::create_dir_all, but focusing on Command for now.
     std::fs::create_dir_all(output_dir)?;
     
     // Construct base arguments
@@ -64,7 +67,8 @@ pub async fn download_youtube(
     // First, get video info without downloading
     let info_output = Command::new("python")
         .args(&args)
-        .output()?;
+        .output()
+        .await?;
         
     if !info_output.status.success() {
         return Err(format!("yt-dlp info failed: {}", String::from_utf8_lossy(&info_output.stderr)).into());
@@ -103,7 +107,8 @@ pub async fn download_youtube(
     info!("[SOURCE] Starting download to: {}", output_template);
     let status = Command::new("python")
         .args(&download_args)
-        .status()?;
+        .status()
+        .await?;
 
     if !status.success() {
         return Err("Download process failed".into());
@@ -135,7 +140,8 @@ pub async fn search_youtube(
             "--no-download",
             &search_query,
         ])
-        .output()?;
+        .output()
+        .await?;
 
     if !output.status.success() {
         return Err(format!("Search failed: {}", String::from_utf8_lossy(&output.stderr)).into());
@@ -172,7 +178,7 @@ pub async fn search_youtube(
 }
 
 /// Get video duration using ffprobe
-pub fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
+pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
     let output = Command::new("ffprobe")
         .args([
             "-v", "error",
@@ -180,7 +186,8 @@ pub fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>
             "-of", "default=noprint_wrappers=1:nokey=1",
             path.to_str().unwrap()
         ])
-        .output()?;
+        .output()
+        .await?;
         
     let output_str = String::from_utf8_lossy(&output.stdout);
     let duration: f64 = output_str.trim().parse()?;
