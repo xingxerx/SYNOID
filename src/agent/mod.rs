@@ -20,3 +20,4 @@ pub mod voice;
 pub mod vector_video;
 pub mod smart_editor;
 pub mod reasoning;
+pub mod muxer;
