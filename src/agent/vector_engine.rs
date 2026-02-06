@@ -84,6 +84,45 @@ pub async fn upscale_video(
         scale_factor
     );
 
+    // Offload CPU-intensive task to blocking thread pool
+    let frames_svg_clone = frames_svg.clone();
+    let frames_out_clone = frames_out.clone();
+    tokio::task::spawn_blocking(move || {
+        process_frames_core(paths, frames_svg_clone, frames_out_clone, scale_factor);
+    }).await?;
+
+    // 5. Encode High-Res Video
+    info!("[UPSCALE] Encoding high-resolution video...");
+    let status_enc = Command::new("ffmpeg")
+        .args([
+            "-framerate", "12",
+            "-i", frames_out.join("frame_%04d.png").to_str().unwrap(),
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-y",
+            output.to_str().unwrap()
+        ])
+        .output()
+        .await?;
+
+    // Cleanup
+    fs::remove_dir_all(work_dir)?;
+
+    if status_enc.status.success() {
+        Ok(format!("Upscaled video saved to {:?}", output))
+    } else {
+        Err("FFmpeg encoding failed".into())
+    }
+}
+
+/// Core logic for vectorizing and rendering frames.
+/// Extracted to allow offloading to blocking thread pool.
+fn process_frames_core(
+    paths: Vec<PathBuf>,
+    frames_svg: PathBuf,
+    frames_out: PathBuf,
+    scale_factor: f64
+) {
     // Memory Guard: Processing in chunks
     let num_cpus = num_cpus::get();
     info!(
@@ -132,34 +171,6 @@ pub async fn upscale_video(
         });
     }
 
-    // 5. Encode High-Res Video
-    info!("[UPSCALE] Encoding high-resolution video...");
-    let status_enc = Command::new("ffmpeg")
-        .args([
-            "-framerate",
-            "12",
-        ])
-        .arg("-i")
-        .arg(frames_out.join("frame_%04d.png"))
-        .args([
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-y",
-        ])
-        .arg(output.to_str().unwrap())
-        .output()
-        .await?;
-
-    // Cleanup
-    fs::remove_dir_all(work_dir)?;
-
-    if status_enc.status.success() {
-        Ok(format!("Upscaled video saved to {:?}", output))
-    } else {
-        Err("FFmpeg encoding failed".into())
-    }
 }
 
 pub async fn upscale_video_cuda(
@@ -293,5 +304,49 @@ fn parse_hierarchical(s: &str) -> vtracer::Hierarchical {
     match s {
         "cutout" => vtracer::Hierarchical::Cutout,
         _ => vtracer::Hierarchical::Stacked,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_process_frames_core() {
+        // Setup temp dir
+        let temp_dir = std::env::temp_dir().join("synoid_test_upscale");
+        if temp_dir.exists() {
+            fs::remove_dir_all(&temp_dir).unwrap();
+        }
+        let src_dir = temp_dir.join("src");
+        let svg_dir = temp_dir.join("svg");
+        let out_dir = temp_dir.join("out");
+
+        fs::create_dir_all(&src_dir).unwrap();
+        fs::create_dir_all(&svg_dir).unwrap();
+        fs::create_dir_all(&out_dir).unwrap();
+
+        // Create dummy image (100x100 red png)
+        let img_path = src_dir.join("frame_0001.png");
+        let mut img = tiny_skia::Pixmap::new(100, 100).unwrap();
+        img.fill(tiny_skia::Color::from_rgba8(255, 0, 0, 255));
+        img.save_png(&img_path).unwrap();
+
+        let paths = vec![img_path];
+
+        // Run core logic
+        process_frames_core(paths, svg_dir.clone(), out_dir.clone(), 2.0);
+
+        // Verify output
+        let out_path = out_dir.join("frame_0001.png");
+        assert!(out_path.exists(), "Output PNG should exist");
+
+        // Check dimensions (200x200)
+        let dims = image::image_dimensions(&out_path).unwrap();
+        assert_eq!(dims, (200, 200));
+
+        // Cleanup
+        fs::remove_dir_all(&temp_dir).unwrap();
     }
 }
