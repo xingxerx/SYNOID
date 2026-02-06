@@ -277,14 +277,21 @@ pub async fn smart_edit(
     // Transcribe
     log("[SMART] 📝 Transcribing audio for semantic understanding...");
     let transcript = if use_enhanced_audio {
-        let engine = TranscriptionEngine::new();
-        match engine.transcribe(&enhanced_audio_path) {
-            Ok(t) => {
-                log(&format!("[SMART] Transcription complete: {} segments", t.len()));
-                Some(t)
+        match TranscriptionEngine::new() {
+            Ok(engine) => {
+                match engine.transcribe(&enhanced_audio_path) {
+                    Ok(t) => {
+                        log(&format!("[SMART] Transcription complete: {} segments", t.len()));
+                        Some(t)
+                    },
+                    Err(e) => {
+                        warn!("[SMART] Transcription failed: {}", e);
+                        None
+                    }
+                }
             },
             Err(e) => {
-                warn!("[SMART] Transcription failed: {}", e);
+                warn!("[SMART] Failed to initialize transcription engine: {}", e);
                 None
             }
         }
