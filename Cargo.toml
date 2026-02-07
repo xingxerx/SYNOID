@@ -25,12 +25,13 @@ sysinfo = "0.29" # System monitoring (Processes/RAM)
 sha2 = "0.10"    # File integrity hashing
 walkdir = "2.3"  # Efficient directory traversal
 num_cpus = "1.0"
-# cudarc = "0.9" # Disabled: CUDA 13.1 not yet supported by cudarc
 
-# Voice Cloning & Neural TTS (GPU-Accelerated)
-rand = "0.8"      # Pin to 0.8 for candle compatibility
-candle-core = { version = "0.8", features = ["cuda"] }  # GPU-accelerated ML
-candle-nn = { version = "0.8", features = ["cuda"] }    # GPU neural networks
+# Voice Cloning & Neural TTS
+# Note: RTX 50 series (sm_120) not yet supported by candle/PyTorch CUDA
+# Using CPU mode with FFmpeg NVENC for video encoding acceleration
+rand = "0.8"
+candle-core = "0.8"
+candle-nn = "0.8"
 candle-transformers = "0.8"
 tokenizers = "0.15"
 hf-hub = "0.3"    # HuggingFace model downloads
@@ -41,9 +42,10 @@ dirs = "5.0"      # Platform cache directories
 url = "2.5.8"
 
 # GPU Acceleration Backend
-wgpu = "24.0"     # Cross-platform GPU compute (Vulkan/DX12/Metal)
-cudarc = "0.16"   # CUDA 13.x bindings for direct GPU control
+# FFmpeg NVENC handles hardware encoding (no Rust CUDA deps needed)
+# wgpu for future compute shaders (Vulkan/DX12/Metal)
+wgpu = "24.0"
 
 # Vector Animation Engine (SVG Video)
 # Pure SMIL-based animated SVG (no external animation libs needed)
-# rive-rs = { git = "https://github.com/rive-app/rive-rs" }  # Optional: GPU vector renderer
+

@@ -56,7 +56,6 @@ impl PipelineStage {
 }
 
 /// Configuration for pipeline execution
-#[derive(Debug, Clone)]
 pub struct PipelineConfig {
     /// Stages to execute
     pub stages: Vec<PipelineStage>,
@@ -173,7 +172,7 @@ impl UnifiedPipeline {
         self.report_progress(config, "Transcribing audio...");
         
         let engine = TranscriptionEngine::new()?;
-        let segments = engine.transcribe(input)?;
+        let segments = engine.transcribe(input).await?;
         
         self.report_progress(config, &format!("Transcribed {} segments", segments.len()));
         Ok(())
@@ -195,7 +194,7 @@ impl UnifiedPipeline {
             Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send>
         });
 
-        smart_editor::smart_edit(input, intent, output, callback)?;
+        smart_editor::smart_edit(input, intent, output, callback).await?;
         
         Ok(output.to_path_buf())
     }
@@ -303,7 +302,7 @@ impl UnifiedPipeline {
         
         // Configure encoder based on backend
         match &self.gpu.backend {
-            GpuBackend::Cuda { .. } => {
+            GpuBackend::NvencGpu { .. } => {
                 cmd.args([
                     "-c:v", "h264_nvenc",
                     "-preset", "p4",        // Quality/speed balance
