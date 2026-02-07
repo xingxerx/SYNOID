@@ -42,8 +42,11 @@ dirs = "5.0"      # Platform cache directories
 url = "2.5.8"
 
 # GPU Acceleration Backend
-# FFmpeg NVENC handles hardware encoding (no Rust CUDA deps needed)
-# wgpu for future compute shaders (Vulkan/DX12/Metal)
+# cudarc for native CUDA compute 
+cudarc = "0.19"       # Latest CUDA bindings
+pollster = "0.4"      # Blocking async for wgpu
+bytemuck = { version = "1.14", features = ["derive"] }
+# wgpu for compute shaders (Vulkan/DX12/Metal fallback)
 wgpu = "24.0"
 
 # Vector Animation Engine (SVG Video)

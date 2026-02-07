@@ -1,18 +1,19 @@
 // SYNOID GPU Backend - Unified GPU Acceleration Layer
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 //
-// Provides GPU detection via FFmpeg NVENC and wgpu
-// Note: RTX 50 series (sm_120) not yet supported by Rust CUDA libs,
-// but FFmpeg NVENC works perfectly for hardware encoding.
+// Provides GPU detection via cudarc (CUDA 13.0), FFmpeg NVENC, and wgpu
+// CUDA 13.0 supports RTX 50 series (sm_120)
 
 use std::process::Command;
 use std::sync::Arc;
 use tracing::{info, warn};
 
-/// GPU Backend Selection
+/// GPU Backend Selection (priority: CUDA → NVENC → wgpu → CPU)
 #[derive(Debug, Clone)]
 pub enum GpuBackend {
-    /// NVIDIA GPU with NVENC (detected via FFmpeg)
+    /// Native CUDA via cudarc (compute + encoding)
+    Cuda { device_name: String, compute_capability: (u32, u32), memory_mb: u64 },
+    /// NVIDIA GPU with NVENC (encoding only, no compute)
     NvencGpu { name: String, driver_version: String },
     /// wgpu (cross-platform: Vulkan/DX12/Metal)
     Wgpu { adapter_name: String },
@@ -23,6 +24,9 @@ pub enum GpuBackend {
 impl std::fmt::Display for GpuBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            GpuBackend::Cuda { device_name, compute_capability, memory_mb } => {
+                write!(f, "CUDA: {} (sm_{}{}, {} MB)", device_name, compute_capability.0, compute_capability.1, memory_mb)
+            }
             GpuBackend::NvencGpu { name, driver_version } => {
                 write!(f, "NVENC: {} (Driver {})", name, driver_version)
             }
@@ -32,9 +36,60 @@ impl std::fmt::Display for GpuBackend {
     }
 }
 
+/// CUDA Context for native GPU compute (via cudarc)
+#[derive(Clone)]
+pub struct CudaContext {
+    pub device: Arc<cudarc::driver::CudaDevice>,
+}
+
+impl CudaContext {
+    /// Try to initialize CUDA with cudarc
+    pub fn try_init() -> Option<(Self, GpuBackend)> {
+        // Initialize CUDA driver
+        cudarc::driver::result::init().ok()?;
+        
+        // Get device count
+        let device_count = cudarc::driver::result::device::get_count().ok()?;
+        if device_count == 0 {
+            return None;
+        }
+        
+        // Get first device
+        let device = cudarc::driver::CudaDevice::new(0).ok()?;
+        
+        // Get device properties
+        let device_name = cudarc::driver::result::device::get_name(0).unwrap_or_else(|_| "Unknown GPU".to_string());
+        let (major, minor) = cudarc::driver::result::device::get_attribute(
+            cudarc::driver::sys::CUdevice_attribute::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR,
+            0,
+        ).ok().and_then(|maj| {
+            cudarc::driver::result::device::get_attribute(
+                cudarc::driver::sys::CUdevice_attribute::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR,
+                0,
+            ).ok().map(|min| (maj as u32, min as u32))
+        }).unwrap_or((0, 0));
+        
+        // Get total memory
+        let total_mem = device.total_memory().unwrap_or(0) / (1024 * 1024); // Convert to MB
+        
+        info!("[GPU] ✓ CUDA initialized: {} (sm_{}{}, {} MB)", device_name, major, minor, total_mem);
+        
+        Some((
+            CudaContext { device: Arc::new(device) },
+            GpuBackend::Cuda { 
+                device_name, 
+                compute_capability: (major, minor),
+                memory_mb: total_mem as u64,
+            }
+        ))
+    }
+}
+
 /// GPU Context for unified processing
 pub struct GpuContext {
     pub backend: GpuBackend,
+    /// Native CUDA device (if using CUDA backend)
+    pub cuda_ctx: Option<CudaContext>,
     /// wgpu device (if using wgpu backend)
     pub wgpu_device: Option<Arc<wgpu::Device>>,
     pub wgpu_queue: Option<Arc<wgpu::Queue>>,
@@ -42,8 +97,19 @@ pub struct GpuContext {
 
 impl GpuContext {
     /// Detect and initialize the best available GPU backend
+    /// Priority: CUDA (compute+encode) → NVENC (encode) → wgpu → CPU
     pub async fn auto_detect() -> Self {
-        // Try NVIDIA NVENC first (via nvidia-smi)
+        // Try native CUDA first (full GPU compute + encoding)
+        if let Some((cuda_ctx, backend)) = CudaContext::try_init() {
+            return Self {
+                backend,
+                cuda_ctx: Some(cuda_ctx),
+                wgpu_device: None,
+                wgpu_queue: None,
+            };
+        }
+        
+        // Fall back to NVIDIA NVENC (encoding only, via nvidia-smi)
         if let Some(nvenc_ctx) = Self::try_nvenc() {
             return nvenc_ctx;
         }
@@ -58,6 +124,7 @@ impl GpuContext {
         warn!("[GPU] No GPU detected. Falling back to CPU ({} threads)", threads);
         Self {
             backend: GpuBackend::Cpu { threads },
+            cuda_ctx: None,
             wgpu_device: None,
             wgpu_queue: None,
         }
@@ -86,6 +153,7 @@ impl GpuContext {
             
             return Some(Self {
                 backend: GpuBackend::NvencGpu { name, driver_version },
+                cuda_ctx: None,
                 wgpu_device: None,
                 wgpu_queue: None,
             });
@@ -121,6 +189,7 @@ impl GpuContext {
         
         Some(Self {
             backend: GpuBackend::Wgpu { adapter_name },
+            cuda_ctx: None,
             wgpu_device: Some(Arc::new(device)),
             wgpu_queue: Some(Arc::new(queue)),
         })
@@ -131,14 +200,20 @@ impl GpuContext {
         !matches!(self.backend, GpuBackend::Cpu { .. })
     }
 
-    /// Check if NVENC is available
+    /// Check if NVENC is available (includes CUDA backend)
     pub fn has_nvenc(&self) -> bool {
-        matches!(self.backend, GpuBackend::NvencGpu { .. })
+        matches!(self.backend, GpuBackend::Cuda { .. } | GpuBackend::NvencGpu { .. })
+    }
+
+    /// Check if native CUDA compute is available
+    pub fn has_cuda(&self) -> bool {
+        matches!(self.backend, GpuBackend::Cuda { .. })
     }
 
     /// Get the number of parallel workers for this backend
     pub fn parallel_workers(&self) -> usize {
         match &self.backend {
+            GpuBackend::Cuda { .. } => 1,  // GPU handles parallelism internally
             GpuBackend::NvencGpu { .. } => 1,  // GPU handles parallelism internally
             GpuBackend::Wgpu { .. } => 1,  // GPU handles parallelism internally
             GpuBackend::Cpu { threads } => *threads,
@@ -148,6 +223,7 @@ impl GpuContext {
     /// Get FFmpeg encoder for this backend
     pub fn ffmpeg_encoder(&self) -> &'static str {
         match &self.backend {
+            GpuBackend::Cuda { .. } => "h264_nvenc",  // NVIDIA hardware encoder
             GpuBackend::NvencGpu { .. } => "h264_nvenc",  // NVIDIA hardware encoder
             GpuBackend::Wgpu { adapter_name } => {
                 // Check for Intel/AMD GPU encoders
@@ -167,6 +243,7 @@ impl GpuContext {
     /// Get FFmpeg hardware acceleration flag for decoding
     pub fn ffmpeg_hwaccel(&self) -> Option<&'static str> {
         match &self.backend {
+            GpuBackend::Cuda { .. } => Some("cuda"),
             GpuBackend::NvencGpu { .. } => Some("cuda"),
             GpuBackend::Wgpu { adapter_name } => {
                 if adapter_name.to_lowercase().contains("intel") {
