@@ -224,6 +224,13 @@ pub async fn search_youtube(
 
 /// Get video duration using ffprobe
 pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
+    // Ensure path is treated as a file, not a flag (prepend ./ if relative)
+    let safe_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::path::Path::new(".").join(path)
+    };
+
     let output = Command::new("ffprobe")
         .args([
             "-v",
@@ -232,8 +239,8 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
             "format=duration",
             "-of",
             "default=noprint_wrappers=1:nokey=1",
-            path.to_str().unwrap(),
         ])
+        .arg(&safe_path)
         .output()
         .await?;
 

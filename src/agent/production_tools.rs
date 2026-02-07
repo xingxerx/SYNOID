@@ -16,6 +16,15 @@ pub struct ProductionResult {
     pub size_mb: f64,
 }
 
+// Helper to ensure path is treated as file not flag
+fn safe_arg_path(p: &Path) -> PathBuf {
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        std::path::Path::new(".").join(p)
+    }
+}
+
 /// Trim a video to a specific range
 pub async fn trim_video(
     input: &Path,
@@ -28,10 +37,13 @@ pub async fn trim_video(
         input, start_time, duration
     );
 
+    let safe_input = safe_arg_path(input);
+    let safe_output = safe_arg_path(output);
+
     let status = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
-        .arg(input)
+        .arg(&safe_input)
         .args([
 
             "-ss",
@@ -42,8 +54,8 @@ pub async fn trim_video(
             "copy", // Fast stream copy
             "-avoid_negative_ts",
             "make_zero",
-            output.to_str().unwrap(),
         ])
+        .arg(&safe_output)
         .status()
         .await?;
 
@@ -66,18 +78,21 @@ pub async fn apply_anamorphic_mask(
     output: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     info!("[PROD] Applying 2.39:1 Cinematic Mask");
+    let safe_input = safe_arg_path(input);
+    let safe_output = safe_arg_path(output);
+
     let status = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
-        .arg(input)
+        .arg(&safe_input)
         .args([
 
             "-vf",
             "crop=in_w:in_w/2.39",
             "-c:a",
             "copy",
-            output.to_str().unwrap(),
         ])
+        .arg(&safe_output)
         .status()
         .await?;
     if !status.success() { return Err("Anamorphic mask failed".into()); }
@@ -114,10 +129,13 @@ pub async fn compress_video(
     // Single pass CRF (Consistant Rate Factor) capped by maxrate is usually better/faster for modern codecs
     // but 2-pass is standard for strict control is requested.
 
+    let safe_input = safe_arg_path(input);
+    let safe_output = safe_arg_path(output);
+
     let status = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
-        .arg(input)
+        .arg(&safe_input)
         .args([
             "-c:v",
             "libx264",
@@ -133,8 +151,8 @@ pub async fn compress_video(
             "aac",
             "-b:a",
             &format!("{:.0}k", audio_bitrate_kbps),
-            output.to_str().unwrap(),
         ])
+        .arg(&safe_output)
         .status()
         .await?;
 
@@ -164,12 +182,17 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
     // 4. loudnorm: target -16 LUFS (standard podcast/web loudness)
     let filter_complex = "highpass=f=80,lowpass=f=8000,acompressor=ratio=4:attack=200:threshold=-12dB,loudnorm=I=-16:TP=-1.5:LRA=11";
 
+    let safe_input = safe_arg_path(input);
+    let safe_output = safe_arg_path(output);
+
     let status = Command::new("ffmpeg")
         .args([
             "-y",
             "-nostdin",
             "-i",
-            input.to_str().unwrap(),
+        ])
+        .arg(&safe_input)
+        .args([
             "-vn", // Disable video (audio only)
             "-map",
             "0:a:0", // Take first audio track
@@ -179,8 +202,8 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
             "pcm_s16le", // Use PCM for WAV (lossless intermediate)
             "-ar",
             "48000", // Force 48kHz (prevent 192kHz upsampling)
-            output.to_str().unwrap(),
         ])
+        .arg(&safe_output)
         .status()
         .await?;
 
