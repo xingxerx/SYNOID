@@ -7,8 +7,8 @@
 // 3. Directory scanning for video files
 // 4. YouTube Search via ytsearch
 
-use tokio::process::Command;
 use std::path::{Path, PathBuf};
+use tokio::process::Command;
 use tracing::info;
 
 #[allow(dead_code)]
@@ -147,10 +147,7 @@ pub async fn download_youtube(
     let download_args = build_ytdlp_download_args(url, &output_template, auth_browser)?;
 
     info!("[SOURCE] Starting download to: {}", output_template);
-    let status = Command::new("python")
-        .args(&download_args)
-        .status()
-        .await?;
+    let status = Command::new("python").args(&download_args).status().await?;
 
     if !status.success() {
         return Err("Download process failed".into());
@@ -252,7 +249,6 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
 pub fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
     let mut videos = Vec::new();
     let extensions = ["mp4", "mov", "mkv", "avi", "webm"];
-
 
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {

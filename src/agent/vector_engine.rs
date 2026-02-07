@@ -2,13 +2,13 @@
 // SYNOID Vector Engine
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use tokio::process::Command;
-use std::fs;
-use tracing::{info, error};
 use rayon::prelude::*;
-use resvg::usvg;
 use resvg::tiny_skia;
+use resvg::usvg;
+use std::fs;
 use std::path::{Path, PathBuf};
+use tokio::process::Command;
+use tracing::{error, info};
 
 /// Upscale video by converting to Vector and re-rendering at higher resolution
 pub async fn upscale_video(
@@ -47,8 +47,10 @@ pub async fn upscale_video(
         ])
         .output()
         .await?;
-        
-    if !status.status.success() { return Err("FFmpeg extraction failed".into()); }
+
+    if !status.status.success() {
+        return Err("FFmpeg extraction failed".into());
+    }
 
     // 3. Resolution Safety Check
     // Calculate theoretical output size based on first frame
@@ -88,18 +90,23 @@ pub async fn upscale_video(
     let frames_out_clone = frames_out.clone();
     tokio::task::spawn_blocking(move || {
         process_frames_core(paths, frames_svg_clone, frames_out_clone, scale_factor);
-    }).await?;
+    })
+    .await?;
 
     // 5. Encode High-Res Video
     info!("[UPSCALE] Encoding high-resolution video...");
     let status_enc = Command::new("ffmpeg")
         .args([
-            "-framerate", "12",
-            "-i", frames_out.join("frame_%04d.png").to_str().unwrap(),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
+            "-framerate",
+            "12",
+            "-i",
+            frames_out.join("frame_%04d.png").to_str().unwrap(),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
             "-y",
-            output.to_str().unwrap()
+            output.to_str().unwrap(),
         ])
         .output()
         .await?;
@@ -120,7 +127,7 @@ fn process_frames_core(
     paths: Vec<PathBuf>,
     frames_svg: PathBuf,
     frames_out: PathBuf,
-    scale_factor: f64
+    scale_factor: f64,
 ) {
     // Memory Guard: Processing in chunks
     let num_cpus = num_cpus::get();
@@ -169,8 +176,6 @@ fn process_frames_core(
             }
         });
     }
-
-
 }
 
 pub async fn upscale_video_cuda(

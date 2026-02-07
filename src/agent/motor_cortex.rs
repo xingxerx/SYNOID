@@ -2,7 +2,8 @@ use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
 use crate::agent::vision_tools::VisualScene;
 use std::path::Path;
-use tracing::info;
+use tokio::process::Command;
+use tracing::{error, info};
 
 #[allow(dead_code)]
 pub struct MotorCortex {
@@ -36,7 +37,6 @@ impl MotorCortex {
 
         // 1. Rhythmic Assembly
         // Divide video into segments based on avg_shot_length and snap to nearest audio beat
-        let _current_pos = 0.0;
         let mut filters = Vec::new();
 
         if profile.anamorphic {
@@ -47,20 +47,47 @@ impl MotorCortex {
             filters.push(format!("lut3d={}", lut));
         }
 
-        // 2. Build FFmpeg Filtergraph
-        let filter_str = if filters.is_empty() {
+        let filter_arg = if filters.is_empty() {
             String::new()
         } else {
-            format!("-vf \"{}\"", filters.join(","))
+            filters.join(",")
         };
 
-        let cmd = format!(
-            "ffmpeg -i {} {} -c:v libx264 -preset slow -crf 18 -y {}",
-            input.to_str().unwrap(),
-            filter_str,
-            output.to_str().unwrap()
-        );
+        info!("[CORTEX] 🚀 Executing FFmpeg Render...");
 
-        Ok(cmd)
+        let mut cmd = Command::new("ffmpeg");
+        // Use standard flags separate from arguments for security and correctness
+        cmd.arg("-y")
+            .arg("-i")
+            .arg(input)
+            .arg("-c:v")
+            .arg("libx264")
+            .arg("-preset")
+            .arg("medium")
+            .arg("-crf")
+            .arg("23");
+
+        if !filters.is_empty() {
+            cmd.arg("-vf").arg(&filter_arg);
+        }
+
+        cmd.arg(output);
+
+        // STREAMING OUTPUT
+        // We spawn the child process which inherits stdout/stderr by default in tokio::process::Command unless piped.
+        // Wait, tokio Command defaults to inheriting stdio? No, it inherits if not specified?
+        // Docs say: "By default, stdin, stdout and stderr are inherited from the parent."
+        // So this should stream to the console automatically.
+
+        let mut child = cmd.spawn()?;
+        let status = child.wait().await?;
+
+        if status.success() {
+            info!("[CORTEX] ✅ Render Complete: {:?}", output);
+            Ok(format!("Rendered: {:?}", output))
+        } else {
+            error!("[CORTEX] ❌ Render Failed");
+            Err("FFmpeg execution failed".into())
+        }
     }
 }

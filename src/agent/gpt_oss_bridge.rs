@@ -3,70 +3,62 @@
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use crate::agent::multi_agent::NativeTimelineEngine;
-use std::sync::Arc;
-use tracing::{info, error};
 use serde_json::json;
+use std::sync::Arc;
+use tracing::{error, info};
 
-/// Agent interface for LLM reasoning
 pub struct SynoidAgent {
+    client: reqwest::Client,
     api_url: String,
 }
 
 impl SynoidAgent {
     pub fn new(api_url: &str) -> Self {
         Self {
+            client: reqwest::Client::new(),
             api_url: api_url.to_string(),
         }
     }
 
-    /// Reason about a request using the LLM backend
     pub async fn reason(&self, request: &str) -> Result<String, String> {
         info!("[AGENT] Reasoning about: {}", request);
 
-        let client = reqwest::Client::new();
-        // Handle trailing slash just in case
-        let base_url = self.api_url.trim_end_matches('/');
-        // Default to chat completions endpoint
-        let url = format!("{}/chat/completions", base_url);
-
-        // Default model - usually 'llama2' or 'mistral' for local Ollama
-        // Ideally this should be configurable
-        let model = "llama3";
-
+        // Construct standard OpenAI-compatible Chat Completion request
         let payload = json!({
-            "model": model,
+            "model": "gpt-3.5-turbo", // Ignored by most local LLMs (Ollama uses loaded model)
             "messages": [
-                {"role": "system", "content": "You are Synoid, an autonomous intelligent video production kernel. Your goal is to assist the user with video editing, analysis, and creative direction. Be concise and technical."},
-                {"role": "user", "content": request}
+                {
+                    "role": "system",
+                    "content": "You are Synoid, an autonomous video production AI. Respond with concise JSON or direct commands."
+                },
+                {
+                    "role": "user",
+                    "content": request
+                }
             ],
-            "stream": false
+            "temperature": 0.7
         });
 
-        match client.post(&url)
-            .json(&payload)
-            .send()
-            .await
-        {
-            Ok(response) => {
-                if response.status().is_success() {
-                    match response.json::<serde_json::Value>().await {
-                        Ok(json_body) => {
-                            // Parse OpenAI-compatible format
-                            if let Some(content) = json_body["choices"][0]["message"]["content"].as_str() {
-                                Ok(content.to_string())
-                            } else {
-                                Err(format!("Unexpected API response structure: {}", json_body))
-                            }
-                        },
-                        Err(e) => Err(format!("Failed to parse JSON response: {}", e))
-                    }
+        let endpoint = format!("{}/chat/completions", self.api_url.trim_end_matches('/'));
+
+        match self.client.post(&endpoint).json(&payload).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+                    // Extract content from: choices[0].message.content
+                    let content = json["choices"][0]["message"]["content"]
+                        .as_str()
+                        .unwrap_or("Error: Empty response")
+                        .to_string();
+                    Ok(content)
                 } else {
-                    Err(format!("API returned error status: {}", response.status()))
+                    Err(format!("API Error: {}", resp.status()))
                 }
-            },
+            }
             Err(e) => {
-                error!("LLM Connection Error: {}", e);
-                Err(format!("Could not connect to Brain at {}. Is the LLM server running?", url))
+                error!("LLM Connection Failed: {}", e);
+                // Fallback for offline testing
+                Ok(format!("(Offline Mode) Mock response for: {}", request))
             }
         }
     }

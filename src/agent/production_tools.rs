@@ -4,10 +4,10 @@
 // This module provides FFmpeg wrappers for trimming, clipping, and
 // intelligent compression to target file sizes.
 
+use crate::agent::source_tools::get_video_duration;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::{info, warn};
-use crate::agent::source_tools::get_video_duration;
 
 /// Result of a production operation
 #[derive(Debug)]
@@ -33,7 +33,6 @@ pub async fn trim_video(
         .arg("-i")
         .arg(input)
         .args([
-
             "-ss",
             &start_time.to_string(),
             "-t",
@@ -71,7 +70,6 @@ pub async fn apply_anamorphic_mask(
         .arg("-i")
         .arg(input)
         .args([
-
             "-vf",
             "crop=in_w:in_w/2.39",
             "-c:a",
@@ -80,7 +78,9 @@ pub async fn apply_anamorphic_mask(
         ])
         .status()
         .await?;
-    if !status.success() { return Err("Anamorphic mask failed".into()); }
+    if !status.success() {
+        return Err("Anamorphic mask failed".into());
+    }
     Ok(())
 }
 

@@ -4,13 +4,13 @@
 // This module provides intelligent video editing based on natural language intent.
 // It analyzes scenes, scores them against user intent, and generates trimmed output.
 
-use std::path::Path;
-use tokio::process::Command;
+use crate::agent::production_tools;
+use crate::agent::voice::transcription::{TranscriptSegment, TranscriptionEngine};
 use std::fs;
 use std::io::Write;
-use tracing::{info, warn, error};
-use crate::agent::production_tools;
-use crate::agent::voice::transcription::{TranscriptionEngine, TranscriptSegment};
+use std::path::Path;
+use tokio::process::Command;
+use tracing::{error, info, warn};
 
 /// Represents an intent extracted from user input
 #[derive(Debug, Clone)]
@@ -28,16 +28,24 @@ impl EditIntent {
         let lower = text.to_lowercase();
 
         Self {
-            remove_boring: lower.contains("boring") || lower.contains("lame") ||
-                          lower.contains("dull") || lower.contains("slow"),
-            keep_action: lower.contains("action") || lower.contains("exciting") ||
-                        lower.contains("fast") || lower.contains("intense"),
-            remove_silence: lower.contains("silence") || lower.contains("quiet") ||
-                           lower.contains("dead air"),
+            remove_boring: lower.contains("boring")
+                || lower.contains("lame")
+                || lower.contains("dull")
+                || lower.contains("slow"),
+            keep_action: lower.contains("action")
+                || lower.contains("exciting")
+                || lower.contains("fast")
+                || lower.contains("intense"),
+            remove_silence: lower.contains("silence")
+                || lower.contains("quiet")
+                || lower.contains("dead air"),
             // ADDED: "voice" and "transcript" to triggers
-            keep_speech: lower.contains("speech") || lower.contains("talking") ||
-                        lower.contains("dialogue") || lower.contains("conversation") ||
-                        lower.contains("voice") || lower.contains("transcript"),
+            keep_speech: lower.contains("speech")
+                || lower.contains("talking")
+                || lower.contains("dialogue")
+                || lower.contains("conversation")
+                || lower.contains("voice")
+                || lower.contains("transcript"),
             custom_keywords: vec![],
         }
     }
@@ -55,7 +63,7 @@ pub struct Scene {
     pub start_time: f64,
     pub end_time: f64,
     pub duration: f64,
-    pub score: f64,  // 0.0 = definitely remove, 1.0 = definitely keep
+    pub score: f64, // 0.0 = definitely remove, 1.0 = definitely keep
 }
 
 /// Detect scenes in a video using FFmpeg scene detection
@@ -65,10 +73,13 @@ pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::erro
     // Get total duration first
     let duration_output = Command::new("ffprobe")
         .args([
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            input.to_str().unwrap()
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            input.to_str().unwrap(),
         ])
         .output()
         .await?;
@@ -87,10 +98,13 @@ pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::erro
     // Use FFmpeg to detect scene changes
     let output = Command::new("ffmpeg")
         .args([
-            "-i", input.to_str().unwrap(),
-            "-vf", "select='gt(scene,0.25)',showinfo",
-            "-f", "null",
-            "-"
+            "-i",
+            input.to_str().unwrap(),
+            "-vf",
+            "select='gt(scene,0.25)',showinfo",
+            "-f",
+            "null",
+            "-",
         ])
         .output()
         .await?;
@@ -181,8 +195,10 @@ fn ensure_speech_continuity(scenes: &mut [Scene], transcript: &[TranscriptSegmen
         if should_preserve_sentence {
             for i in overlapping_indices {
                 if scenes[i].score <= 0.3 {
-                    info!("[SMART] 🩹 Healing cut at {:.2}s to preserve speech: \"{}\"",
-                          scenes[i].start_time, segment.text);
+                    info!(
+                        "[SMART] 🩹 Healing cut at {:.2}s to preserve speech: \"{}\"",
+                        scenes[i].start_time, segment.text
+                    );
                     scenes[i].score = 0.6; // Force keep above threshold
                 }
             }
@@ -191,7 +207,11 @@ fn ensure_speech_continuity(scenes: &mut [Scene], transcript: &[TranscriptSegmen
 }
 
 /// Score scenes based on user intent and transcript
-pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Option<&[TranscriptSegment]>) {
+pub fn score_scenes(
+    scenes: &mut [Scene],
+    intent: &EditIntent,
+    transcript: Option<&[TranscriptSegment]>,
+) {
     info!("[SMART] Scoring {} scenes based on intent...", scenes.len());
 
     // 1. Base Scoring
@@ -200,9 +220,13 @@ pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Optio
 
         // Visual Heuristics
         if intent.remove_boring {
-            if scene.duration > 10.0 { score -= 0.3; }
-            else if scene.duration > 5.0 { score -= 0.1; }
-            else if scene.duration < 2.0 { score += 0.2; }
+            if scene.duration > 10.0 {
+                score -= 0.3;
+            } else if scene.duration > 5.0 {
+                score -= 0.1;
+            } else if scene.duration < 2.0 {
+                score += 0.2;
+            }
         }
 
         if intent.keep_action && scene.duration < 3.0 {
@@ -221,12 +245,12 @@ pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Optio
                 if seg_end > seg_start {
                     speech_duration += seg_end - seg_start;
                     if !intent.custom_keywords.is_empty() {
-                         let text_lower = seg.text.to_lowercase();
-                         for keyword in &intent.custom_keywords {
-                             if text_lower.contains(&keyword.to_lowercase()) {
-                                 has_keyword = true;
-                             }
-                         }
+                        let text_lower = seg.text.to_lowercase();
+                        for keyword in &intent.custom_keywords {
+                            if text_lower.contains(&keyword.to_lowercase()) {
+                                has_keyword = true;
+                            }
+                        }
                     }
                 }
             }
@@ -235,9 +259,13 @@ pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Optio
 
             // If user wants to keep speech/voice, we heavily weight audio presence
             if intent.keep_speech {
-                if speech_ratio > 0.1 { score += 0.4; } // Any significant speech = keep
+                if speech_ratio > 0.1 {
+                    score += 0.4;
+                } // Any significant speech = keep
             } else {
-                 if speech_ratio > 0.3 { score += 0.4; }
+                if speech_ratio > 0.3 {
+                    score += 0.4;
+                }
             }
 
             // Restore silence removal logic (accidentally removed in previous patch)
@@ -245,7 +273,9 @@ pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Optio
                 score -= 0.4;
             }
 
-            if has_keyword { score += 0.5; }
+            if has_keyword {
+                score += 0.5;
+            }
         }
 
         scene.score = score.clamp(0.0, 1.0);
@@ -280,11 +310,17 @@ pub async fn smart_edit(
         let ext_str = ext.to_string_lossy().to_lowercase();
         if ext_str == "txt" || !["mp4", "mkv", "mov", "avi"].contains(&ext_str.as_str()) {
             output_buf.set_extension("mp4");
-            log(&format!("[SMART] ⚠️ Correcting output extension to .mp4: {:?}", output_buf));
+            log(&format!(
+                "[SMART] ⚠️ Correcting output extension to .mp4: {:?}",
+                output_buf
+            ));
         }
     } else {
         output_buf.set_extension("mp4");
-        log(&format!("[SMART] ⚠️ Adding .mp4 extension: {:?}", output_buf));
+        log(&format!(
+            "[SMART] ⚠️ Adding .mp4 extension: {:?}",
+            output_buf
+        ));
     }
     let output = output_buf.as_path();
 
@@ -314,9 +350,12 @@ pub async fn smart_edit(
         let engine = TranscriptionEngine::new().map_err(|e| e.to_string())?;
         match engine.transcribe(&enhanced_audio_path).await {
             Ok(t) => {
-                log(&format!("[SMART] Transcription complete: {} segments", t.len()));
+                log(&format!(
+                    "[SMART] Transcription complete: {} segments",
+                    t.len()
+                ));
                 Some(t)
-            },
+            }
             Err(e) => {
                 warn!("[SMART] Transcription failed: {}", e);
                 None
@@ -334,8 +373,10 @@ pub async fn smart_edit(
         intent.remove_silence = true;
     }
 
-    log(&format!("[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}",
-                 intent.remove_boring, intent.keep_action, intent.keep_speech));
+    log(&format!(
+        "[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}",
+        intent.remove_boring, intent.keep_action, intent.keep_speech
+    ));
 
     // 2. Detect scenes
     log("[SMART] 🔍 Analyzing video scenes...");
@@ -347,16 +388,16 @@ pub async fn smart_edit(
 
     // 4. Filter scenes to keep (score > 0.3)
     let keep_threshold = 0.3;
-    let scenes_to_keep: Vec<&Scene> = scenes.iter()
-        .filter(|s| s.score > keep_threshold)
-        .collect();
+    let scenes_to_keep: Vec<&Scene> = scenes.iter().filter(|s| s.score > keep_threshold).collect();
 
     let total_kept = scenes_to_keep.len();
     let total_original = scenes.len();
     let removed = total_original - total_kept;
 
-    log(&format!("[SMART] Keeping {}/{} scenes (removing {} boring/silent segments)",
-                 total_kept, total_original, removed));
+    log(&format!(
+        "[SMART] Keeping {}/{} scenes (removing {} boring/silent segments)",
+        total_kept, total_original, removed
+    ));
 
     if scenes_to_keep.is_empty() {
         return Err("All scenes were filtered out! Try a less aggressive intent.".into());
@@ -395,11 +436,11 @@ pub async fn smart_edit(
         cmd.arg("-map").arg("0:v"); // Video from input 0
         if use_enhanced_audio {
             cmd.arg("-map").arg("1:a:0"); // Audio from input 1 (enhanced)
-            cmd.arg("-c:v").arg("copy");  // Copy video stream (fast)
+            cmd.arg("-c:v").arg("copy"); // Copy video stream (fast)
             cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k"); // Re-encode audio to mux
         } else {
             cmd.arg("-map").arg("0:a:0"); // Original audio
-            cmd.arg("-c").arg("copy");    // Copy both
+            cmd.arg("-c").arg("copy"); // Copy both
         }
 
         cmd.arg("-avoid_negative_ts").arg("make_zero");
@@ -408,13 +449,17 @@ pub async fn smart_edit(
         let status = cmd.output().await?;
 
         if !status.status.success() {
-           continue;
+            continue;
         }
 
         segment_files.push(seg_path);
 
         if i < 3 || i % 10 == 0 || i == total_segments - 1 {
-             log(&format!("[SMART] ⏳ Segment {}/{} processed", i + 1, total_segments));
+            log(&format!(
+                "[SMART] ⏳ Segment {}/{} processed",
+                i + 1,
+                total_segments
+            ));
         }
     }
 
@@ -439,10 +484,14 @@ pub async fn smart_edit(
         .args([
             "-y",
             "-nostdin",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", concat_file.to_str().unwrap(),
-            "-c", "copy",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concat_file.to_str().unwrap(),
+            "-c",
+            "copy",
             output.to_str().unwrap(),
         ])
         .output()
@@ -451,7 +500,6 @@ pub async fn smart_edit(
     // Clean up
     fs::remove_dir_all(&segments_dir)?;
     if use_enhanced_audio {
-
         let _ = fs::remove_file(enhanced_audio_path);
     }
 
@@ -495,17 +543,25 @@ mod tests {
         // even though speech spans across it.
 
         let mut scenes = vec![
-            Scene { start_time: 0.0, end_time: 5.0, duration: 5.0, score: 0.5 },
-            Scene { start_time: 5.0, end_time: 20.0, duration: 15.0, score: 0.5 }, // Boring duration
+            Scene {
+                start_time: 0.0,
+                end_time: 5.0,
+                duration: 5.0,
+                score: 0.5,
+            },
+            Scene {
+                start_time: 5.0,
+                end_time: 20.0,
+                duration: 15.0,
+                score: 0.5,
+            }, // Boring duration
         ];
 
-        let transcript = vec![
-            TranscriptSegment {
-                start: 4.8,
-                end: 5.2,
-                text: "Don't cut me.".to_string(),
-            }
-        ];
+        let transcript = vec![TranscriptSegment {
+            start: 4.8,
+            end: 5.2,
+            text: "Don't cut me.".to_string(),
+        }];
 
         let intent = EditIntent {
             remove_boring: true,
@@ -524,6 +580,10 @@ mod tests {
         // Therefore Scene 2 (touched by same segment) MUST be kept.
         // Scene 2 score forced to 0.6.
 
-        assert!(scenes[1].score > 0.3, "Scene 2 should be kept due to continuity fix. Score: {}", scenes[1].score);
+        assert!(
+            scenes[1].score > 0.3,
+            "Scene 2 should be kept due to continuity fix. Score: {}",
+            scenes[1].score
+        );
     }
 }
