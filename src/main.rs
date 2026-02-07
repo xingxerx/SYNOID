@@ -129,6 +129,21 @@ enum Commands {
         input: PathBuf,
     },
 
+    /// Smart Edit based on intent
+    SmartEdit {
+        /// Input video path
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Edit intent (e.g., "remove boring parts")
+        #[arg(short, long)]
+        intent: String,
+
+        /// Output path
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
     /// Check GPU status
     Gpu,
 
@@ -360,6 +375,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Placeholder for suggestions
             println!("1. Make it faster paced");
             println!("2. Sync to the beat");
+        }
+        Commands::SmartEdit {
+            input,
+            intent,
+            output,
+        } => {
+            use agent::smart_editor;
+            match smart_editor::smart_edit(&input, &intent, &output, None).await {
+                Ok(msg) => println!("✅ {}", msg),
+                Err(e) => error!("Smart edit failed: {}", e),
+            }
         }
         Commands::Gpu => {
             println!("=== SYNOID GPU Status ===");
