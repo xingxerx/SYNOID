@@ -214,6 +214,33 @@ enum Commands {
         #[arg(long)]
         style: Option<String>,
     },
+
+    /// GPU-accelerated unified processing pipeline
+    Process {
+        /// Input video/audio path
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Processing stages (comma-separated): transcribe,smart_edit,vectorize,upscale,enhance,encode (or "all")
+        #[arg(long, default_value = "all")]
+        stages: String,
+
+        /// GPU device index (or "cpu" for CPU-only mode)
+        #[arg(long, default_value = "0")]
+        gpu: String,
+
+        /// Output video path
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// User intent for smart editing
+        #[arg(long)]
+        intent: Option<String>,
+
+        /// Scale factor for upscaling (2.0 = 2x resolution)
+        #[arg(long, default_value_t = 2.0)]
+        scale: f64,
+    },
 }
 
 #[tokio::main]
@@ -362,9 +389,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("2. Sync to the beat");
         }
         Commands::Gpu => {
-            println!("=== SYNOID GPU Status ===");
-            // Simple check (mock)
-            println!("✓ CUDA Detect: Logic not connected (stub)");
+            synoid_core::gpu_backend::print_gpu_status().await;
         }
         Commands::Vectorize {
             input,
@@ -580,6 +605,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
             } else {
                 println!("Unknown role: {}", role);
+            }
+        }
+        Commands::Process {
+            input,
+            stages,
+            gpu: _gpu_arg,
+            output,
+            intent,
+            scale,
+        } => {
+            use agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipeline};
+            
+            println!("🚀 SYNOID GPU-Accelerated Pipeline");
+            
+            // Parse stages
+            let parsed_stages = PipelineStage::parse_list(&stages);
+            if parsed_stages.is_empty() {
+                error!("No valid stages specified. Use: transcribe,smart_edit,vectorize,upscale,enhance,encode");
+                return Ok(());
+            }
+            
+            info!("Stages: {:?}", parsed_stages);
+            
+            // Initialize pipeline (auto-detects GPU)
+            let pipeline = UnifiedPipeline::new().await;
+            
+            // Configure pipeline
+            let config = PipelineConfig {
+                stages: parsed_stages,
+                intent,
+                scale_factor: scale,
+                target_size_mb: 0.0,
+                progress_callback: Some(std::sync::Arc::new(|msg: &str| {
+                    println!("  → {}", msg);
+                })),
+            };
+            
+            // Execute!
+            match pipeline.process(&input, &output, config).await {
+                Ok(out_path) => {
+                    println!("✅ Pipeline complete: {:?}", out_path);
+                }
+                Err(e) => {
+                    error!("Pipeline failed: {}", e);
+                }
             }
         }
     }

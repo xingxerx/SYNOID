@@ -155,18 +155,18 @@ pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Optio
     info!("[SMART] Scoring {} scenes based on intent and semantic data", scenes.len());
 
     for scene in scenes.iter_mut() {
-        let mut score: f64 = 0.5; // Start neutral
+        let mut score: f64 = 0.3; // Start below threshold (more aggressive)
 
         // --- Visual Heuristics ---
         if intent.remove_boring {
             // Heuristic: Long static scenes are often boring
-            // Short scenes (< 3s) are usually cuts/action
-            if scene.duration > 10.0 {
-                score -= 0.3; // Penalize very long scenes
-            } else if scene.duration > 5.0 {
-                score -= 0.1;
+            // Short scenes (<3s) are usually cuts/action
+            if scene.duration > 20.0 {
+                score -= 0.3; // Strongly penalize very long static scenes
+            } else if scene.duration > 10.0 {
+                score -= 0.15;
             } else if scene.duration < 2.0 {
-                score += 0.2; // Favor short/punchy scenes
+                score += 0.1; // Slight favor for short/punchy scenes
             }
         }
 
@@ -205,13 +205,29 @@ pub fn score_scenes(scenes: &mut [Scene], intent: &EditIntent, transcript: Optio
 
             let speech_ratio = speech_duration / scene.duration;
 
-            if speech_ratio > 0.3 {
-                // If sufficient speech, boost significantly (User wants to hear voice)
-                score += 0.4;
-            } else if speech_ratio < 0.1 {
-                // Almost silent
-                if intent.remove_silence {
+            // More nuanced speech scoring:
+            // - High speech ratio alone doesn't make content interesting
+            // - We need variety; constant talking can still be boring
+            if intent.keep_speech {
+                if speech_ratio > 0.7 {
+                    // Dense speech - moderately good but could be rambling
+                    score += 0.15;
+                } else if speech_ratio > 0.3 {
+                    // Good mix of speech and pauses - usually interesting
+                    score += 0.25;
+                } else if speech_ratio > 0.1 {
+                    // Some speech - keep if other factors are good
+                    score += 0.1;
+                }
+            }
+            
+            if intent.remove_silence {
+                if speech_ratio < 0.05 {
+                    // Almost completely silent - strongly penalize
                     score -= 0.4;
+                } else if speech_ratio < 0.1 {
+                    // Very quiet - penalize
+                    score -= 0.2;
                 }
             }
 

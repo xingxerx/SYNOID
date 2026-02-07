@@ -17,7 +17,9 @@ pub mod reasoning;
 pub mod research_tools;
 pub mod smart_editor;
 pub mod source_tools;
+pub mod unified_pipeline;
 pub mod vector_engine;
 pub mod vector_video;
 pub mod vision_tools;
 pub mod voice;
+
