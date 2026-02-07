@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.32", features = ["full"] }
+tokio = { version = "1.36", features = ["full"] }
 clap = { version = "4.4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -17,7 +17,7 @@ rayon = "1.7"   # Parallel processing for frames
 reqwest = { version = "0.11", features = ["json"] }
 eframe = "0.29.1"
 rfd = "0.13"
-image = "0.24"
+image = "0.25"
 scraper = "0.19"
 resvg = "0.29"   # SVG rendering engine
 tiny-skia = "0.8" # 2D Graphics library for resvg
@@ -30,9 +30,12 @@ num_cpus = "1.0"
 # Note: RTX 50 series (sm_120) not yet supported by candle/PyTorch CUDA
 # Using CPU mode with FFmpeg NVENC for video encoding acceleration
 rand = "0.8"
-candle-core = "0.8"
+# Enable CUDA features for NVIDIA users. Metal is disabled to avoid build errors on Linux.
+candle-core = { version = "0.8", features = ["cuda"] }
 candle-nn = "0.8"
 candle-transformers = "0.8"
+# distinct from cudarc, candle often manages its own kernels
+cudarc = { version = "0.9", optional = true }
 tokenizers = "0.15"
 hf-hub = "0.3"    # HuggingFace model downloads
 rodio = "0.17"    # Audio playback
@@ -48,4 +51,3 @@ wgpu = "24.0"
 
 # Vector Animation Engine (SVG Video)
 # Pure SMIL-based animated SVG (no external animation libs needed)
-
