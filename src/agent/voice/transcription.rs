@@ -95,14 +95,19 @@ impl TranscriptionEngine {
 
         // Ensure python is available
         // We assume 'python' is in PATH or use generic 'python' command
+        // Generate sidecar text file
+        let output_txt = work_dir.join("transcript.txt");
+
         let status = Command::new("python")
             .arg(&self.script_path)
-            .arg("--audio")
+            .arg("--input") // Fixed argument name (was --audio)
             .arg(audio_path.to_str().unwrap())
             .arg("--model")
-            .arg("tiny") // Default to fast model
+            .arg("small") // Better accuracy than tiny
             .arg("--output")
             .arg(output_json.to_str().unwrap())
+            .arg("--save-txt")
+            .arg(output_txt.to_str().unwrap())
             .status()
             .await?;
 

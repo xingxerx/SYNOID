@@ -176,11 +176,12 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
     info!("[PROD] Enhancing audio: {:?}", input);
 
     // Filter Chain:
-    // 1. highpass=f=80: Remove rumble
-    // 2. lowpass=f=8000: Remove hiss
-    // 3. acompressor: Even out dynamics
-    // 4. loudnorm: target -16 LUFS (standard podcast/web loudness)
-    let filter_complex = "highpass=f=80,lowpass=f=8000,acompressor=ratio=4:attack=200:threshold=-12dB,loudnorm=I=-16:TP=-1.5:LRA=11";
+    // 1. afftdn=nf=-25: FFT Noise Reduction (Voice cleanup)
+    // 2. highpass=f=100: Remove rumble (voice is usually > 100Hz)
+    // 3. lowpass=f=8000: Remove high-freq hiss
+    // 4. acompressor: Even out dynamics
+    // 5. loudnorm: target -16 LUFS
+    let filter_complex = "afftdn=nf=-25,highpass=f=100,lowpass=f=8000,acompressor=ratio=4:attack=200:threshold=-12dB,loudnorm=I=-16:TP=-1.5:LRA=11";
 
     let safe_input = safe_arg_path(input);
     let safe_output = safe_arg_path(output);
