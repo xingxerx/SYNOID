@@ -45,3 +45,4 @@ downloads/
 
 # Secrets
 .env
+temp_verification/

@@ -24,20 +24,30 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     // Using default=noprint_wrappers=1:nokey=1 to get clean timestamp output
     let output = Command::new("ffprobe")
         .args([
-            "-v", "error",
-            "-show_entries", "frame=pkt_pts_time",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            "-f", "lavfi",
+            "-v",
+            "error",
+            "-show_entries",
+            "frame=pkt_pts_time",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            "-f",
+            "lavfi",
         ])
         .arg(&format!(
             "movie='{}',select='gt(scene,0.3)'",
-            path.to_string_lossy().replace("\\", "/").replace("'", "'\\''")
+            path.to_string_lossy()
+                .replace("\\", "/")
+                .replace("'", "'\\''")
         ))
         .output()
         .await?; // Async execution
 
     if !output.status.success() {
-        return Err(format!("FFprobe failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+        return Err(format!(
+            "FFprobe failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);

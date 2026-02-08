@@ -1,13 +1,13 @@
 // SYNOID Transcription Bridge
 // Wraps generic Python Whisper script for robust local transcription.
 
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
-use serde::{Deserialize, Serialize};
-use tracing::info;
-use std::fs;
-use std::env;
-use anyhow::{Context, Result};
+use tracing::{info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptSegment {
@@ -17,7 +17,7 @@ pub struct TranscriptSegment {
 }
 
 pub struct TranscriptionEngine {
-    script_path: String,
+    script_path: PathBuf,
 }
 
 impl TranscriptionEngine {
@@ -25,18 +25,66 @@ impl TranscriptionEngine {
         let script_path = if let Ok(env_path) = env::var("SYNOID_TRANSCRIPTION_SCRIPT") {
             PathBuf::from(env_path)
         } else {
-            // Fallback to relative path
-            let current_dir = env::current_dir().context("Failed to get current directory")?;
-            current_dir.join("tools").join("transcribe.py")
+            // Check relative to executable (robust for release builds)
+            let mut found_path = None;
+
+            if let Ok(exe_path) = env::current_exe() {
+                // Try walking up from exe location (target/release/synoid -> root/tools/transcribe.py)
+                // Try: exe_dir/tools/transcribe.py
+                // Try: exe_dir/../tools/transcribe.py
+                // Try: exe_dir/../../tools/transcribe.py
+                // Try: exe_dir/../../../tools/transcribe.py
+
+                let candidates = [
+                    exe_path
+                        .parent()
+                        .map(|p| p.join("tools").join("transcribe.py")),
+                    exe_path
+                        .parent()
+                        .and_then(|p| p.parent())
+                        .map(|p| p.join("tools").join("transcribe.py")),
+                    exe_path
+                        .parent()
+                        .and_then(|p| p.parent())
+                        .and_then(|p| p.parent())
+                        .map(|p| p.join("tools").join("transcribe.py")),
+                    exe_path
+                        .parent()
+                        .and_then(|p| p.parent())
+                        .and_then(|p| p.parent())
+                        .and_then(|p| p.parent())
+                        .map(|p| p.join("tools").join("transcribe.py")),
+                ];
+
+                for candidate in candidates.iter().flatten() {
+                    if candidate.exists() {
+                        found_path = Some(candidate.clone());
+                        break;
+                    }
+                }
+            }
+
+            if let Some(p) = found_path {
+                p
+            } else {
+                // Fallback to CWD
+                let cwd_path = Path::new("tools").join("transcribe.py");
+                if cwd_path.exists() {
+                    cwd_path
+                } else {
+                    // Default to CWD path anyway, will warn below
+                    cwd_path
+                }
+            }
         };
 
         if !script_path.exists() {
-             anyhow::bail!("Transcription script not found at: {:?}", script_path);
+            warn!("[TRANSCRIBE] Warning: Transcription script not found at: {:?}. Transcription may fail.", script_path);
+        } else {
+            info!("[TRANSCRIBE] Using script at: {:?}", script_path);
         }
 
-        Ok(Self {
-            script_path: script_path.to_string_lossy().to_string(),
-        })
+        Ok(Self { script_path })
     }
 
     pub async fn transcribe(&self, audio_path: &Path) -> Result<Vec<TranscriptSegment>> {
@@ -63,9 +111,13 @@ impl TranscriptionEngine {
         }
 
         // Read result
-        let segments: Vec<TranscriptSegment> = serde_json::from_str(&fs::read_to_string(&output_json)?)?;
+        let segments: Vec<TranscriptSegment> =
+            serde_json::from_str(&fs::read_to_string(&output_json)?)?;
 
-        info!("[TRANSCRIBE] Success! {} segments generated.", segments.len());
+        info!(
+            "[TRANSCRIBE] Success! {} segments generated.",
+            segments.len()
+        );
 
         // Cleanup JSON
         // fs::remove_file(output_json)?;
@@ -97,7 +149,7 @@ mod tests {
         let engine = TranscriptionEngine::new();
         assert!(engine.is_ok(), "Should find script via env var");
         if let Ok(e) = engine {
-             assert_eq!(e.script_path, abs_path.to_string_lossy().to_string());
+            assert_eq!(e.script_path, abs_path);
         }
 
         // Cleanup
@@ -110,17 +162,20 @@ mod tests {
         let engine = TranscriptionEngine::new();
         // We expect this to pass if tools/transcribe.py exists
         if Path::new("tools/transcribe.py").exists() {
-             assert!(engine.is_ok(), "Should find default tools/transcribe.py");
+            assert!(engine.is_ok(), "Should find default tools/transcribe.py");
         } else {
             // If the file doesn't exist in the environment (e.g. CI without it), it should fail.
             // But for this environment, we know it exists.
             println!("Note: tools/transcribe.py not found in CWD, skipping default path test");
         }
 
-        // 3. Test Failure
+        // 3. Test Non-Existent - Now returns Ok but logs warning
         env::set_var("SYNOID_TRANSCRIPTION_SCRIPT", "non_existent_file_xyz.py");
         let engine = TranscriptionEngine::new();
-        assert!(engine.is_err(), "Should fail for non-existent file");
+        assert!(
+            engine.is_ok(),
+            "Should accept non-existent file but warn (returning Ok struct)"
+        );
 
         env::remove_var("SYNOID_TRANSCRIPTION_SCRIPT");
     }

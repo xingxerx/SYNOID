@@ -67,7 +67,10 @@ impl VoiceEngine {
         }
 
         // Allow alphanumeric, underscore, hyphen, and space
-        if !name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == ' ') {
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == ' ')
+        {
             return Err("Profile name contains invalid characters. Only alphanumeric, underscore, hyphen, and space are allowed.".into());
         }
 
@@ -244,12 +247,20 @@ mod tests {
         let _ = fs::remove_dir_all(&base_dir);
 
         // Assert that the vulnerability is fixed
-        assert!(result.is_err(), "create_profile should fail for invalid name");
-        assert!(!exploited, "File should not be written to outside directory");
+        assert!(
+            result.is_err(),
+            "create_profile should fail for invalid name"
+        );
+        assert!(
+            !exploited,
+            "File should not be written to outside directory"
+        );
 
         // Check error message
         let err = result.err().unwrap();
-        assert!(err.to_string().contains("Profile name contains invalid characters"));
+        assert!(err
+            .to_string()
+            .contains("Profile name contains invalid characters"));
     }
 
     #[test]
@@ -276,7 +287,10 @@ mod tests {
         let valid_name = "test_profile_123";
         let result = engine.create_profile(valid_name, &wav_path);
 
-        assert!(result.is_ok(), "create_profile should succeed for valid name");
+        assert!(
+            result.is_ok(),
+            "create_profile should succeed for valid name"
+        );
 
         let profile_path = profiles_dir.join(format!("{}.json", valid_name));
         assert!(profile_path.exists(), "Profile file should be created");

@@ -88,9 +88,12 @@ impl VectorVideoEngine {
             .arg("-i")
             .arg(input_video)
             .args([
-                "-vf", "select='gt(scene,0.3)',showinfo", // Only extract on scene changes
-                "-vsync", "vfr",
-                "-frame_pts", "true",
+                "-vf",
+                "select='gt(scene,0.3)',showinfo", // Only extract on scene changes
+                "-vsync",
+                "vfr",
+                "-frame_pts",
+                "true",
             ])
             .output()?;
 
@@ -101,7 +104,6 @@ impl VectorVideoEngine {
                 .arg("-i")
                 .arg(input_video)
                 .args([
-
                     "-vf",
                     "fps=2", // 2 keyframes per second
                     keyframes_dir.join("kf_%04d.png").to_str().unwrap(),
@@ -290,9 +292,13 @@ impl VectorVideoEngine {
             .arg("-i")
             .arg(animated_svg)
             .args([
-                "-vf", &format!("scale={}:{}", final_width, final_height),
-                "-c:v", "libx264",
-                "-pix_fmt", "yuv420p",               "-y",
+                "-vf",
+                &format!("scale={}:{}", final_width, final_height),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-y",
                 output_video.to_str().unwrap(),
             ])
             .output()?;

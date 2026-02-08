@@ -34,9 +34,12 @@ impl UrlReader {
         let parsed_url = Url::parse(url)?;
         let host = parsed_url.host_str().unwrap_or("");
 
-        let is_video_platform = host == "youtube.com" || host.ends_with(".youtube.com") ||
-                                host == "youtu.be" || host.ends_with(".youtu.be") ||
-                                host == "vimeo.com" || host.ends_with(".vimeo.com");
+        let is_video_platform = host == "youtube.com"
+            || host.ends_with(".youtube.com")
+            || host == "youtu.be"
+            || host.ends_with(".youtu.be")
+            || host == "vimeo.com"
+            || host.ends_with(".vimeo.com");
 
         if is_video_platform {
             self.ingest_video(parsed_url.as_str()).await
@@ -164,12 +167,14 @@ mod tests {
         for (url_str, expected) in cases {
             let parsed = Url::parse(url_str).expect("Failed to parse test url");
             let host = parsed.host_str().unwrap_or("");
-            let is_video = host == "youtube.com" || host.ends_with(".youtube.com") ||
-                           host == "youtu.be" || host.ends_with(".youtu.be") ||
-                           host == "vimeo.com" || host.ends_with(".vimeo.com");
+            let is_video = host == "youtube.com"
+                || host.ends_with(".youtube.com")
+                || host == "youtu.be"
+                || host.ends_with(".youtu.be")
+                || host == "vimeo.com"
+                || host.ends_with(".vimeo.com");
 
             assert_eq!(is_video, expected, "Failed for URL: {}", url_str);
         }
     }
-
 }
