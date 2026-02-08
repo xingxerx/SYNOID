@@ -103,3 +103,50 @@ pub fn track_subject_cuda(_device_id: usize, frame_path: &Path) -> (f64, f64, f6
     // Returns a slight pan and 1.0 zoom (no zoom) for now
     (0.0, 0.0, 1.0)
 }
+
+/// Calculates a simple pixel-wise difference between two frames.
+/// Returns a normalized difference score (0.0 - 1.0).
+/// Used for Temporal Coherence checks in Vector Engine.
+pub fn calculate_optical_flow_diff(frame1: &Path, frame2: &Path) -> f64 {
+    use image::GenericImageView;
+
+    // We swallow errors and return 1.0 (max diff) to force re-render/vectorization if something fails
+    let img1 = match image::open(frame1) {
+        Ok(i) => i,
+        Err(_) => return 1.0,
+    };
+    let img2 = match image::open(frame2) {
+        Ok(i) => i,
+        Err(_) => return 1.0,
+    };
+
+    if img1.dimensions() != img2.dimensions() {
+        return 1.0;
+    }
+
+    let (w, h) = img1.dimensions();
+    let num_pixels = (w * h) as f64;
+
+    // Convert to RGB8 buffers for fast pixel access
+    let buf1 = img1.to_rgb8();
+    let buf2 = img2.to_rgb8();
+
+    let mut total_diff = 0.0;
+
+    // Check every pixel
+    for (p1, p2) in buf1.pixels().zip(buf2.pixels()) {
+        let r_diff = (p1[0] as i32 - p2[0] as i32).abs();
+        let g_diff = (p1[1] as i32 - p2[1] as i32).abs();
+        let b_diff = (p1[2] as i32 - p2[2] as i32).abs();
+
+        total_diff += (r_diff + g_diff + b_diff) as f64 / 3.0;
+    }
+
+    // Normalize: max diff per pixel is 255.
+    if num_pixels > 0.0 {
+        let avg_diff = total_diff / num_pixels;
+        avg_diff / 255.0
+    } else {
+        0.0
+    }
+}

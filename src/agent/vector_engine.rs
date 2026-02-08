@@ -7,8 +7,7 @@ use resvg::tiny_skia;
 use resvg::usvg;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tokio::process::Command;
-use tracing::{error, info};
+use crate::agent::vision_tools::calculate_optical_flow_diff;
 
 /// Upscale video by converting to Vector and re-rendering at higher resolution
 pub async fn upscale_video(
@@ -122,25 +121,58 @@ pub async fn upscale_video(
 }
 
 /// Core logic for vectorizing and rendering frames.
-/// Extracted to allow offloading to blocking thread pool.
+/// Uses Optical Flow (temporal coherence) to avoid jitter.
 fn process_frames_core(
-    paths: Vec<PathBuf>,
+    mut paths: Vec<PathBuf>,
     frames_svg: PathBuf,
     frames_out: PathBuf,
     scale_factor: f64,
 ) {
-    // Memory Guard: Processing in chunks
+    // Ensure sequential order for temporal analysis
+    paths.sort();
+
     let num_cpus = num_cpus::get();
     info!(
         "[UPSCALE] Memory Guard: Processing in chunks of {}",
         num_cpus
     );
 
-    for chunk in paths.chunks(num_cpus) {
-        chunk.par_iter().for_each(|img_path| {
+    // 1. Temporal Analysis (Sequential Pre-pass)
+    // Identify Keyframes based on visual difference
+    let mut keyframe_map: Vec<usize> = Vec::with_capacity(paths.len());
+    if !paths.is_empty() {
+        keyframe_map.push(0); // First frame is always keyframe
+    }
+
+    let static_threshold = 0.02; // 2% pixel difference threshold
+
+    info!("[UPSCALE] Analyzing temporal coherence (Optical Flow Check)...");
+    for i in 1..paths.len() {
+        let diff = calculate_optical_flow_diff(&paths[i], &paths[i-1]);
+        if diff < static_threshold {
+            // Scene is static, reuse previous keyframe
+            keyframe_map.push(keyframe_map[i-1]);
+        } else {
+            // Scene changed, new keyframe
+            keyframe_map.push(i);
+        }
+    }
+
+    let mut unique_keyframes: Vec<usize> = keyframe_map.clone();
+    unique_keyframes.sort();
+    unique_keyframes.dedup();
+
+    info!("[UPSCALE] Temporal Optimization: {}/{} frames are static. Vectorizing {} keyframes.",
+        paths.len() - unique_keyframes.len(), paths.len(), unique_keyframes.len());
+
+    // 2. Vectorize Keyframes (Parallel)
+    let keyframe_indices = unique_keyframes;
+
+    for chunk in keyframe_indices.chunks(num_cpus) {
+        chunk.par_iter().for_each(|&idx| {
+            let img_path = &paths[idx];
             let stem = img_path.file_stem().unwrap().to_string_lossy();
             let svg_path = frames_svg.join(format!("{}.svg", stem));
-            let out_png = frames_out.join(format!("{}.png", stem));
 
             // A. Vectorize (Raster -> SVG)
             let config = vtracer::Config {
@@ -155,22 +187,41 @@ fn process_frames_core(
             };
 
             if let Ok(_) = vtracer::convert_image_to_svg(img_path, &svg_path, config) {
-                // B. Render (SVG -> High-Res Raster)
-                if let Ok(svg_data) = fs::read(&svg_path) {
-                    let opt = usvg::Options::default();
-                    if let Ok(tree) = usvg::Tree::from_data(&svg_data, &opt) {
-                        let size = tree.size.to_screen_size();
-                        let width = (size.width() as f64 * scale_factor) as u32;
-                        let height = (size.height() as f64 * scale_factor) as u32;
+                // Success
+            } else {
+                error!("Failed to vectorize frame: {:?}", img_path);
+            }
+        });
+    }
 
-                        if let Some(mut pixmap) = tiny_skia::Pixmap::new(width, height) {
-                            let transform = tiny_skia::Transform::from_scale(
-                                scale_factor as f32,
-                                scale_factor as f32,
-                            );
-                            resvg::render(&tree, usvg::FitTo::Original, transform, pixmap.as_mut());
-                            pixmap.save_png(out_png).unwrap();
-                        }
+    // 3. Render All Frames (Parallel)
+    // Using the mapped keyframe SVG (reuse vectors)
+    let all_indices: Vec<usize> = (0..paths.len()).collect();
+
+    for chunk in all_indices.chunks(num_cpus) {
+        chunk.par_iter().for_each(|&i| {
+            let key_idx = keyframe_map[i];
+            let key_stem = paths[key_idx].file_stem().unwrap().to_string_lossy();
+            let key_svg_path = frames_svg.join(format!("{}.svg", key_stem));
+
+            let current_stem = paths[i].file_stem().unwrap().to_string_lossy();
+            let out_png = frames_out.join(format!("{}.png", current_stem));
+
+            // B. Render (SVG -> High-Res Raster)
+            if let Ok(svg_data) = fs::read(&key_svg_path) {
+                let opt = usvg::Options::default();
+                if let Ok(tree) = usvg::Tree::from_data(&svg_data, &opt) {
+                    let size = tree.size.to_screen_size();
+                    let width = (size.width() as f64 * scale_factor) as u32;
+                    let height = (size.height() as f64 * scale_factor) as u32;
+
+                    if let Some(mut pixmap) = tiny_skia::Pixmap::new(width, height) {
+                        let transform = tiny_skia::Transform::from_scale(
+                            scale_factor as f32,
+                            scale_factor as f32,
+                        );
+                        resvg::render(&tree, usvg::FitTo::Original, transform, pixmap.as_mut());
+                        pixmap.save_png(out_png).unwrap();
                     }
                 }
             }
@@ -337,14 +388,20 @@ mod tests {
         img.fill(tiny_skia::Color::from_rgba8(255, 0, 0, 255));
         img.save_png(&img_path).unwrap();
 
-        let paths = vec![img_path];
+        // Create duplicate image (100x100 red png)
+        let img_path2 = src_dir.join("frame_0002.png");
+        img.save_png(&img_path2).unwrap();
+
+        let paths = vec![img_path, img_path2];
 
         // Run core logic
         process_frames_core(paths, svg_dir.clone(), out_dir.clone(), 2.0);
 
         // Verify output
         let out_path = out_dir.join("frame_0001.png");
-        assert!(out_path.exists(), "Output PNG should exist");
+        assert!(out_path.exists(), "Output PNG 1 should exist");
+        let out_path2 = out_dir.join("frame_0002.png");
+        assert!(out_path2.exists(), "Output PNG 2 should exist");
 
         // Check dimensions (200x200)
         let dims = image::image_dimensions(&out_path).unwrap();

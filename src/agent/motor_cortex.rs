@@ -47,11 +47,25 @@ impl MotorCortex {
             filters.push(format!("lut3d={}", lut));
         }
 
+        // 2. Build Video Filtergraph
         let filter_arg = if filters.is_empty() {
             String::new()
         } else {
             filters.join(",")
         };
+
+        // 3. Build Audio Filtergraph (Enhanced Voice)
+        let mut audio_filters = Vec::new();
+        // Check intent for "enhance voice" or similar variants
+        let intent_lower = intent.to_lowercase();
+        if (intent_lower.contains("enhance") || intent_lower.contains("fix")) && intent_lower.contains("voice") {
+             info!("[CORTEX] Detected Voice Enhancement Intent. Applying Audio Clean-up.");
+             // Standard Broadcast Spec: Denoise -> EQ Bandpass -> Loudness Normalization
+             audio_filters.push("afftdn=nf=-25".to_string());
+             audio_filters.push("highpass=f=200".to_string());
+             audio_filters.push("lowpass=f=3000".to_string());
+             audio_filters.push("loudnorm=I=-16:TP=-1.5:LRA=11".to_string());
+        }
 
         info!("[CORTEX] 🚀 Executing FFmpeg Render...");
 
@@ -69,6 +83,14 @@ impl MotorCortex {
 
         if !filters.is_empty() {
             cmd.arg("-vf").arg(&filter_arg);
+        }
+
+        if !audio_filters.is_empty() {
+            cmd.arg("-af").arg(audio_filters.join(","));
+            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
+        } else {
+            // Default copy if no processing
+            cmd.arg("-c:a").arg("copy");
         }
 
         cmd.arg(output);

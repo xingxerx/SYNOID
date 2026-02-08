@@ -7,7 +7,8 @@ use synoid_core::window;
 use clap::{Parser, Subcommand};
 use dotenv::dotenv;
 use std::path::PathBuf;
-use tracing::{error, info};
+use std::process::Stdio;
+use tracing::{error, info, warn};
 
 #[derive(Parser)]
 #[command(name = "synoid-core")]
@@ -109,6 +110,10 @@ enum Commands {
         /// Output path
         #[arg(short, long)]
         output: PathBuf,
+
+        /// Print command without executing
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Learn a new editing style
@@ -164,8 +169,8 @@ enum Commands {
 
     /// Activate Cyberdefense Sentinel
     Guard {
-        /// Monitor Mode (Process/File)
-        #[arg(short, long, default_value = "all")]
+        /// Monitor Mode (all/sys/file)
+        #[arg(short, long, default_value = "file")]
         mode: String,
 
         /// Path to watch for Integrity
@@ -195,9 +200,13 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// Download TTS model
+        /// Download TTS/Whisper model
         #[arg(long)]
         download: bool,
+
+        /// Specify model (e.g., whisper-medium)
+        #[arg(long, default_value = "tiny")]
+        model: String,
     },
 
     /// Multi-Agent Role Execution
@@ -248,7 +257,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
 
-    info!("--- SYNOID AGENTIC KERNEL v0.1.0 ---");
+    info!("--- SYNOID AGENTIC KERNEL v0.1.1 ---");
 
     let args = Cli::parse();
     let api_url =
@@ -349,6 +358,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             input,
             intent,
             output,
+            dry_run,
         } => {
             use agent::motor_cortex::MotorCortex;
             info!("🧠 Embodied Agent Activating for: {}", intent);
@@ -359,14 +369,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let visual_data = agent::vision_tools::scan_visual(&input).await?;
             let audio_data = agent::audio_tools::scan_audio(&input).await?;
 
-            // 2. Execute
+            // 2. Generate Command
             match cortex
                 .execute_one_shot_render(&intent, &input, &output, &visual_data, &audio_data)
                 .await
             {
-                Ok(cmd) => {
-                    println!("🎬 Generated FFmpeg Command: {}", cmd);
-                    // In a real run, we would execute this command here.
+                Ok(cmd_str) => {
+                    println!("🎬 Generated Command:\n{}", cmd_str);
+
+                    if dry_run {
+                        info!("🚫 Dry-run active. Skipping execution.");
+                    } else {
+                        info!("⚡ Executing Creative Intent...");
+                        // Parse command string simply (assuming simple args for now)
+                        // In production, MotorCortex should return Vec<String> args, not a raw string
+                        let parts: Vec<&str> = cmd_str.split_whitespace().collect();
+                        if let Some((prog, args)) = parts.split_first() {
+                            let status = std::process::Command::new(prog)
+                                .args(args)
+                                .stdout(Stdio::inherit())
+                                .stderr(Stdio::inherit())
+                                .status()?;
+
+                            if status.success() {
+                                println!("✅ Render Complete: {:?}", output);
+                            } else {
+                                error!("❌ FFmpeg failed with status: {}", status);
+                            }
+                        }
+                    }
                 }
                 Err(e) => error!("Embodiment failed: {}", e),
             }
@@ -429,7 +460,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             use std::{thread, time::Duration};
 
             println!("🛡️ ACTIVATING SENTINEL Cyberdefense System...");
-            println!("   Mode: {} | Least Privilege: ENABLED", mode);
+            println!("   Mode: {} | Scope: {}", mode, if mode == "file" { "Project Only" } else { "System Wide" });
 
             // 1. Setup Integrity Guard
             let mut integrity = IntegrityGuard::new();
@@ -472,6 +503,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             speak,
             output,
             download,
+            model,
         } => {
             use agent::voice::{AudioIO, VoiceEngine};
 
@@ -494,8 +526,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if download {
                 match VoiceEngine::new() {
                     Ok(engine) => {
-                        println!("📥 Downloading TTS model...");
-                        match engine.download_model("microsoft/speecht5_tts") {
+                        println!("📥 Downloading model: {}...", model);
+                        // Pass model variable instead of hardcoded string
+                        match engine.download_model(&model) {
                             Ok(path) => println!("✅ Model ready: {:?}", path),
                             Err(e) => println!("❌ Download failed: {}", e),
                         }
