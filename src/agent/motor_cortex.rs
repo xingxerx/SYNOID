@@ -28,7 +28,7 @@ impl MotorCortex {
         output: &Path,
         _visual_data: &[VisualScene],
         _audio_data: &AudioAnalysis,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         let library = StyleLibrary::new();
         let profile = library.get_profile(intent);
 
@@ -48,44 +48,56 @@ impl MotorCortex {
         }
 
         // 2. Build FFmpeg Filtergraph (Video)
-        let filter_str = if filters.is_empty() {
-            String::new()
-        } else {
-            format!("-vf \"{}\"", filters.join(","))
-        };
+        // We'll add -vf as an argument if needed later.
 
         // 3. Build Audio Filtergraph (Enhanced Voice)
         let mut audio_filters = Vec::new();
         // Check intent for "enhance voice" or similar variants
         let intent_lower = intent.to_lowercase();
-        if (intent_lower.contains("enhance") || intent_lower.contains("fix")) && intent_lower.contains("voice") {
-             info!("[CORTEX] Detected Voice Enhancement Intent. Applying Audio Clean-up.");
-             // Standard Broadcast Spec: Denoise -> EQ Bandpass -> Loudness Normalization
-             audio_filters.push("afftdn=nf=-25".to_string());
-             audio_filters.push("highpass=f=200".to_string());
-             audio_filters.push("lowpass=f=3000".to_string());
-             audio_filters.push("loudnorm=I=-16:TP=-1.5:LRA=11".to_string());
+        if (intent_lower.contains("enhance") || intent_lower.contains("fix"))
+            && intent_lower.contains("voice")
+        {
+            info!("[CORTEX] Detected Voice Enhancement Intent. Applying Audio Clean-up.");
+            // Standard Broadcast Spec: Denoise -> EQ Bandpass -> Loudness Normalization
+            audio_filters.push("afftdn=nf=-25".to_string());
+            audio_filters.push("highpass=f=200".to_string());
+            audio_filters.push("lowpass=f=3000".to_string());
+            audio_filters.push("loudnorm=I=-16:TP=-1.5:LRA=11".to_string());
         }
 
-        let audio_filter_str = if audio_filters.is_empty() {
-            String::new()
+        // Construct Final Command using Vec<String> to avoid shell injection and space issues
+        let mut args = Vec::new();
+        args.push("ffmpeg".to_string());
+        args.push("-i".to_string());
+        args.push(input.to_string_lossy().to_string());
+
+        if !filters.is_empty() {
+            args.push("-vf".to_string());
+            args.push(filters.join(","));
+        }
+
+        if !audio_filters.is_empty() {
+            args.push("-af".to_string());
+            args.push(audio_filters.join(","));
+            args.push("-c:a".to_string());
+            args.push("aac".to_string());
+            args.push("-b:a".to_string());
+            args.push("192k".to_string());
         } else {
-            format!("-af \"{}\"", audio_filters.join(","))
-        };
+            args.push("-c:a".to_string());
+            args.push("copy".to_string());
+        }
 
-        // Construct Final Command
-        // Note: Using -c:a aac for audio encoding when filters are present
-        let audio_codec = if audio_filters.is_empty() { "-c:a copy" } else { "-c:a aac -b:a 192k" };
+        args.push("-c:v".to_string());
+        args.push("libx264".to_string());
+        args.push("-preset".to_string());
+        args.push("slow".to_string());
+        args.push("-crf".to_string());
+        args.push("18".to_string());
 
-        let cmd = format!(
-            "ffmpeg -i {} {} {} -c:v libx264 -preset slow -crf 18 {} -y {}",
-            input.to_str().unwrap(),
-            filter_str,
-            audio_filter_str,
-            audio_codec,
-            output.to_str().unwrap()
-        );
+        args.push("-y".to_string());
+        args.push(output.to_string_lossy().to_string());
 
-        Ok(cmd)
+        Ok(args)
     }
 }
