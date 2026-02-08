@@ -374,17 +374,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .execute_one_shot_render(&intent, &input, &output, &visual_data, &audio_data)
                 .await
             {
-                Ok(cmd_str) => {
+                Ok(cmd_args) => {
+                    // For display, join with spaces. This is for user info only.
+                    let cmd_str = cmd_args.join(" ");
                     println!("🎬 Generated Command:\n{}", cmd_str);
 
                     if dry_run {
                         info!("🚫 Dry-run active. Skipping execution.");
                     } else {
                         info!("⚡ Executing Creative Intent...");
-                        // Parse command string simply (assuming simple args for now)
-                        // In production, MotorCortex should return Vec<String> args, not a raw string
-                        let parts: Vec<&str> = cmd_str.split_whitespace().collect();
-                        if let Some((prog, args)) = parts.split_first() {
+
+                        if let Some((prog, args)) = cmd_args.split_first() {
                             let status = std::process::Command::new(prog)
                                 .args(args)
                                 .stdout(Stdio::inherit())
