@@ -27,8 +27,7 @@ walkdir = "2.3"  # Efficient directory traversal
 num_cpus = "1.0"
 
 # Voice Cloning & Neural TTS
-# Note: RTX 50 series (sm_120) not yet supported by candle/PyTorch CUDA
-# Using CPU mode with FFmpeg NVENC for video encoding acceleration
+# Note: RTX 50 series (sm_120) not yet supported by CUDA
 rand = "0.8"
 candle-core = "0.8"
 candle-nn = "0.8"
@@ -36,19 +35,10 @@ candle-transformers = "0.8"
 tokenizers = "0.15"
 hf-hub = "0.3"    # HuggingFace model downloads
 rodio = "0.17"    # Audio playback
-cpal = "0.15"     # Audio recording
+cpal = "0.15"     # Audio recording  
 hound = "3.5"     # WAV file writing
 dirs = "5.0"      # Platform cache directories
 url = "2.5.8"
 
-# GPU Acceleration Backend
-# cudarc for native CUDA compute 
-cudarc = "0.19"       # Latest CUDA bindings
-pollster = "0.4"      # Blocking async for wgpu
-bytemuck = { version = "1.14", features = ["derive"] }
-# wgpu for compute shaders (Vulkan/DX12/Metal fallback)
-wgpu = "24.0"
-
-# Vector Animation Engine (SVG Video)
-# Pure SMIL-based animated SVG (no external animation libs needed)
-
+# GPU Acceleration: FFmpeg NVENC (no Rust CUDA deps)
+# cudarc/wgpu disabled - RTX 5080 sm_120 build issues

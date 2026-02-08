@@ -7,7 +7,7 @@ use crate::gpu_backend::{get_gpu_context, GpuBackend, GpuContext};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::process::Command;
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 
 /// Pipeline stages that can be executed
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,7 +289,7 @@ impl UnifiedPipeline {
     ) -> Result<PathBuf, Box<dyn std::error::Error>> {
         self.report_progress(config, &format!("Encoding with {}...", self.gpu.ffmpeg_encoder()));
         
-        let encoder = self.gpu.ffmpeg_encoder();
+        // let encoder = self.gpu.ffmpeg_encoder();
         let mut cmd = Command::new("ffmpeg");
         cmd.args(["-y", "-nostdin"]);
         
@@ -310,21 +310,6 @@ impl UnifiedPipeline {
                     "-cq", "23",            // Quality level
                     "-b:v", "0",            // Let CQ control bitrate
                 ]);
-            }
-            GpuBackend::Wgpu { adapter_name } => {
-                if adapter_name.to_lowercase().contains("intel") {
-                    cmd.args([
-                        "-c:v", "h264_qsv",
-                        "-preset", "medium",
-                    ]);
-                } else {
-                    // Use software encoder with optimal settings
-                    cmd.args([
-                        "-c:v", "libx264",
-                        "-preset", "medium",
-                        "-crf", "23",
-                    ]);
-                }
             }
             GpuBackend::Cpu { .. } => {
                 cmd.args([
