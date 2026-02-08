@@ -7,10 +7,8 @@
 use eframe::egui;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::thread;
 
-use crate::agent::production_tools;
-use crate::agent::vector_engine::{vectorize_video, VectorConfig};
+use crate::agent::core::AgentCore;
 
 // --- Color Palette (Premium Dark) ---
 const COLOR_BG_DARK: egui::Color32 = egui::Color32::from_rgb(22, 22, 26);
@@ -60,16 +58,15 @@ pub struct TreeState {
     pub research_expanded: bool,
 }
 
+/// Holds the temporary UI state (form inputs)
 #[derive(Default, Clone)]
-pub struct AgentTask {
+pub struct UiState {
     pub input_path: String,
     pub output_path: String,
     pub intent: String,
     #[allow(dead_code)]
     pub youtube_url: String,
-    pub status: String,
-    pub is_running: bool,
-    pub logs: Vec<String>,
+
     // Production params
     pub clip_start: String,
     pub clip_duration: String,
@@ -83,28 +80,25 @@ pub struct AgentTask {
 }
 
 pub struct SynoidApp {
-    task: Arc<Mutex<AgentTask>>,
+    core: Arc<AgentCore>,
+    ui_state: Arc<Mutex<UiState>>,
     tree_state: TreeState,
     active_command: ActiveCommand,
-    #[allow(dead_code)]
-    api_url: String,
 }
 
-impl Default for SynoidApp {
-    fn default() -> Self {
-        let mut task = AgentTask::default();
-        task.status = "⚡ System Ready".to_string();
-        task.output_path = "output.mp4".to_string();
-        task.clip_start = "0.0".to_string();
-        task.clip_duration = "10.0".to_string();
-        task.compress_size = "25.0".to_string();
-        task.scale_factor = "2.0".to_string();
-        task.guard_mode = "all".to_string();
-        task.logs
-            .push("[SYSTEM] SYNOID Core initialized.".to_string());
+impl SynoidApp {
+    pub fn new(core: Arc<AgentCore>) -> Self {
+        let mut ui_state = UiState::default();
+        ui_state.output_path = "output.mp4".to_string();
+        ui_state.clip_start = "0.0".to_string();
+        ui_state.clip_duration = "10.0".to_string();
+        ui_state.compress_size = "25.0".to_string();
+        ui_state.scale_factor = "2.0".to_string();
+        ui_state.guard_mode = "all".to_string();
 
         Self {
-            task: Arc::new(Mutex::new(task)),
+            core,
+            ui_state: Arc::new(Mutex::new(ui_state)),
             tree_state: TreeState {
                 video_expanded: true,
                 vector_expanded: true,
@@ -114,13 +108,9 @@ impl Default for SynoidApp {
                 research_expanded: false,
             },
             active_command: ActiveCommand::None,
-            api_url: std::env::var("SYNOID_API_URL")
-                .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
         }
     }
-}
 
-impl SynoidApp {
     fn configure_style(&self, ctx: &egui::Context) {
         let mut visuals = egui::Visuals::dark();
         visuals.window_fill = COLOR_BG_DARK;
@@ -236,7 +226,7 @@ impl SynoidApp {
         selected
     }
 
-    fn render_command_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_command_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         match self.active_command {
             ActiveCommand::None => {
                 ui.vertical_centered(|ui| {
@@ -256,39 +246,39 @@ impl SynoidApp {
                     );
                 });
             }
-            ActiveCommand::Youtube => self.render_youtube_panel(ui, task),
-            ActiveCommand::Clip => self.render_clip_panel(ui, task),
-            ActiveCommand::Compress => self.render_compress_panel(ui, task),
-            ActiveCommand::Vectorize => self.render_vectorize_panel(ui, task),
-            ActiveCommand::Upscale => self.render_upscale_panel(ui, task),
-            ActiveCommand::Brain => self.render_brain_panel(ui, task),
-            ActiveCommand::Embody => self.render_embody_panel(ui, task),
-            ActiveCommand::Learn => self.render_learn_panel(ui, task),
-            ActiveCommand::Suggest => self.render_suggest_panel(ui, task),
-            ActiveCommand::VoiceRecord => self.render_voice_record_panel(ui, task),
-            ActiveCommand::VoiceClone => self.render_voice_clone_panel(ui, task),
-            ActiveCommand::VoiceSpeak => self.render_voice_speak_panel(ui, task),
-            ActiveCommand::Guard => self.render_guard_panel(ui, task),
-            ActiveCommand::Research => self.render_research_panel(ui, task),
+            ActiveCommand::Youtube => self.render_youtube_panel(ui, state),
+            ActiveCommand::Clip => self.render_clip_panel(ui, state),
+            ActiveCommand::Compress => self.render_compress_panel(ui, state),
+            ActiveCommand::Vectorize => self.render_vectorize_panel(ui, state),
+            ActiveCommand::Upscale => self.render_upscale_panel(ui, state),
+            ActiveCommand::Brain => self.render_brain_panel(ui, state),
+            ActiveCommand::Embody => self.render_embody_panel(ui, state),
+            ActiveCommand::Learn => self.render_learn_panel(ui, state),
+            ActiveCommand::Suggest => self.render_suggest_panel(ui, state),
+            ActiveCommand::VoiceRecord => self.render_voice_record_panel(ui, state),
+            ActiveCommand::VoiceClone => self.render_voice_clone_panel(ui, state),
+            ActiveCommand::VoiceSpeak => self.render_voice_speak_panel(ui, state),
+            ActiveCommand::Guard => self.render_guard_panel(ui, state),
+            ActiveCommand::Research => self.render_research_panel(ui, state),
         }
     }
 
     // --- Command Panels ---
 
-    fn render_youtube_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_youtube_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("📤 Upload Video").color(COLOR_ACCENT_ORANGE));
         ui.separator();
         ui.add_space(10.0);
 
-        ui.label("Video File:");
+        ui.label("YouTube URL / Video File:");
         ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut task.input_path);
+            ui.text_edit_singleline(&mut state.input_path);
             if ui.button("📂").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Video", &["mp4", "mkv", "avi", "mov", "webm"])
                     .pick_file()
                 {
-                    task.input_path = path.to_string_lossy().to_string();
+                    state.input_path = path.to_string_lossy().to_string();
                 }
             }
         });
@@ -296,7 +286,7 @@ impl SynoidApp {
 
         ui.label("Creative Intent:");
         ui.add(
-            egui::TextEdit::multiline(&mut task.intent)
+            egui::TextEdit::multiline(&mut state.intent)
                 .desired_rows(3)
                 .desired_width(f32::INFINITY),
         );
@@ -304,612 +294,421 @@ impl SynoidApp {
 
         ui.label("Output Path:");
         ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut task.output_path);
+            ui.text_edit_singleline(&mut state.output_path);
             if ui.button("📂").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Video", &["mp4"])
                     .set_file_name("output.mp4")
                     .save_file()
                 {
-                    task.output_path = path.to_string_lossy().to_string();
+                    state.output_path = path.to_string_lossy().to_string();
                 }
             }
         });
         ui.add_space(20.0);
 
-        // Validation hints
-        let has_input = !task.input_path.is_empty();
-        let has_output = !task.output_path.is_empty();
+        let has_input = !state.input_path.is_empty();
 
-        if !has_input || !has_output {
-            ui.add_space(5.0);
-            ui.label(
-                egui::RichText::new("⚠️ Select a video file and output path to continue")
-                    .size(12.0)
-                    .color(COLOR_ACCENT_RED),
-            );
-            ui.add_space(5.0);
+        if !has_input {
+            ui.label(egui::RichText::new("⚠️ Enter a URL or file path").size(12.0).color(COLOR_ACCENT_RED));
         }
 
-        let task_clone = self.task.clone();
-        let button_enabled = has_input && has_output;
-        let button = egui::Button::new(egui::RichText::new("📤 Upload & Process").size(16.0)).fill(
-            if button_enabled {
-                COLOR_ACCENT_ORANGE
-            } else {
-                egui::Color32::from_rgb(80, 80, 80)
-            },
+        let button_enabled = has_input;
+        let button = egui::Button::new(egui::RichText::new("📤 Process").size(16.0)).fill(
+            if button_enabled { COLOR_ACCENT_ORANGE } else { egui::Color32::from_rgb(80, 80, 80) },
         );
 
         if ui.add(button).clicked() && button_enabled {
-            let input = PathBuf::from(&task.input_path);
-            let output = PathBuf::from(&task.output_path);
-            let intent = task.intent.clone();
+            let core = self.core.clone();
+            let input = state.input_path.clone();
+            let output = if !state.output_path.is_empty() {
+                Some(PathBuf::from(&state.output_path))
+            } else {
+                None
+            };
+            let intent = state.intent.clone();
 
-            task.logs
-                .push(format!("[UPLOAD] Processing: {}", task.input_path));
-            if !intent.is_empty() {
-                task.logs.push(format!("[UPLOAD] 🧠 Intent: {}", intent));
-            }
-            task.status = "📤 Processing...".to_string();
-            task.is_running = true;
-
-            thread::spawn(move || {
-                // Validate input file exists
-                if !input.exists() {
-                    let mut t = task_clone.lock().unwrap();
-                    t.logs
-                        .push(format!("[UPLOAD] ❌ File not found: {:?}", input));
-                    t.status = "⚡ Ready".to_string();
-                    t.is_running = false;
-                    return;
-                }
-
-                // Use smart editor if intent is provided
-                if !intent.is_empty() {
-                    use crate::agent::smart_editor;
-
-                    let task_for_callback = task_clone.clone();
-                    let callback = Box::new(move |msg: &str| {
-                        if let Ok(mut t) = task_for_callback.lock() {
-                            t.logs.push(msg.to_string());
-                        }
-                    });
-
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    match rt.block_on(smart_editor::smart_edit(
-                        &input,
-                        &intent,
-                        &output,
-                        Some(callback),
-                    )) {
-                        Ok(result) => {
-                            let mut t = task_clone.lock().unwrap();
-                            t.logs.push(format!("[UPLOAD] {}", result));
-                            t.status = "⚡ Ready".to_string();
-                            t.is_running = false;
-                        }
-                        Err(e) => {
-                            let mut t = task_clone.lock().unwrap();
-                            t.logs.push(format!("[UPLOAD] ❌ Smart edit failed: {}", e));
-                            t.logs
-                                .push("[UPLOAD] Falling back to simple copy...".to_string());
-
-                            // Fallback to copy
-                            if let Ok(bytes) = std::fs::copy(&input, &output) {
-                                let mb = bytes as f64 / 1_000_000.0;
-                                t.logs.push(format!("[UPLOAD] ✅ Copied: {:.2} MB", mb));
-                            }
-                            t.status = "⚡ Ready".to_string();
-                            t.is_running = false;
-                        }
-                    }
-                } else {
-                    // No intent - just copy the file
-                    match std::fs::copy(&input, &output) {
-                        Ok(bytes) => {
-                            let mut t = task_clone.lock().unwrap();
-                            let mb = bytes as f64 / 1_000_000.0;
-                            t.logs
-                                .push(format!("[UPLOAD] ✅ Video imported: {:.2} MB", mb));
-                            t.logs.push("[UPLOAD] 💡 Tip: Add an intent like 'remove boring parts' for AI editing".to_string());
-                            t.logs.push(format!("[UPLOAD] Output: {:?}", output));
-                            t.status = "⚡ Ready".to_string();
-                            t.is_running = false;
-                        }
-                        Err(e) => {
-                            let mut t = task_clone.lock().unwrap();
-                            t.logs.push(format!("[UPLOAD] ❌ Error: {}", e));
-                            t.status = "⚡ Ready".to_string();
-                            t.is_running = false;
-                        }
-                    }
-                }
+            tokio::spawn(async move {
+                let _ = core.process_youtube_intent(&input, &intent, output, None).await;
             });
         }
     }
 
-    fn render_clip_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_clip_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("✂️ Clip Video").color(COLOR_ACCENT_BLUE));
         ui.separator();
         ui.add_space(10.0);
 
-        self.render_input_file_picker(ui, task);
+        self.render_input_file_picker(ui, state);
         ui.add_space(10.0);
 
         ui.horizontal(|ui| {
             ui.label("Start (sec):");
-            ui.add(egui::TextEdit::singleline(&mut task.clip_start).desired_width(80.0));
+            ui.add(egui::TextEdit::singleline(&mut state.clip_start).desired_width(80.0));
             ui.label("Duration (sec):");
-            ui.add(egui::TextEdit::singleline(&mut task.clip_duration).desired_width(80.0));
+            ui.add(egui::TextEdit::singleline(&mut state.clip_duration).desired_width(80.0));
         });
         ui.add_space(10.0);
 
-        self.render_output_file_picker(ui, task);
+        self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("✂️ Trim Video").size(16.0))
-                    .fill(COLOR_ACCENT_BLUE),
-            )
-            .clicked()
-        {
-            task.logs.push(format!(
-                "[CLIP] Trimming {}s from {}s",
-                task.clip_duration, task.clip_start
-            ));
-            task.status = "✂️ Clipping...".to_string();
+        if ui.add(egui::Button::new(egui::RichText::new("✂️ Trim Video").size(16.0)).fill(COLOR_ACCENT_BLUE)).clicked() {
+            let core = self.core.clone();
+            let input = PathBuf::from(&state.input_path);
+            let start: f64 = state.clip_start.parse().unwrap_or(0.0);
+            let duration: f64 = state.clip_duration.parse().unwrap_or(10.0);
+            let output = if !state.output_path.is_empty() { Some(PathBuf::from(&state.output_path)) } else { None };
+
+            tokio::spawn(async move {
+                let _ = core.clip_video(&input, start, duration, output).await;
+            });
         }
     }
 
-    fn render_compress_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_compress_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("📦 Compress Video").color(COLOR_ACCENT_GREEN));
         ui.separator();
         ui.add_space(10.0);
 
-        self.render_input_file_picker(ui, task);
+        self.render_input_file_picker(ui, state);
         ui.add_space(10.0);
 
         ui.horizontal(|ui| {
             ui.label("Target Size (MB):");
-            ui.add(egui::TextEdit::singleline(&mut task.compress_size).desired_width(80.0));
+            ui.add(egui::TextEdit::singleline(&mut state.compress_size).desired_width(80.0));
         });
         ui.add_space(10.0);
 
-        self.render_output_file_picker(ui, task);
+        self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        let task_clone = self.task.clone();
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("📦 Compress").size(16.0))
-                    .fill(COLOR_ACCENT_GREEN),
-            )
-            .clicked()
-        {
-            if !task.input_path.is_empty() {
-                let input = PathBuf::from(&task.input_path);
-                let size: f64 = task.compress_size.parse().unwrap_or(25.0);
-                let output = PathBuf::from(&task.output_path);
+        if ui.add(egui::Button::new(egui::RichText::new("📦 Compress").size(16.0)).fill(COLOR_ACCENT_GREEN)).clicked() {
+            let core = self.core.clone();
+            let input = PathBuf::from(&state.input_path);
+            let size: f64 = state.compress_size.parse().unwrap_or(25.0);
+            let output = if !state.output_path.is_empty() { Some(PathBuf::from(&state.output_path)) } else { None };
 
-                task.logs.push(format!("[COMPRESS] Target: {:.1} MB", size));
-                task.status = "📦 Compressing...".to_string();
-
-                thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async {
-                        match production_tools::compress_video(&input, size, &output).await {
-                            Ok(res) => {
-                                let mut t = task_clone.lock().unwrap();
-                                t.logs
-                                    .push(format!("[COMPRESS] ✅ Done: {:.2} MB", res.size_mb));
-                                t.status = "⚡ Ready".to_string();
-                            }
-                            Err(e) => {
-                                let mut t = task_clone.lock().unwrap();
-                                t.logs.push(format!("[COMPRESS] ❌ Error: {}", e));
-                                t.status = "⚡ Ready".to_string();
-                            }
-                        }
-                    });
-                });
-            }
+            tokio::spawn(async move {
+                let _ = core.compress_video(&input, size, output).await;
+            });
         }
     }
 
-    fn render_vectorize_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_vectorize_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🎨 Vectorize to SVG").color(COLOR_ACCENT_PURPLE));
         ui.separator();
         ui.add_space(10.0);
 
-        self.render_input_file_picker(ui, task);
+        self.render_input_file_picker(ui, state);
         ui.add_space(10.0);
 
         ui.label("Output Directory:");
         ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut task.output_path);
+            ui.text_edit_singleline(&mut state.output_path);
             if ui.button("📂").clicked() {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    task.output_path = path.to_string_lossy().to_string();
+                    state.output_path = path.to_string_lossy().to_string();
                 }
             }
         });
         ui.add_space(20.0);
 
-        let task_clone = self.task.clone();
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🎨 Convert to SVG").size(16.0))
-                    .fill(COLOR_ACCENT_PURPLE),
-            )
-            .clicked()
-        {
-            if !task.input_path.is_empty() {
-                let input = PathBuf::from(&task.input_path);
-                let output_dir = PathBuf::from(&task.output_path);
+        if ui.add(egui::Button::new(egui::RichText::new("🎨 Convert to SVG").size(16.0)).fill(COLOR_ACCENT_PURPLE)).clicked() {
+            let core = self.core.clone();
+            let input = PathBuf::from(&state.input_path);
+            let output = PathBuf::from(&state.output_path);
 
-                task.logs
-                    .push("[VECTOR] Starting conversion...".to_string());
-                task.status = "🎨 Vectorizing...".to_string();
-
-                thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async {
-                        let config = VectorConfig::default();
-                        match vectorize_video(&input, &output_dir, config).await {
-                            Ok(msg) => {
-                                let mut t = task_clone.lock().unwrap();
-                                t.logs.push(format!("[VECTOR] ✅ {}", msg));
-                                t.status = "⚡ Ready".to_string();
-                            }
-                            Err(e) => {
-                                let mut t = task_clone.lock().unwrap();
-                                t.logs.push(format!("[VECTOR] ❌ Error: {}", e));
-                                t.status = "⚡ Ready".to_string();
-                            }
-                        }
-                    });
-                });
-            }
+            tokio::spawn(async move {
+                let _ = core.vectorize_video(&input, &output, "color").await;
+            });
         }
     }
 
-    fn render_upscale_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_upscale_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🔎 Infinite Upscale").color(COLOR_ACCENT_ORANGE));
         ui.separator();
         ui.add_space(10.0);
 
-        self.render_input_file_picker(ui, task);
+        self.render_input_file_picker(ui, state);
         ui.add_space(10.0);
 
         ui.horizontal(|ui| {
             ui.label("Scale Factor:");
-            ui.add(egui::TextEdit::singleline(&mut task.scale_factor).desired_width(60.0));
+            ui.add(egui::TextEdit::singleline(&mut state.scale_factor).desired_width(60.0));
             ui.label("x");
         });
         ui.add_space(10.0);
 
-        self.render_output_file_picker(ui, task);
+        self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        let task_clone = self.task.clone();
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🔎 Upscale Video").size(16.0))
-                    .fill(COLOR_ACCENT_ORANGE),
-            )
-            .clicked()
-        {
-            if !task.input_path.is_empty() {
-                let input = PathBuf::from(&task.input_path);
-                let output = PathBuf::from(&task.output_path);
-                let scale: f64 = task.scale_factor.parse().unwrap_or(2.0);
+        if ui.add(egui::Button::new(egui::RichText::new("🔎 Upscale Video").size(16.0)).fill(COLOR_ACCENT_ORANGE)).clicked() {
+            let core = self.core.clone();
+            let input = PathBuf::from(&state.input_path);
+            let output = PathBuf::from(&state.output_path);
+            let scale: f64 = state.scale_factor.parse().unwrap_or(2.0);
 
-                task.logs
-                    .push(format!("[UPSCALE] Starting {:.1}x upscale...", scale));
-                task.status = "🔎 Upscaling...".to_string();
-
-                use crate::agent::vector_engine::upscale_video;
-                thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    rt.block_on(async {
-                        match upscale_video(&input, scale, &output).await {
-                            Ok(msg) => {
-                                let mut t = task_clone.lock().unwrap();
-                                t.logs.push(format!("[UPSCALE] ✅ {}", msg));
-                                t.status = "⚡ Ready".to_string();
-                            }
-                            Err(e) => {
-                                let mut t = task_clone.lock().unwrap();
-                                t.logs.push(format!("[UPSCALE] ❌ Error: {}", e));
-                                t.status = "⚡ Ready".to_string();
-                            }
-                        }
-                    });
-                });
-            }
+            tokio::spawn(async move {
+                let _ = core.upscale_video(&input, scale, &output).await;
+            });
         }
     }
 
-    fn render_brain_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_brain_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🧠 Brain Command").color(COLOR_ACCENT_BLUE));
         ui.separator();
         ui.add_space(10.0);
 
         ui.label("Natural Language Request:");
         ui.add(
-            egui::TextEdit::multiline(&mut task.intent)
+            egui::TextEdit::multiline(&mut state.intent)
                 .desired_rows(4)
                 .desired_width(f32::INFINITY),
         );
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🧠 Process Request").size(16.0))
-                    .fill(COLOR_ACCENT_BLUE),
-            )
-            .clicked()
-        {
-            task.logs
-                .push(format!("[BRAIN] Processing: {}", task.intent));
-            task.status = "🧠 Thinking...".to_string();
+        if ui.add(egui::Button::new(egui::RichText::new("🧠 Process Request").size(16.0)).fill(COLOR_ACCENT_BLUE)).clicked() {
+            let core = self.core.clone();
+            let request = state.intent.clone();
+
+            tokio::spawn(async move {
+                let _ = core.process_brain_request(&request).await;
+            });
         }
     }
 
-    fn render_embody_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_embody_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🤖 Embodied Agent").color(COLOR_ACCENT_PURPLE));
         ui.separator();
         ui.add_space(10.0);
 
-        self.render_input_file_picker(ui, task);
+        self.render_input_file_picker(ui, state);
         ui.add_space(10.0);
 
         ui.label("Creative Intent:");
         ui.add(
-            egui::TextEdit::multiline(&mut task.intent)
+            egui::TextEdit::multiline(&mut state.intent)
                 .desired_rows(3)
                 .desired_width(f32::INFINITY),
         );
         ui.add_space(10.0);
 
-        self.render_output_file_picker(ui, task);
+        self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🤖 Execute Intent").size(16.0))
-                    .fill(COLOR_ACCENT_PURPLE),
-            )
-            .clicked()
-        {
-            task.logs.push(format!("[EMBODY] Intent: {}", task.intent));
-            task.status = "🤖 Executing...".to_string();
+        if ui.add(egui::Button::new(egui::RichText::new("🤖 Execute Intent").size(16.0)).fill(COLOR_ACCENT_PURPLE)).clicked() {
+            let core = self.core.clone();
+            let input = PathBuf::from(&state.input_path);
+            let output = PathBuf::from(&state.output_path);
+            let intent = state.intent.clone();
+
+            tokio::spawn(async move {
+                let _ = core.embody_intent(&input, &intent, &output).await;
+            });
         }
     }
 
-    fn render_learn_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_learn_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🎓 Learn Style").color(COLOR_ACCENT_GREEN));
         ui.separator();
         ui.add_space(10.0);
 
-        self.render_input_file_picker(ui, task);
+        self.render_input_file_picker(ui, state);
         ui.add_space(10.0);
 
         ui.label("Style Name:");
-        ui.text_edit_singleline(&mut task.voice_profile);
+        ui.text_edit_singleline(&mut state.voice_profile);
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🎓 Analyze & Learn").size(16.0))
-                    .fill(COLOR_ACCENT_GREEN),
-            )
-            .clicked()
-        {
-            task.logs
-                .push(format!("[LEARN] Analyzing style: {}", task.voice_profile));
-            task.status = "🎓 Learning...".to_string();
+        if ui.add(egui::Button::new(egui::RichText::new("🎓 Analyze & Learn").size(16.0)).fill(COLOR_ACCENT_GREEN)).clicked() {
+            let core = self.core.clone();
+            let input = PathBuf::from(&state.input_path);
+            let name = state.voice_profile.clone();
+
+            tokio::spawn(async move {
+                let _ = core.learn_style(&input, &name).await;
+            });
         }
     }
 
-    fn render_suggest_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_suggest_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("💡 Get Suggestions").color(COLOR_ACCENT_BLUE));
         ui.separator();
         ui.add_space(10.0);
 
-        self.render_input_file_picker(ui, task);
+        self.render_input_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("💡 Analyze Video").size(16.0))
-                    .fill(COLOR_ACCENT_BLUE),
-            )
-            .clicked()
-        {
-            task.logs.push("[SUGGEST] Analyzing video...".to_string());
-            task.status = "💡 Analyzing...".to_string();
+        if ui.add(egui::Button::new(egui::RichText::new("💡 Analyze Video").size(16.0)).fill(COLOR_ACCENT_BLUE)).clicked() {
+             // Suggest is a placeholder in core logic too, maybe just log?
+             // Actually I didn't implement suggest in core.
+             // Let's implement it as a log.
+             self.core.log("Suggest feature pending core implementation.");
         }
     }
 
-    fn render_voice_record_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_voice_record_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🎙️ Record Voice").color(COLOR_ACCENT_RED));
         ui.separator();
         ui.add_space(10.0);
 
         ui.label("Recording Duration (seconds):");
-        ui.add(egui::TextEdit::singleline(&mut task.clip_duration).desired_width(80.0));
+        ui.add(egui::TextEdit::singleline(&mut state.clip_duration).desired_width(80.0));
         ui.add_space(10.0);
 
-        self.render_output_file_picker(ui, task);
+        self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🎙️ Start Recording").size(16.0))
-                    .fill(COLOR_ACCENT_RED),
-            )
-            .clicked()
-        {
-            task.logs
-                .push(format!("[VOICE] Recording {}s...", task.clip_duration));
-            task.status = "🎙️ Recording...".to_string();
+        if ui.add(egui::Button::new(egui::RichText::new("🎙️ Start Recording").size(16.0)).fill(COLOR_ACCENT_RED)).clicked() {
+            let core = self.core.clone();
+            let duration: u32 = state.clip_duration.parse().unwrap_or(5);
+            let output = if !state.output_path.is_empty() { Some(PathBuf::from(&state.output_path)) } else { None };
+
+            tokio::spawn(async move {
+                let _ = core.voice_record(output, duration).await;
+            });
         }
     }
 
-    fn render_voice_clone_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_voice_clone_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🎭 Clone Voice").color(COLOR_ACCENT_PURPLE));
         ui.separator();
         ui.add_space(10.0);
 
         ui.label("Voice Sample (Audio File):");
         ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut task.input_path);
+            ui.text_edit_singleline(&mut state.input_path);
             if ui.button("📂").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Audio", &["wav", "mp3", "flac"])
-                    .pick_file()
-                {
-                    task.input_path = path.to_string_lossy().to_string();
+                if let Some(path) = rfd::FileDialog::new().add_filter("Audio", &["wav", "mp3"]).pick_file() {
+                    state.input_path = path.to_string_lossy().to_string();
                 }
             }
         });
         ui.add_space(10.0);
 
         ui.label("Profile Name:");
-        ui.text_edit_singleline(&mut task.voice_profile);
+        ui.text_edit_singleline(&mut state.voice_profile);
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🎭 Create Voice Profile").size(16.0))
-                    .fill(COLOR_ACCENT_PURPLE),
-            )
-            .clicked()
-        {
-            task.logs
-                .push(format!("[VOICE] Creating profile: {}", task.voice_profile));
-            task.status = "🎭 Cloning...".to_string();
+        if ui.add(egui::Button::new(egui::RichText::new("🎭 Create Voice Profile").size(16.0)).fill(COLOR_ACCENT_PURPLE)).clicked() {
+            let core = self.core.clone();
+            let input = PathBuf::from(&state.input_path);
+            let name = if !state.voice_profile.is_empty() { Some(state.voice_profile.clone()) } else { None };
+
+            tokio::spawn(async move {
+                let _ = core.voice_clone(&input, name).await;
+            });
         }
     }
 
-    fn render_voice_speak_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_voice_speak_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🗣️ Text to Speech").color(COLOR_ACCENT_ORANGE));
         ui.separator();
         ui.add_space(10.0);
 
         ui.label("Text to Speak:");
         ui.add(
-            egui::TextEdit::multiline(&mut task.voice_text)
+            egui::TextEdit::multiline(&mut state.voice_text)
                 .desired_rows(4)
                 .desired_width(f32::INFINITY),
         );
         ui.add_space(10.0);
 
         ui.label("Voice Profile (optional):");
-        ui.text_edit_singleline(&mut task.voice_profile);
+        ui.text_edit_singleline(&mut state.voice_profile);
         ui.add_space(10.0);
 
-        self.render_output_file_picker(ui, task);
+        self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🗣️ Generate Speech").size(16.0))
-                    .fill(COLOR_ACCENT_ORANGE),
-            )
-            .clicked()
-        {
-            task.logs.push("[VOICE] Generating speech...".to_string());
-            task.status = "🗣️ Speaking...".to_string();
+        if ui.add(egui::Button::new(egui::RichText::new("🗣️ Generate Speech").size(16.0)).fill(COLOR_ACCENT_ORANGE)).clicked() {
+            let core = self.core.clone();
+            let text = state.voice_text.clone();
+            let profile = if !state.voice_profile.is_empty() { Some(state.voice_profile.clone()) } else { None };
+            let output = if !state.output_path.is_empty() { Some(PathBuf::from(&state.output_path)) } else { None };
+
+            tokio::spawn(async move {
+                let _ = core.voice_speak(&text, profile, output).await;
+            });
         }
     }
 
-    fn render_guard_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_guard_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🛡️ Cyberdefense Sentinel").color(COLOR_ACCENT_RED));
         ui.separator();
         ui.add_space(10.0);
 
         ui.label("Monitor Mode:");
         ui.horizontal(|ui| {
-            ui.radio_value(&mut task.guard_mode, "all".to_string(), "All");
-            ui.radio_value(&mut task.guard_mode, "sys".to_string(), "Processes");
-            ui.radio_value(&mut task.guard_mode, "file".to_string(), "Files");
+            ui.radio_value(&mut state.guard_mode, "all".to_string(), "All");
+            ui.radio_value(&mut state.guard_mode, "sys".to_string(), "Processes");
+            ui.radio_value(&mut state.guard_mode, "file".to_string(), "Files");
         });
         ui.add_space(10.0);
 
         ui.label("Watch Path (optional):");
         ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut task.guard_watch_path);
+            ui.text_edit_singleline(&mut state.guard_watch_path);
             if ui.button("📂").clicked() {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    task.guard_watch_path = path.to_string_lossy().to_string();
+                    state.guard_watch_path = path.to_string_lossy().to_string();
                 }
             }
         });
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🛡️ Activate Sentinel").size(16.0))
-                    .fill(COLOR_ACCENT_RED),
-            )
-            .clicked()
-        {
-            task.logs
-                .push(format!("[GUARD] Activating mode: {}", task.guard_mode));
-            task.status = "🛡️ Guarding...".to_string();
+        if ui.add(egui::Button::new(egui::RichText::new("🛡️ Activate Sentinel").size(16.0)).fill(COLOR_ACCENT_RED)).clicked() {
+            let core = self.core.clone();
+            let mode = state.guard_mode.clone();
+            let watch = if !state.guard_watch_path.is_empty() { Some(PathBuf::from(&state.guard_watch_path)) } else { None };
+
+            tokio::spawn(async move {
+                core.activate_sentinel(&mode, watch).await;
+            });
         }
     }
 
-    fn render_research_panel(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_research_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🔍 Research Topic").color(COLOR_ACCENT_BLUE));
         ui.separator();
         ui.add_space(10.0);
 
         ui.label("Research Topic:");
-        ui.text_edit_singleline(&mut task.research_topic);
+        ui.text_edit_singleline(&mut state.research_topic);
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🔍 Search").size(16.0))
-                    .fill(COLOR_ACCENT_BLUE),
-            )
-            .clicked()
-        {
-            task.logs
-                .push(format!("[RESEARCH] Searching: {}", task.research_topic));
-            task.status = "🔍 Researching...".to_string();
+        if ui.add(egui::Button::new(egui::RichText::new("🔍 Search").size(16.0)).fill(COLOR_ACCENT_BLUE)).clicked() {
+            let core = self.core.clone();
+            let topic = state.research_topic.clone();
+
+            tokio::spawn(async move {
+                let _ = core.process_research(&topic, 5).await;
+            });
         }
     }
 
     // --- Helper renders ---
 
-    fn render_input_file_picker(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_input_file_picker(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.label("Input File:");
         ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut task.input_path);
+            ui.text_edit_singleline(&mut state.input_path);
             if ui.button("📂").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Video", &["mp4", "mkv", "avi", "mov"])
-                    .pick_file()
-                {
-                    task.input_path = path.to_string_lossy().to_string();
+                if let Some(path) = rfd::FileDialog::new().add_filter("Video", &["mp4", "mkv", "avi", "mov"]).pick_file() {
+                    state.input_path = path.to_string_lossy().to_string();
                 }
             }
         });
     }
 
-    fn render_output_file_picker(&self, ui: &mut egui::Ui, task: &mut AgentTask) {
+    fn render_output_file_picker(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.label("Output File:");
         ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut task.output_path);
+            ui.text_edit_singleline(&mut state.output_path);
             if ui.button("📂").clicked() {
                 if let Some(path) = rfd::FileDialog::new().save_file() {
-                    task.output_path = path.to_string_lossy().to_string();
+                    state.output_path = path.to_string_lossy().to_string();
                 }
             }
         });
@@ -1070,10 +869,10 @@ impl eframe::App for SynoidApp {
                     .inner_margin(egui::Margin::symmetric(12.0, 8.0)),
             )
             .show(ctx, |ui| {
-                let task = self.task.lock().unwrap();
+                let status = self.core.get_status();
                 ui.horizontal(|ui| {
                     ui.label(
-                        egui::RichText::new(&task.status)
+                        egui::RichText::new(&status)
                             .size(12.0)
                             .color(COLOR_ACCENT_BLUE),
                     );
@@ -1106,8 +905,8 @@ impl eframe::App for SynoidApp {
                 ui.allocate_new_ui(
                     egui::UiBuilder::new().max_rect(panel_rect.shrink(20.0)),
                     |ui| {
-                        let mut task = self.task.lock().unwrap();
-                        self.render_command_panel(ui, &mut task);
+                        let mut state = self.ui_state.lock().unwrap();
+                        self.render_command_panel(ui, &mut state);
                     },
                 );
 
@@ -1121,7 +920,7 @@ impl eframe::App for SynoidApp {
                 );
                 ui.add_space(8.0);
 
-                let task = self.task.lock().unwrap();
+                let logs = self.core.get_logs();
                 let logs_rect = egui::Rect::from_min_size(
                     ui.cursor().min,
                     egui::vec2(ui.available_width(), 200.0),
@@ -1135,7 +934,7 @@ impl eframe::App for SynoidApp {
                             .max_height(180.0)
                             .stick_to_bottom(true)
                             .show(ui, |ui| {
-                                for log in &task.logs {
+                                for log in &logs {
                                     ui.label(
                                         egui::RichText::new(log)
                                             .monospace()
@@ -1148,14 +947,12 @@ impl eframe::App for SynoidApp {
                 );
             });
 
-        let task = self.task.lock().unwrap();
-        if task.is_running {
-            ctx.request_repaint();
-        }
+        // Always request repaint to show log updates from background threads
+        ctx.request_repaint();
     }
 }
 
-pub fn run_gui() -> Result<(), eframe::Error> {
+pub fn run_gui(core: Arc<AgentCore>) -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
@@ -1167,6 +964,6 @@ pub fn run_gui() -> Result<(), eframe::Error> {
     eframe::run_native(
         "SYNOID Command Center",
         options,
-        Box::new(|_cc| Ok(Box::new(SynoidApp::default()))),
+        Box::new(|_cc| Ok(Box::new(SynoidApp::new(core)))),
     )
 }
