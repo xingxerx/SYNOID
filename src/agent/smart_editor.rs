@@ -227,7 +227,6 @@ pub fn score_scenes(
             } else if scene.duration < 2.0 {
                 score += 0.2;
             }
-            }
         }
 
         if intent.keep_action && scene.duration < 3.0 {
@@ -258,26 +257,21 @@ pub fn score_scenes(
 
             let speech_ratio = speech_duration / scene.duration;
 
-            // More nuanced speech scoring:
-            // - High speech ratio alone doesn't make content interesting
-            // - We need variety; constant talking can still be boring
+            // More nuanced speech scoring
             if intent.keep_speech {
                 if speech_ratio > 0.1 {
                     score += 0.4;
-                } // Any significant speech = keep
+                }
             } else {
                 if speech_ratio > 0.3 {
                     score += 0.4;
                 }
-                }
             }
-            
+
             if intent.remove_silence {
                 if speech_ratio < 0.05 {
-                    // Almost completely silent - strongly penalize
                     score -= 0.4;
                 } else if speech_ratio < 0.1 {
-                    // Very quiet - penalize
                     score -= 0.2;
                 }
             }
@@ -291,7 +285,6 @@ pub fn score_scenes(
     }
 
     // 2. Post-Scoring: Integrity Pass
-    // This is the critical fix for "following the transcript"
     if let Some(segments) = transcript {
         ensure_speech_continuity(scenes, segments);
     }

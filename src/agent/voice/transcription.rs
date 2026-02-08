@@ -1,7 +1,7 @@
 // SYNOID Transcription Bridge
 // Wraps generic Python Whisper script for robust local transcription.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;

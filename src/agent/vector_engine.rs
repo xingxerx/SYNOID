@@ -8,6 +8,8 @@ use resvg::usvg;
 use std::fs;
 use std::path::{Path, PathBuf};
 use crate::agent::vision_tools::calculate_optical_flow_diff;
+use tokio::process::Command;
+use tracing::{info, error};
 
 /// Upscale video by converting to Vector and re-rendering at higher resolution
 pub async fn upscale_video(

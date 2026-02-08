@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.36", features = ["full"] }
+tokio = { version = "1.32", features = ["full"] }
 clap = { version = "4.4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -12,35 +12,34 @@ dotenv = "0.15"
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-vtracer = "0.6"
-rayon = "1.7"
+vtracer = "0.6" # Core vectorizer engine
+rayon = "1.7"   # Parallel processing for frames
 reqwest = { version = "0.11", features = ["json"] }
 eframe = "0.29.1"
 rfd = "0.13"
-image = "0.25"
+image = "0.24"
 scraper = "0.19"
-resvg = "0.29"
-tiny-skia = "0.8"
-sysinfo = "0.29"
-sha2 = "0.10"
-walkdir = "2.3"
+resvg = "0.29"   # SVG rendering engine
+tiny-skia = "0.8" # 2D Graphics library for resvg
+sysinfo = "0.29" # System monitoring (Processes/RAM)
+sha2 = "0.10"    # File integrity hashing
+walkdir = "2.3"  # Efficient directory traversal
 num_cpus = "1.0"
+
+# Voice Cloning & Neural TTS
+# Note: RTX 50 series (sm_120) not yet supported by CUDA
 rand = "0.8"
-candle-core = { version = "0.8", features = ["cuda"] }
+# Explicitly use default features (CPU) for candle
+candle-core = "0.8"
 candle-nn = "0.8"
 candle-transformers = "0.8"
-cudarc = { version = "0.9", optional = true }
 tokenizers = "0.15"
-hf-hub = "0.3"
-rodio = "0.17"
-cpal = "0.15"
-hound = "3.5"
-dirs = "5.0"
+hf-hub = "0.3"    # HuggingFace model downloads
+rodio = "0.17"    # Audio playback
+cpal = "0.15"     # Audio recording  
+hound = "3.5"     # WAV file writing
+dirs = "5.0"      # Platform cache directories
 url = "2.5.8"
 
-# GPU Backend
-log = "0.4"
-env_logger = "0.11"
-wgpu = "0.19"
-pollster = "0.4"
-bytemuck = { version = "1.14", features = ["derive"] }
+# GPU Acceleration: FFmpeg NVENC (no Rust CUDA deps)
+# cudarc/wgpu disabled - RTX 5080 sm_120 build issues
