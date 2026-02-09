@@ -58,8 +58,13 @@ impl MotorCortex {
         let mut audio_filters = Vec::new();
         // Check intent for "enhance voice" or similar variants
         let intent_lower = intent.to_lowercase();
-        if (intent_lower.contains("enhance") || intent_lower.contains("fix")) && intent_lower.contains("voice") {
-             info!("[CORTEX] Detected Voice Enhancement Intent. Applying Audio Clean-up.");
+        // Feature: Neural Audio Enhancement
+        if intent_lower.contains("enhance")
+            || intent_lower.contains("fix")
+            || intent_lower.contains("voice")
+            || intent_lower.contains("audio")
+        {
+             info!("[CORTEX] Detected Neural Enhancement Intent.");
              // Standard Broadcast Spec: Denoise -> EQ Bandpass -> Loudness Normalization
              audio_filters.push("afftdn=nf=-25".to_string());
              audio_filters.push("highpass=f=200".to_string());

@@ -18,6 +18,13 @@ __pycache__/
 /etc
 *.spec
 
+# Node.js / Web Bloat
+node_modules/
+package-lock.json
+package.json
+.cnpmrc
+.npmrc
+
 # OS
 Thumbs.db
 .DS_Store

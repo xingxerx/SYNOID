@@ -30,8 +30,8 @@ Whether you are repurposing long-form content, restoring legacy footage, or buil
 
 ## ✨ Features
 
-### 🎬 Video Production
-- **YouTube Integration** — Download and process videos with custom creative intent
+### 🎬 Smart Video Editing
+- **Content Injection** — Automatically find and insert funny snippets/memes based on context
 - **Smart Clipping** — Extract segments with precise timestamps
 - **Compression** — Target-size compression without quality loss
 - **Embodied Editing** — AI understands your intent and generates FFmpeg commands
@@ -174,7 +174,8 @@ src/
     ├── production_tools.rs
     ├── source_tools.rs
     ├── vision_tools.rs
-    └── audio_tools.rs
+    ├── audio_tools.rs
+    └── content_injector.rs # Funny snippet/meme injection
 ```
 
 ---
@@ -215,3 +216,4 @@ All rights reserved. Unauthorized copying, modification, or distribution is proh
 **Built with 🦀 Rust for maximum performance**
 
 </div>
+

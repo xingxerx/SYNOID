@@ -226,11 +226,11 @@ pub fn score_scenes(
         // Visual Heuristics
         if intent.remove_boring {
             if scene.duration > 10.0 {
-                score -= 0.3;
+                score -= 0.5; // Increased penalty
             } else if scene.duration > 5.0 {
-                score -= 0.1;
-            } else if scene.duration < 2.0 {
-                score += 0.2;
+                score -= 0.2; // Increased penalty
+            } else if scene.duration < 3.0 { // Wider range for action/interesting bits
+                score += 0.3;
             }
         }
 
@@ -373,12 +373,10 @@ pub async fn smart_edit(
     };
 
     // 1. Parse intent
-    let mut intent = EditIntent::from_text(intent_text);
-    // Explicitly add "voice" intent if we have a transcript, to leverage speech scoring
-    if transcript.is_some() {
-        intent.keep_speech = true;
-        intent.remove_silence = true;
-    }
+    // 1. Parse intent
+    let intent = EditIntent::from_text(intent_text);
+    // REMOVED: Implicit override that protected all speech.
+    // User intent (e.g. "ruthless") should now override transcript protection if desired.
 
     log(&format!(
         "[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}",
@@ -393,8 +391,8 @@ pub async fn smart_edit(
     log("[SMART] 📊 Scoring scenes based on semantic data...");
     score_scenes(&mut scenes, &intent, transcript.as_deref());
 
-    // 4. Filter scenes to keep (score > 0.3)
-    let keep_threshold = 0.3;
+    // 4. Filter scenes to keep (score > threshold)
+    let keep_threshold = 0.4; // More aggressive threshold
     let scenes_to_keep: Vec<&Scene> = scenes.iter().filter(|s| s.score > keep_threshold).collect();
 
     let total_kept = scenes_to_keep.len();
@@ -428,16 +426,16 @@ pub async fn smart_edit(
         let mut cmd = Command::new("ffmpeg");
         cmd.arg("-y").arg("-nostdin");
 
-        // Input 0: Video
-        cmd.arg("-i").arg(input.to_str().unwrap());
-
-        // Input 1: Enhanced Audio (if available)
-        if use_enhanced_audio {
-            cmd.arg("-i").arg(enhanced_audio_path.to_str().unwrap());
-        }
-
+        // Accurate input-seeking (-ss and -t before -i) prevents frame doubling and lag
         cmd.arg("-ss").arg(&scene.start_time.to_string());
         cmd.arg("-t").arg(&scene.duration.to_string());
+        cmd.arg("-i").arg(input.to_str().unwrap());
+        
+        if use_enhanced_audio {
+            cmd.arg("-ss").arg(&scene.start_time.to_string());
+            cmd.arg("-t").arg(&scene.duration.to_string());
+            cmd.arg("-i").arg(enhanced_audio_path.to_str().unwrap());
+        }
 
         // Mapping
         // Always re-encode for frame accuracy (Fixes "doubling" issue)

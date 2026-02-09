@@ -7,12 +7,14 @@
 use eframe::egui;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+
 use std::thread;
 
 use crate::agent::production_tools;
 use crate::agent::vector_engine::{vectorize_video, VectorConfig};
 use crate::agent::autonomous_learner::AutonomousLearner;
 use crate::agent::brain::Brain;
+use crate::state::KernelState;
 
 // --- Color Palette (Premium Dark) ---
 const COLOR_BG_DARK: egui::Color32 = egui::Color32::from_rgb(22, 22, 26);
@@ -85,6 +87,7 @@ pub struct AgentTask {
 }
 
 pub struct SynoidApp {
+    state: Arc<KernelState>,
     task: Arc<Mutex<AgentTask>>,
     tree_state: TreeState,
     active_command: ActiveCommand,
@@ -128,6 +131,27 @@ impl Default for SynoidApp {
 }
 
 impl SynoidApp {
+    pub fn new(state: Arc<KernelState>) -> Self {
+        let api_url = std::env::var("SYNOID_API_URL")
+            .unwrap_or_else(|_| "http://localhost:11434/v1".to_string());
+            
+        Self {
+            state: state.clone(),
+            task: state.task.clone(),
+            tree_state: TreeState {
+                video_expanded: true,
+                vector_expanded: true,
+                ai_expanded: false,
+                voice_expanded: false,
+                defense_expanded: false,
+                research_expanded: false,
+            },
+            active_command: ActiveCommand::None,
+            learner: Arc::new(AutonomousLearner::new(Arc::new(tokio::sync::Mutex::new(Brain::new(&api_url))))),
+            api_url,
+        }
+    }
+
     fn configure_style(&self, ctx: &egui::Context) {
         let mut visuals = egui::Visuals::dark();
         visuals.window_fill = COLOR_BG_DARK;

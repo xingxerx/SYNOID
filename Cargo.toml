@@ -44,3 +44,7 @@ url = "2.5.8"
 # GPU Acceleration: FFmpeg NVENC + Custom CUDA Kernels
 cudarc = { version = "0.18.2", features = ["cuda-version-from-build-system", "driver"] }
 
+# Web Server & Dashboard API
+axum = { version = "0.7", features = ["macros"] }
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+petgraph = "0.8.3"

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>SYNOID Video Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+        rel="stylesheet" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-white h-screen flex flex-col items-center justify-center">
+
+    <div class="w-full max-w-6xl p-4">
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <span class="material-symbols-outlined text-blue-500">play_circle</span>
+                SYNOID Stream Player
+            </h1>
+            <a href="/" class="text-sm text-gray-400 hover:text-white flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">arrow_back</span> Back to Dashboard
+            </a>
+        </div>
+
+        <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-gray-800">
+            <video id="video-player" class="w-full h-full" controls autoplay>
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <div class="mt-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+            <p class="text-sm text-gray-400 font-mono break-all" id="file-path">No file selected</p>
+        </div>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const path = params.get('path');
+        const videoPlayer = document.getElementById('video-player');
+        const pathDisplay = document.getElementById('file-path');
+
+        if (path) {
+            pathDisplay.textContent = `Playing: ${path}`;
+            // Use the streaming endpoint
+            videoPlayer.src = `/api/stream?path=${encodeURIComponent(path)}`;
+        } else {
+            pathDisplay.textContent = 'Error: No video path provided in URL parameters (?path=...)';
+            pathDisplay.classList.add('text-red-400');
+        }
+    </script>
+
+</body>
+
+</html>

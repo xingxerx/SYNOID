@@ -253,6 +253,13 @@ enum Commands {
 
     /// Start Autonomous Learning Loop
     Autonomous,
+
+    /// Start the Dashboard Web Server
+    Serve {
+        /// Port to run the server on
+        #[arg(short, long, default_value_t = 3000)]
+        port: u16,
+    },
 }
 
 #[tokio::main]
@@ -429,6 +436,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Gpu => {
             synoid_core::gpu_backend::print_gpu_status().await;
         }
+        Commands::Serve { port } => {
+            use synoid_core::server;
+            use synoid_core::state::KernelState;
+            use crate::agent::super_engine::SuperEngine;
+            use std::sync::Arc;
+
+            info!("🌐 Starting SYNOID Dashboard on port {}...", port);
+
+            match SuperEngine::new(&api_url) {
+                Ok(engine) => {
+                    let state = Arc::new(KernelState::new(engine));
+                    server::start_server(port, state).await;
+                }
+                Err(e) => {
+                    error!("Failed to initialize SuperEngine for server: {}", e);
+                }
+            }
+        }
+
         Commands::Vectorize {
             input,
             output,

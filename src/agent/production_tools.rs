@@ -42,15 +42,23 @@ pub async fn trim_video(
 
     let status = Command::new("ffmpeg")
         .arg("-y")
+        .arg("-ss")
+        .arg(&start_time.to_string())
+        .arg("-t")
+        .arg(&duration.to_string())
         .arg("-i")
         .arg(&safe_input)
         .args([
-            "-ss",
-            &start_time.to_string(),
-            "-t",
-            &duration.to_string(),
-            "-c",
-            "copy", // Fast stream copy
+            "-c:v",
+            "libx264",
+            "-preset",
+            "faster",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
             "-avoid_negative_ts",
             "make_zero",
         ])
