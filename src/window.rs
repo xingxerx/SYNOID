@@ -11,6 +11,8 @@ use std::thread;
 
 use crate::agent::production_tools;
 use crate::agent::vector_engine::{vectorize_video, VectorConfig};
+use crate::agent::autonomous_learner::AutonomousLearner;
+use crate::agent::brain::Brain;
 
 // --- Color Palette (Premium Dark) ---
 const COLOR_BG_DARK: egui::Color32 = egui::Color32::from_rgb(22, 22, 26);
@@ -86,6 +88,7 @@ pub struct SynoidApp {
     task: Arc<Mutex<AgentTask>>,
     tree_state: TreeState,
     active_command: ActiveCommand,
+    learner: Arc<AutonomousLearner>,
     #[allow(dead_code)]
     api_url: String,
 }
@@ -114,6 +117,10 @@ impl Default for SynoidApp {
                 research_expanded: false,
             },
             active_command: ActiveCommand::None,
+            learner: Arc::new(AutonomousLearner::new(Arc::new(tokio::sync::Mutex::new(Brain::new(
+                &std::env::var("SYNOID_API_URL")
+                    .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
+            ))))),
             api_url: std::env::var("SYNOID_API_URL")
                 .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
         }
@@ -1045,6 +1052,34 @@ impl eframe::App for SynoidApp {
                     vec![("📚", "Search", ActiveCommand::Research)],
                 ) {
                     new_cmd = Some(cmd);
+                }
+
+                // Autonomous Mode
+                ui.add_space(16.0);
+                ui.separator();
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new("Autonomous Background")
+                        .size(11.0)
+                        .color(COLOR_TEXT_SECONDARY),
+                );
+                
+                let mut is_learning = self.learner.is_active();
+                // Custom checkbox style
+                let text = if is_learning { 
+                    egui::RichText::new("⚡ Auto-Learning Active").color(COLOR_ACCENT_GREEN) 
+                } else { 
+                    egui::RichText::new("💤 Auto-Learning Paused").color(COLOR_TEXT_SECONDARY) 
+                };
+                
+                if ui.checkbox(&mut is_learning, text).changed() {
+                    if is_learning {
+                        self.learner.start();
+                        self.task.lock().unwrap().logs.push("[AUTO] 🚀 Continuous Learning Started".to_string());
+                    } else {
+                        self.learner.stop();
+                        self.task.lock().unwrap().logs.push("[AUTO] 🛑 Continuous Learning Stopped".to_string());
+                    }
                 }
 
                 // Update tree state

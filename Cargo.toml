@@ -41,6 +41,6 @@ hound = "3.5"     # WAV file writing
 dirs = "5.0"      # Platform cache directories
 url = "2.5.8"
 
-# GPU Acceleration: FFmpeg NVENC + CPU fallback for transformers
-# cudarc/wgpu disabled - RTX 5080 sm_120 build issues
+# GPU Acceleration: FFmpeg NVENC + Custom CUDA Kernels
+cudarc = { version = "0.18.2", features = ["cuda-version-from-build-system", "driver"] }
 

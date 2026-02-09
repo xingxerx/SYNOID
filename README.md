@@ -139,7 +139,23 @@ synoid-core learn --input reference.mp4 --name "cinematic"
 # Get edit suggestions
 synoid-core suggest --input draft.mp4
 ```
-Try This command for the Creative Intent if you don't have one " Edit this video,  fix the video first create the transcript of the video try your best to make our the user's voice. Up scale and enhance the user's voice so it's more audible so we can hear better "
+### ⚡ Advanced Creative Intent Example
+
+Use this prompt to maximize engagement and production quality:
+
+> "Act as an elite video editor and audio engineer. Your mission is to transform this raw footage into a viral-ready, high-retention masterpiece.
+>
+> **1. Audio Enhancement (Priority #1):**
+> - **Isolate & Remaster:** Extract the user's voice track. Apply professional EQ, compression, and noise reduction to achieve studio-quality clarity.
+> - **Upscale:** Use AI audio super-resolution to restore high frequencies and presence. Ensure the voice cuts through the mix clearly.
+> - **Transcript:** Generate a precise, time-synced transcript of all dialogue.
+>
+> **2. Content Distillation:**
+> - **Ruthless Editing:** Aggressively trim all dead air, hesitation, and low-energy segments. Keep only the most engaging, action-packed moments.
+> - **Pacing:** Maintain a fast, dynamic rhythm to maximize viewer retention.
+>
+> **3. Engagement Boost:**
+> - **Visual Interest:** Detect context and autonomously inject relevant, entertaining B-roll, memes, or sub-videos to visualize key points and keep the viewer hooked."
 ---
 
 ## 🏗️ Architecture

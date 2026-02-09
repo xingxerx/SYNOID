@@ -31,21 +31,26 @@ impl EditIntent {
             remove_boring: lower.contains("boring")
                 || lower.contains("lame")
                 || lower.contains("dull")
-                || lower.contains("slow"),
+                || lower.contains("slow")
+                || lower.contains("ruthless"), // New keyword
             keep_action: lower.contains("action")
                 || lower.contains("exciting")
                 || lower.contains("fast")
-                || lower.contains("intense"),
+                || lower.contains("intense")
+                || lower.contains("engaging") // New keyword
+                || lower.contains("interesting"),
             remove_silence: lower.contains("silence")
                 || lower.contains("quiet")
-                || lower.contains("dead air"),
+                || lower.contains("dead air")
+                || lower.contains("ruthless"), // Ruthless implies silence removal
             // ADDED: "voice" and "transcript" to triggers
             keep_speech: lower.contains("speech")
                 || lower.contains("talking")
                 || lower.contains("dialogue")
                 || lower.contains("conversation")
                 || lower.contains("voice")
-                || lower.contains("transcript"),
+                || lower.contains("transcript")
+                || lower.contains("engaging"), // "Engaging" often implies keep speech/action
             custom_keywords: vec![],
         }
     }
@@ -435,15 +440,23 @@ pub async fn smart_edit(
         cmd.arg("-t").arg(&scene.duration.to_string());
 
         // Mapping
+        // Always re-encode for frame accuracy (Fixes "doubling" issue)
         cmd.arg("-map").arg("0:v"); // Video from input 0
+        
         if use_enhanced_audio {
             cmd.arg("-map").arg("1:a:0"); // Audio from input 1 (enhanced)
-            cmd.arg("-c:v").arg("copy"); // Copy video stream (fast)
-            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k"); // Re-encode audio to mux
         } else {
             cmd.arg("-map").arg("0:a:0"); // Original audio
-            cmd.arg("-c").arg("copy"); // Copy both
         }
+
+        // CRF 23 is a good balance for quality/size. Preset faster for speed.
+        cmd.arg("-c:v").arg("libx264")
+           .arg("-preset").arg("faster")
+           .arg("-crf").arg("23");
+
+        // Always re-encode audio to AAC to ensure format consistency
+        cmd.arg("-c:a").arg("aac")
+           .arg("-b:a").arg("192k");
 
         cmd.arg("-avoid_negative_ts").arg("make_zero");
         cmd.arg(seg_path.to_str().unwrap());

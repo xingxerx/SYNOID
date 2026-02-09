@@ -21,11 +21,11 @@ def get_safe_device(force_cpu=False):
         
         # PyTorch currently supports up to sm_90 (RTX 40 series)
         # RTX 50 series (Blackwell) is sm_120 - not yet supported
+        # RTX 50 series (Blackwell) is sm_120 - Supported by newer PyTorch builds
         if compute_cap >= 120:
             gpu_name = device_props.name
-            print(f"[PY] WARNING: {gpu_name} (sm_{compute_cap}) not yet supported by PyTorch.", file=sys.stderr)
-            print(f"[PY] Falling back to CPU mode for reliable transcription.", file=sys.stderr)
-            return "cpu"
+            print(f"[PY] INFO: {gpu_name} (sm_{compute_cap}) detected. Attempting to use CUDA...", file=sys.stderr)
+            return "cuda"
         
         return "cuda"
     except Exception as e:

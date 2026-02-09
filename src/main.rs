@@ -250,6 +250,9 @@ enum Commands {
         #[arg(long, default_value_t = 2.0)]
         scale: f64,
     },
+
+    /// Start Autonomous Learning Loop
+    Autonomous,
 }
 
 #[tokio::main]
@@ -347,11 +350,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Run { request } => {
-            use agent::brain::Brain;
-            let mut brain = Brain::new(&api_url);
-            match brain.process(&request).await {
-                Ok(res) => println!("✅ {}", res),
-                Err(e) => error!("Detail: {}", e),
+            use agent::super_engine::SuperEngine;
+            match SuperEngine::new(&api_url) {
+                Ok(mut engine) => {
+                    match engine.process_command(&request).await {
+                        Ok(res) => println!("✅ {}", res),
+                        Err(e) => error!("Processing Failed: {}", e),
+                    }
+                }
+                Err(e) => error!("Failed to initialize SuperEngine: {}", e),
             }
         }
         Commands::Embody {
@@ -684,6 +691,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     error!("Pipeline failed: {}", e);
                 }
             }
+        }
+        Commands::Autonomous => {
+            use agent::brain::Brain;
+            use agent::autonomous_learner::AutonomousLearner;
+            use std::sync::Arc;
+            use tokio::sync::Mutex;
+            use tokio::signal;
+
+            info!("🚀 Starting Autonomous Learning Loop...");
+            let brain = Arc::new(Mutex::new(Brain::new(&api_url)));
+            let learner = AutonomousLearner::new(brain);
+            
+            learner.start();
+            
+            info!("Press Ctrl+C to stop.");
+            signal::ctrl_c().await?;
+            learner.stop();
+            info!("🛑 Autonomous Loop Stopped.");
         }
     }
 

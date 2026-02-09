@@ -1240,6 +1240,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cudarc"
+version = "0.18.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3aa12038120eb13347a6ae2ffab1d34efe78150125108627fd85044dd4d6ff1e"
+dependencies = [
+ "libloading",
+]
+
+[[package]]
 name = "cursor-icon"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5596,6 +5605,7 @@ dependencies = [
  "candle-transformers",
  "clap 4.5.57",
  "cpal",
+ "cudarc",
  "dirs",
  "dotenv",
  "eframe",
