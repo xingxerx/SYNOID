@@ -17,7 +17,7 @@ pub struct ProductionResult {
 }
 
 // Helper to ensure path is treated as file not flag
-fn safe_arg_path(p: &Path) -> PathBuf {
+pub fn safe_arg_path(p: &Path) -> PathBuf {
     if p.is_absolute() {
         p.to_path_buf()
     } else {
@@ -213,4 +213,27 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_safe_arg_path() {
+        let p = Path::new("normal.mp4");
+        assert_eq!(safe_arg_path(p), PathBuf::from("./normal.mp4"));
+
+        let p_bad = Path::new("-bad.mp4");
+        assert_eq!(safe_arg_path(p_bad), PathBuf::from("./-bad.mp4"));
+
+        // If absolute path exists on system (e.g. /abs/path.mp4), safe_arg_path keeps it.
+        // Since is_absolute() is OS dependent, we construct one carefully or trust it works.
+        // For testing, let's just check relative path behavior which is the security fix.
+
+        let p_abs = PathBuf::from("/tmp/test.mp4");
+        if p_abs.is_absolute() {
+             assert_eq!(safe_arg_path(&p_abs), p_abs);
+        }
+    }
 }
