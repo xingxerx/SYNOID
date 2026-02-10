@@ -17,7 +17,7 @@ pub struct ProductionResult {
 }
 
 // Helper to ensure path is treated as file not flag
-fn safe_arg_path(p: &Path) -> PathBuf {
+pub fn safe_arg_path(p: &Path) -> PathBuf {
     if p.is_absolute() {
         p.to_path_buf()
     } else {

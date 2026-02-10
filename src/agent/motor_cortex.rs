@@ -1,5 +1,6 @@
 use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
+use crate::agent::production_tools::safe_arg_path;
 use crate::agent::vision_tools::VisualScene;
 use std::path::Path;
 use tokio::process::Command;
@@ -92,7 +93,7 @@ impl MotorCortex {
         // Use standard flags separate from arguments for security and correctness
         cmd.arg("-y")
             .arg("-i")
-            .arg(input)
+            .arg(safe_arg_path(input))
             .arg("-c:v")
             .arg("libx264")
             .arg("-preset")
@@ -115,7 +116,7 @@ impl MotorCortex {
             cmd.arg("-c:a").arg("copy");
         }
 
-        cmd.arg(output);
+        cmd.arg(safe_arg_path(output));
 
         // STREAMING OUTPUT
         // We spawn the child process which inherits stdout/stderr by default in tokio::process::Command unless piped.
