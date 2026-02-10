@@ -5,6 +5,8 @@ use crate::agent::super_engine::SuperEngine;
 pub struct KernelState {
     pub task: Mutex<TaskState>,
     pub engine: tokio::sync::Mutex<SuperEngine>,
+    pub funny_engine: Arc<crate::funny_engine::FunnyEngine>,
+    pub funny_moments: Mutex<Vec<crate::funny_engine::analyzer::FunnyMoment>>,
 }
 
 impl KernelState {
@@ -12,6 +14,8 @@ impl KernelState {
         Self {
             task: Mutex::new(TaskState::default()),
             engine: tokio::sync::Mutex::new(engine),
+            funny_engine: Arc::new(crate::funny_engine::FunnyEngine::new()),
+            funny_moments: Mutex::new(Vec::new()),
         }
     }
 }
@@ -34,6 +38,7 @@ pub struct TaskState {
     pub voice_profile: String,
     pub guard_mode: String,
     pub guard_watch_path: String,
+    pub is_funny_bits_enabled: bool,
 }
 
 impl Default for TaskState {
@@ -55,6 +60,7 @@ impl Default for TaskState {
             voice_profile: String::new(),
             guard_mode: "all".to_string(),
             guard_watch_path: String::new(),
+            is_funny_bits_enabled: false,
         }
     }
 }

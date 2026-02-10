@@ -1,20 +1,19 @@
 #[cfg(test)]
 mod tests {
-    use cudarc::driver::CudaDevice;
+    use cudarc::driver::CudaContext;
 
     #[test]
     fn test_cuda_initialization() {
         println!("Attempting to initialize CUDA device 0...");
-        let dev = CudaDevice::new(0);
-        match dev {
-            Ok(d) => {
-                println!("Successfully initialized CUDA device: {:?}", d.ordinal());
+        let ctx = CudaContext::new(0);
+        match ctx {
+            Ok(c) => {
+                println!("Successfully initialized CUDA context: {:?}", c.ordinal());
                 assert!(true);
-            },
+            }
             Err(e) => {
                 eprintln!("Failed to initialize CUDA device: {:?}", e);
-                // We want to see the error, but maybe not fail the test suite if it's just missing hardware on a CI node
-                // But for this user loop, we want to know.
+                // Don't panic on CI/machines without GPU - just report
                 panic!("CUDA Initialization failed: {:?}", e);
             }
         }

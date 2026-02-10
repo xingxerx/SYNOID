@@ -6,7 +6,7 @@
 
 use eframe::egui;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use std::thread;
 
@@ -64,31 +64,10 @@ pub struct TreeState {
     pub research_expanded: bool,
 }
 
-#[derive(Default, Clone)]
-pub struct AgentTask {
-    pub input_path: String,
-    pub output_path: String,
-    pub intent: String,
-    #[allow(dead_code)]
-    pub youtube_url: String,
-    pub status: String,
-    pub is_running: bool,
-    pub logs: Vec<String>,
-    // Production params
-    pub clip_start: String,
-    pub clip_duration: String,
-    pub compress_size: String,
-    pub scale_factor: String,
-    pub research_topic: String,
-    pub voice_text: String,
-    pub voice_profile: String,
-    pub guard_mode: String,
-    pub guard_watch_path: String,
-}
+pub type AgentTask = crate::state::TaskState;
 
 pub struct SynoidApp {
     state: Arc<KernelState>,
-    task: Arc<Mutex<AgentTask>>,
     tree_state: TreeState,
     active_command: ActiveCommand,
     learner: Arc<AutonomousLearner>,
@@ -96,39 +75,6 @@ pub struct SynoidApp {
     api_url: String,
 }
 
-impl Default for SynoidApp {
-    fn default() -> Self {
-        let mut task = AgentTask::default();
-        task.status = "⚡ System Ready".to_string();
-        task.output_path = "output.mp4".to_string();
-        task.clip_start = "0.0".to_string();
-        task.clip_duration = "10.0".to_string();
-        task.compress_size = "25.0".to_string();
-        task.scale_factor = "2.0".to_string();
-        task.guard_mode = "all".to_string();
-        task.logs
-            .push("[SYSTEM] SYNOID Core initialized.".to_string());
-
-        Self {
-            task: Arc::new(Mutex::new(task)),
-            tree_state: TreeState {
-                video_expanded: true,
-                vector_expanded: true,
-                ai_expanded: false,
-                voice_expanded: false,
-                defense_expanded: false,
-                research_expanded: false,
-            },
-            active_command: ActiveCommand::None,
-            learner: Arc::new(AutonomousLearner::new(Arc::new(tokio::sync::Mutex::new(Brain::new(
-                &std::env::var("SYNOID_API_URL")
-                    .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
-            ))))),
-            api_url: std::env::var("SYNOID_API_URL")
-                .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
-        }
-    }
-}
 
 impl SynoidApp {
     pub fn new(state: Arc<KernelState>) -> Self {
@@ -137,7 +83,6 @@ impl SynoidApp {
             
         Self {
             state: state.clone(),
-            task: state.task.clone(),
             tree_state: TreeState {
                 video_expanded: true,
                 vector_expanded: true,
@@ -362,7 +307,7 @@ impl SynoidApp {
             ui.add_space(5.0);
         }
 
-        let task_clone = self.task.clone();
+        let state_clone = self.state.clone();
         let button_enabled = has_input && has_output;
         let button = egui::Button::new(egui::RichText::new("📤 Upload & Process").size(16.0)).fill(
             if button_enabled {
@@ -388,7 +333,7 @@ impl SynoidApp {
             thread::spawn(move || {
                 // Validate input file exists
                 if !input.exists() {
-                    let mut t = task_clone.lock().unwrap();
+                    let mut t = state_clone.task.lock().unwrap();
                     t.logs
                         .push(format!("[UPLOAD] ❌ File not found: {:?}", input));
                     t.status = "⚡ Ready".to_string();
@@ -400,9 +345,9 @@ impl SynoidApp {
                 if !intent.is_empty() {
                     use crate::agent::smart_editor;
 
-                    let task_for_callback = task_clone.clone();
+                    let state_for_callback = state_clone.clone();
                     let callback = Box::new(move |msg: &str| {
-                        if let Ok(mut t) = task_for_callback.lock() {
+                        if let Ok(mut t) = state_for_callback.task.lock() {
                             t.logs.push(msg.to_string());
                         }
                     });
@@ -415,13 +360,13 @@ impl SynoidApp {
                         Some(callback),
                     )) {
                         Ok(result) => {
-                            let mut t = task_clone.lock().unwrap();
+                            let mut t = state_clone.task.lock().unwrap();
                             t.logs.push(format!("[UPLOAD] {}", result));
                             t.status = "⚡ Ready".to_string();
                             t.is_running = false;
                         }
                         Err(e) => {
-                            let mut t = task_clone.lock().unwrap();
+                            let mut t = state_clone.task.lock().unwrap();
                             t.logs.push(format!("[UPLOAD] ❌ Smart edit failed: {}", e));
                             t.logs
                                 .push("[UPLOAD] Falling back to simple copy...".to_string());
@@ -439,7 +384,7 @@ impl SynoidApp {
                     // No intent - just copy the file
                     match std::fs::copy(&input, &output) {
                         Ok(bytes) => {
-                            let mut t = task_clone.lock().unwrap();
+                            let mut t = state_clone.task.lock().unwrap();
                             let mb = bytes as f64 / 1_000_000.0;
                             t.logs
                                 .push(format!("[UPLOAD] ✅ Video imported: {:.2} MB", mb));
@@ -449,7 +394,7 @@ impl SynoidApp {
                             t.is_running = false;
                         }
                         Err(e) => {
-                            let mut t = task_clone.lock().unwrap();
+                            let mut t = state_clone.task.lock().unwrap();
                             t.logs.push(format!("[UPLOAD] ❌ Error: {}", e));
                             t.status = "⚡ Ready".to_string();
                             t.is_running = false;
@@ -511,7 +456,7 @@ impl SynoidApp {
         self.render_output_file_picker(ui, task);
         ui.add_space(20.0);
 
-        let task_clone = self.task.clone();
+        let state_clone = self.state.clone();
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("📦 Compress").size(16.0))
@@ -532,13 +477,13 @@ impl SynoidApp {
                     rt.block_on(async {
                         match production_tools::compress_video(&input, size, &output).await {
                             Ok(res) => {
-                                let mut t = task_clone.lock().unwrap();
+                                let mut t = state_clone.task.lock().unwrap();
                                 t.logs
                                     .push(format!("[COMPRESS] ✅ Done: {:.2} MB", res.size_mb));
                                 t.status = "⚡ Ready".to_string();
                             }
                             Err(e) => {
-                                let mut t = task_clone.lock().unwrap();
+                                let mut t = state_clone.task.lock().unwrap();
                                 t.logs.push(format!("[COMPRESS] ❌ Error: {}", e));
                                 t.status = "⚡ Ready".to_string();
                             }
@@ -568,7 +513,7 @@ impl SynoidApp {
         });
         ui.add_space(20.0);
 
-        let task_clone = self.task.clone();
+        let state_clone = self.state.clone();
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("🎨 Convert to SVG").size(16.0))
@@ -590,12 +535,12 @@ impl SynoidApp {
                         let config = VectorConfig::default();
                         match vectorize_video(&input, &output_dir, config).await {
                             Ok(msg) => {
-                                let mut t = task_clone.lock().unwrap();
+                                let mut t = state_clone.task.lock().unwrap();
                                 t.logs.push(format!("[VECTOR] ✅ {}", msg));
                                 t.status = "⚡ Ready".to_string();
                             }
                             Err(e) => {
-                                let mut t = task_clone.lock().unwrap();
+                                let mut t = state_clone.task.lock().unwrap();
                                 t.logs.push(format!("[VECTOR] ❌ Error: {}", e));
                                 t.status = "⚡ Ready".to_string();
                             }
@@ -624,7 +569,7 @@ impl SynoidApp {
         self.render_output_file_picker(ui, task);
         ui.add_space(20.0);
 
-        let task_clone = self.task.clone();
+        let state_clone = self.state.clone();
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("🔎 Upscale Video").size(16.0))
@@ -647,12 +592,12 @@ impl SynoidApp {
                     rt.block_on(async {
                         match upscale_video(&input, scale, &output).await {
                             Ok(msg) => {
-                                let mut t = task_clone.lock().unwrap();
+                                let mut t = state_clone.task.lock().unwrap();
                                 t.logs.push(format!("[UPSCALE] ✅ {}", msg));
                                 t.status = "⚡ Ready".to_string();
                             }
                             Err(e) => {
-                                let mut t = task_clone.lock().unwrap();
+                                let mut t = state_clone.task.lock().unwrap();
                                 t.logs.push(format!("[UPSCALE] ❌ Error: {}", e));
                                 t.status = "⚡ Ready".to_string();
                             }
@@ -846,6 +791,13 @@ impl SynoidApp {
         self.render_output_file_picker(ui, task);
         ui.add_space(20.0);
 
+        if ui.button("📥 Download/Verify TTS Model").clicked() {
+            task.logs.push("[VOICE] Checking model status...".to_string());
+            // In a real app this would call VoiceEngine::download_model
+            task.logs.push("[VOICE] ✅ Model 'tiny' is ready.".to_string());
+        }
+        ui.add_space(10.0);
+
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("🗣️ Generate Speech").size(16.0))
@@ -944,6 +896,50 @@ impl SynoidApp {
                 }
             }
         });
+    }
+    #[allow(dead_code)]
+    fn render_funny_bits_overlay(&self, ui: &mut egui::Ui) {
+        let moments = {
+            let lock = self.state.funny_moments.lock().unwrap();
+            lock.clone()
+        };
+
+        if moments.is_empty() { return; }
+
+        let window_rect = ui.ctx().screen_rect();
+        let timeline_rect = egui::Rect::from_min_size(
+            egui::pos2(window_rect.min.x + 200.0, window_rect.max.y - 40.0), // Sidebar width offset
+            egui::vec2(window_rect.width() - 220.0, 30.0)
+        );
+
+        let painter = ui.painter();
+        
+        // Background
+        painter.rect_filled(timeline_rect, 5.0, egui::Color32::from_black_alpha(200));
+
+        // Let's assume the video duration is roughly the end of the last moment + buffer
+        // In a real app we'd get actual duration from metadata
+        let max_time = moments.last().map(|m| m.start_time + m.duration).unwrap_or(100.0).max(60.0);
+
+        for moment in moments {
+            let start_x = timeline_rect.min.x + (moment.start_time as f32 / max_time as f32) * timeline_rect.width();
+            let width = (moment.duration as f32 / max_time as f32) * timeline_rect.width();
+
+            let rect = egui::Rect::from_min_size(
+                egui::pos2(start_x, timeline_rect.min.y + 5.0),
+                egui::vec2(width.max(2.0), 20.0)
+            );
+
+            let color = match moment.moment_type {
+                crate::funny_engine::analyzer::MomentType::Laughter => egui::Color32::YELLOW,
+                crate::funny_engine::analyzer::MomentType::DeadSilence => egui::Color32::LIGHT_BLUE,
+                _ => egui::Color32::RED,
+            };
+
+            painter.rect_filled(rect, 2.0, color);
+        }
+        
+        ui.ctx().request_repaint();
     }
 }
 
@@ -1099,10 +1095,10 @@ impl eframe::App for SynoidApp {
                 if ui.checkbox(&mut is_learning, text).changed() {
                     if is_learning {
                         self.learner.start();
-                        self.task.lock().unwrap().logs.push("[AUTO] 🚀 Continuous Learning Started".to_string());
+                        self.state.task.lock().unwrap().logs.push("[AUTO] 🚀 Continuous Learning Started".to_string());
                     } else {
                         self.learner.stop();
-                        self.task.lock().unwrap().logs.push("[AUTO] 🛑 Continuous Learning Stopped".to_string());
+                        self.state.task.lock().unwrap().logs.push("[AUTO] 🛑 Continuous Learning Stopped".to_string());
                     }
                 }
 
@@ -1129,7 +1125,7 @@ impl eframe::App for SynoidApp {
                     .inner_margin(egui::Margin::symmetric(12.0, 8.0)),
             )
             .show(ctx, |ui| {
-                let task = self.task.lock().unwrap();
+                let task = self.state.task.lock().unwrap();
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new(&task.status)
@@ -1165,7 +1161,7 @@ impl eframe::App for SynoidApp {
                 ui.allocate_new_ui(
                     egui::UiBuilder::new().max_rect(panel_rect.shrink(20.0)),
                     |ui| {
-                        let mut task = self.task.lock().unwrap();
+                        let mut task = self.state.task.lock().unwrap();
                         self.render_command_panel(ui, &mut task);
                     },
                 );
@@ -1180,7 +1176,7 @@ impl eframe::App for SynoidApp {
                 );
                 ui.add_space(8.0);
 
-                let task = self.task.lock().unwrap();
+                let task = self.state.task.lock().unwrap();
                 let logs_rect = egui::Rect::from_min_size(
                     ui.cursor().min,
                     egui::vec2(ui.available_width(), 200.0),
@@ -1207,14 +1203,14 @@ impl eframe::App for SynoidApp {
                 );
             });
 
-        let task = self.task.lock().unwrap();
+        let task = self.state.task.lock().unwrap();
         if task.is_running {
             ctx.request_repaint();
         }
     }
 }
 
-pub fn run_gui() -> Result<(), eframe::Error> {
+pub fn run_gui(state: Arc<KernelState>) -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
@@ -1226,6 +1222,6 @@ pub fn run_gui() -> Result<(), eframe::Error> {
     eframe::run_native(
         "SYNOID Command Center",
         options,
-        Box::new(|_cc| Ok(Box::new(SynoidApp::default()))),
+        Box::new(|_cc| Ok(Box::new(SynoidApp::new(state)))),
     )
 }

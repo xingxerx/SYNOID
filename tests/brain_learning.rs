@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use synoid_core::agent::brain::{Brain, Intent};
 use std::fs;
 use std::process::Command;
@@ -50,7 +49,7 @@ async fn test_brain_learning_loop() {
     
     // BETTER APPROACH: We manually construct the Intent to test the *Logic* of process(), 
     // bypassing the stubby string parser.
-    let intent = Intent::LearnStyle {
+    let _intent = Intent::LearnStyle {
         input: video_path.to_str().unwrap().to_string(),
         name: "test_style".to_string(),
     };

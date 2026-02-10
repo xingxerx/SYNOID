@@ -78,67 +78,20 @@ cargo run --release -- gui
 
 ---
 
-## 📖 CLI Commands
+## 📖 Usage
 
-### Video Processing
+Launch the GUI Command Center to access all features:
+
 ```bash
-# Download YouTube video
-synoid-core youtube --url "https://youtube.com/watch?v=..." --intent "make it cinematic"
-
-# Clip video segment
-synoid-core clip --input video.mp4 --start 10.0 --duration 30.0
-
-# Compress to target size
-synoid-core compress --input video.mp4 --size 25.0 --output small.mp4
+cargo run --release -- gui
 ```
 
-### Vector Engine
-```bash
-# Vectorize video to SVG frames
-synoid-core vectorize --input video.mp4 --output ./svg_frames
-
-# Infinite upscale (2x)
-synoid-core upscale --input video.mp4 --scale 2.0 --output upscaled.mp4
-```
-
-### Voice Engine
-```bash
-# Record voice sample
-synoid-core voice --record 10 --output my_voice.wav
-
-# Download TTS model
-synoid-core voice --download
-
-# Clone voice and create profile
-synoid-core voice --clone sample.wav --profile "MyVoice"
-
-# Generate speech with cloned voice
-synoid-core voice --speak "Hello world" --profile "MyVoice" --output speech.wav
-```
-
-### Cyberdefense
-```bash
-# Start Sentinel (all monitors)
-synoid-core guard --mode all --watch ./important_files
-
-# Process monitoring only
-synoid-core guard --mode sys
-```
-
-### AI Brain
-```bash
-# Direct brain command
-synoid-core run --request "analyze this video for pacing"
-
-# Embodied agent
-synoid-core embody --input raw.mp4 --intent "add dramatic color grading" --output final.mp4
-
-# Learn editing style
-synoid-core learn --input reference.mp4 --name "cinematic"
-
-# Get edit suggestions
-synoid-core suggest --input draft.mp4
-```
+The graphical interface provides access to all kernel capabilities:
+- **Video Production**: Upload, clip, and compress videos.
+- **Vector Engine**: Vectorize and upscale footage.
+- **Voice Engine**: Record, clone, and synthesize speech.
+- **AI Brain**: Execute complex intents and embodied editing.
+- **Cyberdefense**: Monitor system integrity and processes.
 ### ⚡ Advanced Creative Intent Example
 
 Use this prompt to maximize engagement and production quality:
@@ -157,7 +110,7 @@ Use this prompt to maximize engagement and production quality:
 > **3. Engagement Boost:**
 > - **Visual Interest:** Detect context and autonomously inject relevant, entertaining B-roll, memes, or sub-videos to visualize key points and keep the viewer hooked."
 ---
-
+The final video should be 40-50 minutes long, and 1080p, 60fps, 16:9, 24mbps, stereo audio, 192kbps, 48khz.
 ## 🏗️ Architecture
 
 ```

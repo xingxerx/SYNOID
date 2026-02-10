@@ -34,9 +34,10 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
             "lavfi",
         ])
         .arg(&format!(
-            "movie='{}',select='gt(scene,0.3)'",
+            "movie='{}',select='gt(scene,0.01)'",
             path.to_string_lossy()
                 .replace("\\", "/")
+                .replace(":", "\\:")
                 .replace("'", "'\\''")
         ))
         .output()

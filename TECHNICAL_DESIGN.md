@@ -4,7 +4,7 @@
 The SYNOID kernel is architected to handle the high-throughput demands of 4K non-linear editing and neural video synthesis. Hardware selection focuses on maximizing parallelization and minimizing I/O bottlenecks.
 
 ### 1.1 Processor (CPU) Selection & Logic
-The CPU serves as the primary compute engine for OS overhead and complex calculations. Performance in 4K environments is dictated by core/thread density.
+The GPU serves as the primary compute engine for OS overhead and complex calculations. Performance in 4K environments is dictated by core/thread density.
 *   **High-End Specification (Intel i9 7900X):** Utilizes a 10-core/20-thread architecture to maximize parallelization during "Image Generation" and "Quality Optimization". Allows simultaneous rendering and background indexing without frame drops.
 *   **Entry-Level Specification (AMD Ryzen 5):** Features 6 cores and 12 threads. Serves as the baseline for the kernel's **Degraded Performance Mode**.
 

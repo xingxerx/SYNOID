@@ -47,6 +47,26 @@ downloads/
 *.pdb
 *.lib
 
+# Build/Debug Logs
+*.log
+check_err.log
+check_log.txt
+check_out.txt
+output.txt
+
+# Empty artifact directories
+backup_good_run/
+backup_good_runsrc/
+synoid_workspace/
+srcagentdefense/
+
+# Runtime caches
+cortex_cache/
+brain_memory.json
+
+# Color grading LUTs (keep in assets/ instead)
+# teal_orange.cube
+
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md
 

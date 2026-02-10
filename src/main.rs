@@ -7,8 +7,7 @@ use synoid_core::window;
 use clap::{Parser, Subcommand};
 use dotenv::dotenv;
 use std::path::PathBuf;
-use std::process::Stdio;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 #[derive(Parser)]
 #[command(name = "synoid-core")]
@@ -87,6 +86,21 @@ enum Commands {
         size: f64,
 
         /// Output path (optional)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Combine video with external audio
+    Combine {
+        /// Input video path
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Input audio path
+        #[arg(short, long)]
+        audio: PathBuf,
+
+        /// Output video path
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
@@ -260,12 +274,37 @@ enum Commands {
         #[arg(short, long, default_value_t = 3000)]
         port: u16,
     },
+
+    /// Apply "Funny Bits" enhancement to a video
+    Funny {
+        /// Input video path
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output video path
+        #[arg(short, long)]
+        output: PathBuf,
+    },
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
+
+    // Global panic handler: log panics instead of crashing silently
+    std::panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column())).unwrap_or_else(|| "unknown".to_string());
+        let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic".to_string()
+        };
+        eprintln!("🚨 [SYNOID PANIC] at {}: {}", location, message);
+        eprintln!("   The system will attempt to continue. Please report this issue.");
+    }));
 
     info!("--- SYNOID AGENTIC KERNEL v0.1.1 ---");
 
@@ -275,8 +314,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match args.command {
         Commands::Gui => {
-            if let Err(e) = window::run_gui() {
-                error!("GUI Error: {}", e);
+            use synoid_core::state::KernelState;
+            use synoid_core::server;
+            use crate::agent::super_engine::SuperEngine;
+            use crate::agent::health::HealthMonitor;
+            use std::sync::Arc;
+
+            // Start health monitor (heartbeat every 30 seconds)
+            let health = HealthMonitor::new(30);
+            let _health_shutdown = health.start();
+            info!("🩺 Health Monitor started");
+
+            match SuperEngine::new(&api_url) {
+                Ok(engine) => {
+                    let state = Arc::new(KernelState::new(engine));
+
+                    // Spawn Server in Background
+                    let server_state = state.clone();
+                    tokio::spawn(async move {
+                        info!("🌐 Auto-launching Dashboard Server...");
+                        server::start_server(3000, server_state).await;
+                    });
+
+                    // Launch GUI (Blocking)
+                    info!("🖥️ Launching GUI Command Center...");
+                    if let Err(e) = window::run_gui(state) {
+                        error!("GUI Error: {}", e);
+                    }
+
+                    // Cleanup
+                    health.stop();
+                    info!("{}", health.status_report());
+                }
+                Err(e) => {
+                    health.stop();
+                    error!("Failed to initialize SuperEngine: {}", e);
+                }
             }
         }
         Commands::Youtube {
@@ -356,6 +429,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => error!("Compression failed: {}", e),
             }
         }
+        Commands::Combine {
+            input,
+            audio,
+            output,
+        } => {
+            let out_path = output.unwrap_or_else(|| {
+                let stem = input.file_stem().unwrap().to_string_lossy();
+                input.with_file_name(format!("{}_combined.mp4", stem))
+            });
+
+            match agent::production_tools::combine_av(&input, &audio, &out_path).await {
+                Ok(res) => println!(
+                    "🎹 Combine saved: {:?} ({:.2} MB)",
+                    res.output_path, res.size_mb
+                ),
+                Err(e) => error!("Combine failed: {}", e),
+            }
+        }
         Commands::Run { request } => {
             use agent::super_engine::SuperEngine;
             match SuperEngine::new(&api_url) {
@@ -389,28 +480,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await
             {
                 Ok(cmd_str) => {
-                    println!("🎬 Generated Command:\n{}", cmd_str);
-
                     if dry_run {
-                        info!("🚫 Dry-run active. Skipping execution.");
+                        info!("🎬 Dry-Run Command:\n{}", cmd_str);
                     } else {
-                        info!("⚡ Executing Creative Intent...");
-                        // Parse command string simply (assuming simple args for now)
-                        // In production, MotorCortex should return Vec<String> args, not a raw string
-                        let parts: Vec<&str> = cmd_str.split_whitespace().collect();
-                        if let Some((prog, args)) = parts.split_first() {
-                            let status = std::process::Command::new(prog)
-                                .args(args)
-                                .stdout(Stdio::inherit())
-                                .stderr(Stdio::inherit())
-                                .status()?;
-
-                            if status.success() {
-                                println!("✅ Render Complete: {:?}", output);
-                            } else {
-                                error!("❌ FFmpeg failed with status: {}", status);
-                            }
-                        }
+                        // MotorCortex already executed the render
+                        info!("✅ {}", cmd_str);
                     }
                 }
                 Err(e) => error!("Embodiment failed: {}", e),
@@ -440,16 +514,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             use synoid_core::server;
             use synoid_core::state::KernelState;
             use crate::agent::super_engine::SuperEngine;
+            use crate::agent::health::HealthMonitor;
             use std::sync::Arc;
 
             info!("🌐 Starting SYNOID Dashboard on port {}...", port);
+
+            // Start health monitor for long-running server
+            let health = HealthMonitor::new(30);
+            let _health_shutdown = health.start();
 
             match SuperEngine::new(&api_url) {
                 Ok(engine) => {
                     let state = Arc::new(KernelState::new(engine));
                     server::start_server(port, state).await;
+                    health.stop();
+                    info!("{}", health.status_report());
                 }
                 Err(e) => {
+                    health.stop();
                     error!("Failed to initialize SuperEngine for server: {}", e);
                 }
             }
@@ -637,7 +719,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             use agent::multi_agent::*;
 
             if role == "director" {
-                let mut dir = DirectorAgent::new("gpt-oss-20b");
+                let mut dir = DirectorAgent::new("gpt-oss-20b", &api_url);
                 let intent = prompt.unwrap_or("Make a movie".to_string());
                 let style_deref = style.as_deref();
 
@@ -735,6 +817,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             signal::ctrl_c().await?;
             learner.stop();
             info!("🛑 Autonomous Loop Stopped.");
+        }
+        Commands::Funny { input, output } => {
+            use synoid_core::funny_engine::FunnyEngine;
+            
+            info!("🤡 Starting Funny Bits Engine on {:?}", input);
+            let engine = FunnyEngine::new();
+            match engine.process_video(&input, &output).await {
+                Ok(_) => println!("✅ Video enhanced with funny bits: {:?}", output),
+                Err(e) => error!("Funny processing failed: {}", e),
+            }
         }
     }
 

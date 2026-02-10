@@ -6,11 +6,54 @@
 
 use crate::agent::production_tools;
 use crate::agent::voice::transcription::{TranscriptSegment, TranscriptionEngine};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use tokio::process::Command;
 use tracing::{error, info, warn};
+
+/// Configuration for the editing strategy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditingStrategy {
+    pub scene_threshold: f64,
+    pub min_scene_score: f64,
+    pub boring_penalty_threshold: f64,
+    pub speech_boost: f64,
+    pub silence_penalty: f64,
+    pub continuity_boost: f64,
+    pub speech_ratio_threshold: f64,
+    pub action_duration_threshold: f64,
+}
+
+impl Default for EditingStrategy {
+    fn default() -> Self {
+        Self {
+            scene_threshold: 0.25,
+            min_scene_score: 0.2,
+            boring_penalty_threshold: 30.0,
+            speech_boost: 0.4,
+            silence_penalty: -0.4,
+            continuity_boost: 0.6,
+            speech_ratio_threshold: 0.1,
+            action_duration_threshold: 3.0,
+        }
+    }
+}
+
+impl EditingStrategy {
+    pub fn load() -> Self {
+        // Try loading from JSON, fallback to default
+        if let Ok(content) = fs::read_to_string("editing_strategy.json") {
+            if let Ok(config) = serde_json::from_str(&content) {
+                info!("[SMART] Loaded editing strategy from editing_strategy.json");
+                return config;
+            }
+        }
+        info!("[SMART] Using default editing strategy");
+        Self::default()
+    }
+}
 
 /// Represents an intent extracted from user input
 #[derive(Debug, Clone)]
@@ -72,8 +115,8 @@ pub struct Scene {
 }
 
 /// Detect scenes in a video using FFmpeg scene detection
-pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::error::Error>> {
-    info!("[SMART] Detecting scenes in {:?}", input);
+pub async fn detect_scenes(input: &Path, threshold: f64) -> Result<Vec<Scene>, Box<dyn std::error::Error>> {
+    info!("[SMART] Detecting scenes in {:?} (threshold: {})", input, threshold);
 
     // Get total duration first
     let duration_output = Command::new("ffprobe")
@@ -106,7 +149,7 @@ pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::erro
             "-i",
             input.to_str().unwrap(),
             "-vf",
-            "select='gt(scene,0.25)',showinfo",
+            &format!("select='gt(scene,{})',showinfo", threshold),
             "-f",
             "null",
             "-",
@@ -171,8 +214,8 @@ pub async fn detect_scenes(input: &Path) -> Result<Vec<Scene>, Box<dyn std::erro
 }
 
 /// NEW: Ensure scenes that carry a single sentence are kept together
-fn ensure_speech_continuity(scenes: &mut [Scene], transcript: &[TranscriptSegment]) {
-    info!("[SMART] 🔗 Enforcing Speech Continuity...");
+fn ensure_speech_continuity(scenes: &mut [Scene], transcript: &[TranscriptSegment], config: &EditingStrategy) {
+    info!("[SMART] 🔗 Enforcing Speech Continuity (Boost: {})...", config.continuity_boost);
 
     // 1. Map sentences to scenes
     // If a sentence overlaps multiple scenes, and ANY of those scenes is 'kept' (score > 0.3),
@@ -204,7 +247,7 @@ fn ensure_speech_continuity(scenes: &mut [Scene], transcript: &[TranscriptSegmen
                         "[SMART] 🩹 Healing cut at {:.2}s to preserve speech: \"{}\"",
                         scenes[i].start_time, segment.text
                     );
-                    scenes[i].score = 0.6; // Force keep above threshold
+                    scenes[i].score = config.continuity_boost; // Force keep above threshold
                 }
             }
         }
@@ -216,6 +259,7 @@ pub fn score_scenes(
     scenes: &mut [Scene],
     intent: &EditIntent,
     transcript: Option<&[TranscriptSegment]>,
+    config: &EditingStrategy,
 ) {
     info!("[SMART] Scoring {} scenes based on intent...", scenes.len());
 
@@ -225,16 +269,16 @@ pub fn score_scenes(
 
         // Visual Heuristics
         if intent.remove_boring {
-            if scene.duration > 10.0 {
-                score -= 0.5; // Increased penalty
-            } else if scene.duration > 5.0 {
-                score -= 0.2; // Increased penalty
-            } else if scene.duration < 3.0 { // Wider range for action/interesting bits
-                score += 0.3;
+            if scene.duration > config.boring_penalty_threshold {
+                score -= 0.3; // Only penalize very long scenes
+            } else if scene.duration > 15.0 {
+                score -= 0.1; 
+            } else if scene.duration < 5.0 { 
+                score += 0.2; // Slight boost for fast cuts
             }
         }
 
-        if intent.keep_action && scene.duration < 3.0 {
+        if intent.keep_action && scene.duration < config.action_duration_threshold {
             score += 0.3;
         }
 
@@ -264,20 +308,20 @@ pub fn score_scenes(
 
             // More nuanced speech scoring
             if intent.keep_speech {
-                if speech_ratio > 0.1 {
-                    score += 0.4;
+                if speech_ratio > config.speech_ratio_threshold {
+                    score += config.speech_boost;
                 }
             } else {
                 if speech_ratio > 0.3 {
-                    score += 0.4;
+                    score += config.speech_boost;
                 }
             }
 
             if intent.remove_silence {
                 if speech_ratio < 0.05 {
-                    score -= 0.4;
+                    score += config.silence_penalty;
                 } else if speech_ratio < 0.1 {
-                    score -= 0.2;
+                    score += config.silence_penalty / 2.0;
                 }
             }
 
@@ -291,7 +335,7 @@ pub fn score_scenes(
 
     // 2. Post-Scoring: Integrity Pass
     if let Some(segments) = transcript {
-        ensure_speech_continuity(scenes, segments);
+        ensure_speech_continuity(scenes, segments, config);
     }
 }
 
@@ -372,6 +416,9 @@ pub async fn smart_edit(
         None
     };
 
+    // Load Strategy
+    let config = EditingStrategy::load();
+
     // 1. Parse intent
     // 1. Parse intent
     let intent = EditIntent::from_text(intent_text);
@@ -385,14 +432,14 @@ pub async fn smart_edit(
 
     // 2. Detect scenes
     log("[SMART] 🔍 Analyzing video scenes...");
-    let mut scenes = detect_scenes(input).await?;
+    let mut scenes = detect_scenes(input, config.scene_threshold).await?;
 
     // 3. Score scenes based on intent AND transcript
     log("[SMART] 📊 Scoring scenes based on semantic data...");
-    score_scenes(&mut scenes, &intent, transcript.as_deref());
+    score_scenes(&mut scenes, &intent, transcript.as_deref(), &config);
 
     // 4. Filter scenes to keep (score > threshold)
-    let keep_threshold = 0.4; // More aggressive threshold
+    let keep_threshold = config.min_scene_score;
     let scenes_to_keep: Vec<&Scene> = scenes.iter().filter(|s| s.score > keep_threshold).collect();
 
     let total_kept = scenes_to_keep.len();
@@ -554,25 +601,28 @@ mod tests {
     fn test_speech_continuity_fix() {
         // This test simulates the issue where a middle boring scene is dropped
         // even though speech spans across it.
+        // Scene 1: short (2s) → gets action boost above 0.3 threshold
+        // Scene 2: long boring (15s) → gets penalized below 0.3
+        // Transcript spans both → continuity fix should rescue Scene 2
 
         let mut scenes = vec![
             Scene {
                 start_time: 0.0,
-                end_time: 5.0,
-                duration: 5.0,
+                end_time: 2.0,
+                duration: 2.0,
                 score: 0.5,
             },
             Scene {
-                start_time: 5.0,
-                end_time: 20.0,
-                duration: 15.0,
+                start_time: 2.0,
+                end_time: 32.0,
+                duration: 30.0,
                 score: 0.5,
-            }, // Boring duration
+            }, // Very long boring scene
         ];
 
         let transcript = vec![TranscriptSegment {
-            start: 4.8,
-            end: 5.2,
+            start: 1.8,
+            end: 2.2,
             text: "Don't cut me.".to_string(),
         }];
 
@@ -580,18 +630,17 @@ mod tests {
             remove_boring: true,
             keep_action: false,
             remove_silence: false,
-            keep_speech: false, // Default
+            keep_speech: false,
             custom_keywords: vec![],
         };
 
-        score_scenes(&mut scenes, &intent, Some(&transcript));
+        let config = EditingStrategy::default();
+        score_scenes(&mut scenes, &intent, Some(&transcript), &config);
 
-        // Before fix: Scene 2 score would be 0.2 (dropped).
-        // After fix:
-        // Scene 1: Score 0.5 (Kept).
-        // Segment "Don't cut me" touches Scene 1 (Kept).
-        // Therefore Scene 2 (touched by same segment) MUST be kept.
-        // Scene 2 score forced to 0.6.
+        // Scene 1: base 0.3 + 0.2 (short duration boost) = 0.5 → kept (> 0.3)
+        // Scene 2: base 0.3 - 0.3 (boring penalty) = 0.0 → would be dropped
+        // Continuity fix: transcript spans both scenes, Scene 1 is kept,
+        // so Scene 2 gets boosted to continuity_boost (0.6)
 
         assert!(
             scenes[1].score > 0.3,

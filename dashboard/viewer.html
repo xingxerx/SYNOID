@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>SYNOID Omni Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/ag-psd@^14.0.0/dist/bundle.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+        rel="stylesheet" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-white h-screen flex flex-col">
+
+    <!-- Header -->
+    <header
+        class="h-16 border-b border-gray-800 flex items-center justify-between px-6 bg-gray-900/80 backdrop-blur-md sticky top-0 z-10">
+        <div class="flex items-center gap-3">
+            <a href="/" class="p-2 hover:bg-gray-800 rounded-lg transition-colors">
+                <span class="material-symbols-outlined text-gray-400">arrow_back</span>
+            </a>
+            <h1 class="text-lg font-semibold flex items-center gap-2">
+                <span class="material-symbols-outlined text-purple-500">photo_library</span>
+                Omni Viewer
+            </h1>
+        </div>
+        <div class="flex items-center gap-2">
+            <span id="file-name" class="text-sm text-gray-400 font-mono">No file loaded</span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col items-center justify-center p-6 relative overflow-hidden" id="drop-zone">
+
+        <!-- Canvas Container -->
+        <div class="relative w-full h-full flex items-center justify-center p-4 border border-dashed border-gray-700 rounded-xl bg-gray-800/20"
+            id="canvas-container">
+            <div class="text-center text-gray-500 pointer-events-none" id="empty-state">
+                <span class="material-symbols-outlined text-6xl mb-4 text-gray-700">drag_drop</span>
+                <p class="text-lg font-medium">Drag & Drop Image or PSD</p>
+                <p class="text-xs mt-2">Supports: JPG, PNG, WEBP, PSD, PSB</p>
+            </div>
+            <canvas id="viewer-canvas" class="hidden shadow-2xl max-w-full max-h-full rounded-md"></canvas>
+        </div>
+
+    </main>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.psd,.psb,.png,.jpg,.jpeg,.webp';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+
+        const canvas = document.getElementById('viewer-canvas');
+        const ctx = canvas.getContext('2d');
+        const emptyState = document.getElementById('empty-state');
+        const fileNameDisplay = document.getElementById('file-name');
+
+        // Drag & Drop Handlers
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('bg-purple-500/10');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('bg-purple-500/10');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('bg-purple-500/10');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) processFile(files[0]);
+        });
+
+        dropZone.addEventListener('click', () => {
+            if (canvas.classList.contains('hidden')) {
+                fileInput.click();
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) processFile(e.target.files[0]);
+        });
+
+        async function processFile(file) {
+            fileNameDisplay.textContent = file.name;
+
+            if (file.name.toLowerCase().endsWith('.psd') || file.name.toLowerCase().endsWith('.psb')) {
+                renderPSD(file);
+            } else {
+                renderImage(file);
+            }
+        }
+
+        function renderImage(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    showCanvas();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function renderPSD(file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const buffer = e.target.result;
+                try {
+                    const psd = agPsd.readPsd(buffer);
+                    canvas.width = psd.width;
+                    canvas.height = psd.height;
+
+                    // Clear canvas
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    // Render to canvas
+                    psd.canvas = canvas;
+                    // ag-psd writes directly to canvas if passed
+                    // Assuming existing canvas context logic references...
+                    // Wait, ag-psd usually returns data or we use drawPsd
+                    // Let's check documentation pattern roughly or use standard
+
+                    // ag-psd usage: 
+                    // import { readPsd } from 'ag-psd';
+                    // const psd = readPsd(buffer);
+                    // document.body.appendChild(psd.canvas); 
+
+                    // But we want to reuse our canvas
+                    // psd.canvas is created if not provided?
+                    // Actually, let's just use what ag-psd provides
+
+                    // Correct approach for browser bundle:
+                    const newCanvas = psd.canvas; // It creates a canvas
+                    // We can draw it to our canvas
+                    if (newCanvas) {
+                        ctx.drawImage(newCanvas, 0, 0);
+                        showCanvas();
+                    } else {
+                        // Fallback: draw pixel data?
+                        // ag-psd default readPsd might not generate canvas unless specified?
+                        // "useCanvas: true" option might be needed but bundle might behave differently
+                        // Let's try:
+                        const psdWithCanvas = agPsd.readPsd(buffer, { useCanvas: true });
+                        if (psdWithCanvas.canvas) {
+                            canvas.width = psdWithCanvas.width;
+                            canvas.height = psdWithCanvas.height;
+                            ctx.drawImage(psdWithCanvas.canvas, 0, 0);
+                            showCanvas();
+                        }
+                    }
+
+                } catch (err) {
+                    console.error(err);
+                    alert("Failed to parse PSD: " + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function showCanvas() {
+            canvas.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+            document.getElementById('canvas-container').classList.remove('border-dashed');
+        }
+    </script>
+</body>
+
+</html>

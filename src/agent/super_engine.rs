@@ -8,7 +8,7 @@ use crate::agent::vector_engine::{upscale_video, vectorize_video, VectorConfig};
 use crate::agent::voice::engine::VoiceEngine;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 /// The Super Engine is the high-level controller for all Synoid capabilities.
 /// It uses the Brain for intent classification and GPT-OSS for complex reasoning,
@@ -16,26 +16,29 @@ use tracing::{error, info, warn};
 pub struct SuperEngine {
     brain: Brain,
     gpt_brain: Option<SynoidAgent>,
-    voice_engine: Arc<VoiceEngine>,
+    voice_engine: Option<Arc<VoiceEngine>>,
     // Vector Engine is largely stateless functions, so we don't need a struct instance
     work_dir: PathBuf,
 }
 
 impl SuperEngine {
-    /// Initialize the Super Engine with all sub-systems
+    /// Initialize the Super Engine with all sub-systems.
+    /// Uses graceful degradation: subsystems that fail to init are disabled, not fatal.
     pub fn new(api_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
         info!("[SUPER_ENGINE] Initializing Synoid Unified Systems...");
-        
+
         let brain = Brain::new(api_url);
-        let gpt_brain = Some(SynoidAgent::new(api_url)); // Optional: lazy load
-        
-        // Initialize Voice Engine (might fail if models missing, but we shouldn't crash)
+        let gpt_brain = Some(SynoidAgent::new(api_url));
+
+        // Initialize Voice Engine with graceful degradation
         let voice_engine = match VoiceEngine::new() {
-            Ok(v) => Arc::new(v),
+            Ok(v) => {
+                info!("[SUPER_ENGINE] Voice Engine: Online ✓");
+                Some(Arc::new(v))
+            }
             Err(e) => {
                 warn!("[SUPER_ENGINE] Voice Engine failed to init: {}. Voice features disabled.", e);
-                // Return error or handle gracefully? For now, we propagate since user specifically asked for it
-                return Err(e); 
+                None
             }
         };
 
@@ -44,7 +47,7 @@ impl SuperEngine {
             std::fs::create_dir_all(&work_dir)?;
         }
 
-        info!("[SUPER_ENGINE] Systems Online.");
+        info!("[SUPER_ENGINE] Systems Online. Voice: {}", if voice_engine.is_some() { "Active" } else { "Disabled" });
         Ok(Self {
             brain,
             gpt_brain,
@@ -124,16 +127,22 @@ impl SuperEngine {
                 }
             }
             Intent::VoiceClone { input, name } => {
-                let input_path = Path::new(&input);
-                match self.voice_engine.create_profile(&name, input_path) {
-                    Ok(_) => Ok(format!("Voice profile '{}' created from {:?}", name, input_path)),
-                    Err(e) => Err(format!("Voice cloning failed: {}", e)),
+                if let Some(voice) = &self.voice_engine {
+                    let input_path = Path::new(&input);
+                    match voice.create_profile(&name, input_path) {
+                        Ok(_) => Ok(format!("Voice profile '{}' created from {:?}", name, input_path)),
+                        Err(e) => Err(format!("Voice cloning failed: {}", e)),
+                    }
+                } else {
+                    Err("Voice Engine is not available (failed to initialize). Voice features are disabled.".to_string())
                 }
             }
             Intent::Speak { text, profile } => {
-                let output_path = self.work_dir.join("speech_output.wav");
+                if self.voice_engine.is_none() {
+                    return Err("Voice Engine is not available. Voice features are disabled.".to_string());
+                }
+                let _output_path = self.work_dir.join("speech_output.wav");
                 // TODO: Wire up actual TTS call in VoiceEngine
-                // self.voice_engine.speak_as(&text, &profile, &output_path).map_err(|e| e.to_string())?;
                 Ok(format!("(Simulated) Spoke: \"{}\" as '{}'", text, profile))
             }
             Intent::Research { topic } => {
@@ -156,21 +165,11 @@ impl SuperEngine {
                  Ok(format!("Learning style '{}' from {} (SuperEngine implementation pending)", name, input))
             }
             Intent::CreateEdit { input, instruction } => {
-                 use crate::agent::motor_cortex::MotorCortex;
-                 // Initialize MotorCortex on the fly for now
-                 let mut cortex = MotorCortex::new("http://localhost:11434/v1");
-                 let input_path = std::path::Path::new(&input);
-                 let output_path = std::path::Path::new("output.mp4"); // simplified for now
-                 
-                 // Placeholder: In a real scenario we need the visual/audio data
-                 // For now, we just pass empty data to satisfy the signature if possible, or we need to scan first.
-                 // Given the signature in motor_cortex.rs:
-                 // execute_one_shot_render(&mut self, intent: &str, input: &Path, output: &Path, _visual_data: &[VisualScene], _audio_data: &AudioAnalysis)
-                 
-                 // We need to scan first to get real data, reused from ScanVideo logic?
-                 // For compliance with the build fix, we can just return a "Not Implemented" or a simple message.
-                 // The user blueprint implies this should work, so let's try to make it at least structurally correct.
-                 
+                 // TODO: Wire up MotorCortex with real visual/audio data
+                 // use crate::agent::motor_cortex::MotorCortex;
+                 // let cortex = MotorCortex::new("http://localhost:11434/v1");
+                 // Requires scanning video first to get VisualScene/AudioAnalysis data
+
                  Ok(format!("Embodied Edit Initiated: '{}' on {}", instruction, input))
             }
             Intent::Unknown { .. } => unreachable!("Handled in process_command"),

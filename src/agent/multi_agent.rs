@@ -35,19 +35,22 @@ impl StoryPlan {
     }
 }
 
+use crate::agent::gpt_oss_bridge::SynoidAgent; // Imported for real LLM calls
+
 pub struct DirectorAgent {
     pub model_id: String,
     pub system_prompt: String,
     pub reasoning: ReasoningManager,
+    pub agent: SynoidAgent,
 }
 
 impl DirectorAgent {
-    pub fn new(model: &str) -> Self {
+    pub fn new(model: &str, api_url: &str) -> Self {
         Self {
             model_id: model.to_string(),
-            system_prompt: "You are the SYNOID Director. Decompose instructions into sub-goals."
-                .into(),
+            system_prompt: "You are the SYNOID Director. Output ONLY valid JSON matching the StoryPlan structure: { global_intent: string, scenes: [ { timestamp_start: f64, timestamp_end: f64, narrative_goal: string, visual_constraints: [string] } ] }.".into(),
             reasoning: ReasoningManager::new(),
+            agent: SynoidAgent::new(api_url),
         }
     }
 
@@ -76,25 +79,52 @@ impl DirectorAgent {
             self.reasoning.get_config_param()
         );
 
-        // Mock LLM Response for now
-        let plan = StoryPlan {
-            global_intent: user_prompt.to_string(),
-            scenes: vec![
-                SceneOutline {
-                    timestamp_start: 0.0,
-                    timestamp_end: 5.0,
-                    narrative_goal: "Intro".to_string(),
-                    visual_constraints: vec!["Wide Shot".to_string()],
-                },
-                SceneOutline {
-                    timestamp_start: 5.0,
-                    timestamp_end: 15.0,
-                    narrative_goal: "Action".to_string(),
-                    visual_constraints: vec!["Fast Cuts".to_string()],
-                },
-            ],
-        };
-        Ok(plan)
+        // Construct Prompt
+        let prompt = format!(
+            "{}\nUser Request: {}\nStyle: {:?}\nReasoning Effort: {}", 
+            self.system_prompt, 
+            user_prompt, 
+            style_profile.unwrap_or("None"), 
+            self.reasoning.get_config_param()
+        );
+
+        // Call LLM
+        let response_text = self.agent.reason(&prompt).await?;
+
+        // Attempt to parse JSON. 
+        // Note: LLMs might wrap JSON in markdown code blocks, so we simple-clean it.
+        let clean_json = response_text
+            .trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+
+        match serde_json::from_str::<StoryPlan>(clean_json) {
+            Ok(plan) => Ok(plan),
+            Err(e) => {
+                info!("[DIRECTOR] JSON Parse Failed. Response: {}", response_text);
+                // Fallback to a simple plan if LLM fails formatting
+                let fallback = StoryPlan {
+                    global_intent: user_prompt.to_string(),
+                    scenes: vec![
+                        SceneOutline {
+                            timestamp_start: 0.0,
+                            timestamp_end: 5.0,
+                            narrative_goal: "Intro/Setup (Fallback)".to_string(),
+                            visual_constraints: vec!["Standard".to_string()],
+                        },
+                        SceneOutline {
+                            timestamp_start: 5.0,
+                            timestamp_end: 15.0,
+                            narrative_goal: "Action/Core (Fallback)".to_string(),
+                            visual_constraints: vec!["Dynamic".to_string()],
+                        },
+                    ],
+                };
+                Ok(fallback)
+            }
+        }
     }
 }
 

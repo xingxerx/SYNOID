@@ -7,7 +7,6 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tower::ServiceExt; // For oneshot
 use tower_http::services::ServeDir;
 use tower_http::cors::CorsLayer;
@@ -43,7 +42,12 @@ pub async fn start_server(port: u16, state: Arc<KernelState>) {
         .layer(CorsLayer::permissive());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    info!("🚀 SYNOID Dashboard Server running on http://{}", addr);
+    let display_addr = if addr.ip().is_unspecified() {
+        format!("127.0.0.1:{}", port)
+    } else {
+        addr.to_string()
+    };
+    info!("🚀 SYNOID Dashboard Server running on http://{}", display_addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

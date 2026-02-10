@@ -26,9 +26,12 @@ sha2 = "0.10"    # File integrity hashing
 walkdir = "2.3"  # Efficient directory traversal
 num_cpus = "1.0"
 
+# Funny Bits Engine Dependencies
+symphonia = { version = "0.5", features = ["all"] } # Audio decoding/analysis
+rand = "0.8" # Random selection for memes/sounds
+
 # Voice Cloning & Neural TTS
 # Note: RTX 50 series (sm_120) not yet supported by CUDA
-rand = "0.8"
 # Explicitly use default features (CPU) for candle
 candle-core = "0.8"
 candle-nn = "0.8"
@@ -47,4 +50,5 @@ cudarc = { version = "0.18.2", features = ["cuda-version-from-build-system", "dr
 # Web Server & Dashboard API
 axum = { version = "0.7", features = ["macros"] }
 tower-http = { version = "0.5", features = ["fs", "cors"] }
+tower = { version = "0.4", features = ["util"] }
 petgraph = "0.8.3"

@@ -19,12 +19,11 @@ def get_safe_device(force_cpu=False):
         major, minor = device_props.major, device_props.minor
         compute_cap = major * 10 + minor
         
-        # PyTorch currently supports up to sm_90 (RTX 40 series)
-        # RTX 50 series (Blackwell) is sm_120 - not yet supported
-        # RTX 50 series (Blackwell) is sm_120 - Supported by newer PyTorch builds
+        # RTX 50 series (Blackwell) is sm_120
+        # PyTorch Nightly (2.7+) supports this.
         if compute_cap >= 120:
             gpu_name = device_props.name
-            print(f"[PY] INFO: {gpu_name} (sm_{compute_cap}) detected. Attempting to use CUDA...", file=sys.stderr)
+            print(f"[PY] INFO: {gpu_name} (sm_{compute_cap}) detected. Enabling Blackwell support via PyTorch Nightly.", file=sys.stderr)
             return "cuda"
         
         return "cuda"

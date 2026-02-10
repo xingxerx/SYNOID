@@ -222,3 +222,58 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
 
     Ok(())
 }
+
+/// Combine a video file with an external audio file
+/// Replaces the video's original audio with the new audio track.
+pub async fn combine_av(
+    video_path: &Path,
+    audio_path: &Path,
+    output_path: &Path,
+) -> Result<ProductionResult, Box<dyn std::error::Error>> {
+    info!(
+        "[PROD] Combining Video: {:?} + Audio: {:?}",
+        video_path, audio_path
+    );
+
+    let safe_video = safe_arg_path(video_path);
+    let safe_audio = safe_arg_path(audio_path);
+    let safe_output = safe_arg_path(output_path);
+
+    // FFmpeg command to replace audio:
+    // -map 0:v (Take video from input 0)
+    // -map 1:a (Take audio from input 1)
+    // -c:v copy (Copy video stream directly - fast!)
+    // -c:a aac (Re-encode audio to AAC for compatibility)
+    // -shortest (Finish when the shortest stream ends)
+    
+    let status = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-i")
+        .arg(&safe_video)
+        .arg("-i")
+        .arg(&safe_audio)
+        .args([
+            "-map", "0:v",
+            "-map", "1:a",
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-shortest",
+        ])
+        .arg(&safe_output)
+        .status()
+        .await?;
+
+    if !status.success() {
+        return Err("FFmpeg combine failed".into());
+    }
+
+    let metadata = tokio::fs::metadata(output_path).await?;
+    let size_mb = metadata.len() as f64 / 1_048_576.0;
+
+    info!("[PROD] Combine Complete. Final Size: {:.2} MB", size_mb);
+
+    Ok(ProductionResult {
+        output_path: output_path.to_path_buf(),
+        size_mb,
+    })
+}

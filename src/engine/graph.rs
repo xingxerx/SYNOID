@@ -203,7 +203,7 @@ impl Default for EditorGraph {
 /// Trait for nodes that can be linked into the SYNOID graph
 pub trait SynoidLink: Send + Sync {
     /// Execute this node's logic
-    fn execute(&self, input: &crate::nodes::ffi::SynoidFrame) -> Result<crate::nodes::ffi::SynoidFrame, String>;
+    fn execute(&self, input: &super::SynoidFrame) -> Result<super::SynoidFrame, String>;
     
     /// Get the node's identity for debugging
     fn identity(&self) -> String;
