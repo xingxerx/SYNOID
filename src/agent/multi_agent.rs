@@ -81,17 +81,17 @@ impl DirectorAgent {
 
         // Construct Prompt
         let prompt = format!(
-            "{}\nUser Request: {}\nStyle: {:?}\nReasoning Effort: {}", 
-            self.system_prompt, 
-            user_prompt, 
-            style_profile.unwrap_or("None"), 
+            "{}\nUser Request: {}\nStyle: {:?}\nReasoning Effort: {}",
+            self.system_prompt,
+            user_prompt,
+            style_profile.unwrap_or("None"),
             self.reasoning.get_config_param()
         );
 
         // Call LLM
         let response_text = self.agent.reason(&prompt).await?;
 
-        // Attempt to parse JSON. 
+        // Attempt to parse JSON.
         // Note: LLMs might wrap JSON in markdown code blocks, so we simple-clean it.
         let clean_json = response_text
             .trim()

@@ -7,6 +7,7 @@
 // 3. Directory scanning for video files
 // 4. YouTube Search via ytsearch
 
+use crate::agent::production_tools::safe_arg_path;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::info;
@@ -67,7 +68,7 @@ fn build_ytdlp_info_args(
 
 fn build_ytdlp_download_args(
     url: &str,
-    output_path: &str,
+    output_path: &Path,
     auth_browser: Option<&str>,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let mut args = vec![
@@ -76,7 +77,7 @@ fn build_ytdlp_download_args(
         "-f".to_string(),
         "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best".to_string(),
         "-o".to_string(),
-        output_path.to_string(),
+        safe_arg_path(output_path).to_string_lossy().to_string(),
     ];
 
     if let Some(browser) = auth_browser {
@@ -144,7 +145,7 @@ pub async fn download_youtube(
     let output_template = output_path.to_string_lossy().to_string();
 
     // Construct download arguments using helper
-    let download_args = build_ytdlp_download_args(url, &output_template, auth_browser)?;
+    let download_args = build_ytdlp_download_args(url, &output_path, auth_browser)?;
 
     info!("[SOURCE] Starting download to: {}", output_template);
     let status = Command::new("python").args(&download_args).status().await?;
@@ -221,12 +222,7 @@ pub async fn search_youtube(
 
 /// Get video duration using ffprobe
 pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
-    // Ensure path is treated as a file, not a flag (prepend ./ if relative)
-    let safe_path = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::path::Path::new(".").join(path)
-    };
+    let safe_path = safe_arg_path(path);
 
     let output = Command::new("ffprobe")
         .args([
@@ -316,9 +312,25 @@ mod tests {
 
     #[test]
     fn test_build_ytdlp_download_args() {
-        let args = build_ytdlp_download_args("https://youtube.com", "out.mp4", None).unwrap();
+        let path = Path::new("out.mp4");
+        let args = build_ytdlp_download_args("https://youtube.com", path, None).unwrap();
         assert!(args.contains(&"--".to_string()));
         assert_eq!(args.last(), Some(&"https://youtube.com".to_string()));
+        // check sanitized path is present (either "out.mp4" if absolute or "./out.mp4" if relative)
+        // safe_arg_path prepends ./ for relative paths
+        assert!(args.contains(&"./out.mp4".to_string()) || args.contains(&"out.mp4".to_string()));
+    }
+
+    #[test]
+    fn test_build_ytdlp_download_args_injection() {
+        let path = Path::new("-out.mp4");
+        let args = build_ytdlp_download_args("https://youtube.com", path, None).unwrap();
+        // Should be sanitized to ./ -out.mp4 or similar to prevent flag interpretation
+        // safe_arg_path turns "-out.mp4" into "./-out.mp4"
+        assert!(args.contains(&"./-out.mp4".to_string()));
+        // Should NOT contain raw "-out.mp4" as an isolated argument (it's part of -o value)
+        // Actually, it is passed as value to -o.
+        // The check is that it starts with ./
     }
 
     #[test]

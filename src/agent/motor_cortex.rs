@@ -60,13 +60,15 @@ impl MotorCortex {
         let intent_lower = intent.to_lowercase();
 
         // Feature: Smart Cut (Silence Removal) - "Ruthless" editing
-        if intent_lower.contains("ruthless") 
-            || intent_lower.contains("cut") 
-            || intent_lower.contains("short") 
+        if intent_lower.contains("ruthless")
+            || intent_lower.contains("cut")
+            || intent_lower.contains("short")
         {
-             info!("[CORTEX] ✂️ Applying Ruthless Silence Removal");
-             // fail: 1s silence, threshold: -40dB 
-             audio_filters.push("silenceremove=stop_periods=-1:stop_duration=1:stop_threshold=-40dB".to_string());
+            info!("[CORTEX] ✂️ Applying Ruthless Silence Removal");
+            // fail: 1s silence, threshold: -40dB
+            audio_filters.push(
+                "silenceremove=stop_periods=-1:stop_duration=1:stop_threshold=-40dB".to_string(),
+            );
         }
 
         // Feature: Neural Audio Enhancement
@@ -74,17 +76,19 @@ impl MotorCortex {
             || intent_lower.contains("fix")
             || intent_lower.contains("voice")
             || intent_lower.contains("audio")
-            || intent_lower.contains("louder") // User asked for louder voice
+            || intent_lower.contains("louder")
+        // User asked for louder voice
         {
-             info!("[CORTEX] 🎙️ Enhancing Voice Clarity & Volume");
-             // 1. Highpass to remove rumble
-             audio_filters.push("highpass=f=100".to_string());
-             // 2. Compressor to level out voice (makes it "louder" and consistent)
-             audio_filters.push("acompressor=threshold=-12dB:ratio=4:attack=5:release=50".to_string());
-             // 3. EQ Presense boost
-             audio_filters.push("equalizer=f=3000:t=q:w=1:g=5".to_string());
-             // 4. Loudness Normalization to standard -16 LUFS
-             audio_filters.push("loudnorm=I=-16:TP=-1.5:LRA=11".to_string());
+            info!("[CORTEX] 🎙️ Enhancing Voice Clarity & Volume");
+            // 1. Highpass to remove rumble
+            audio_filters.push("highpass=f=100".to_string());
+            // 2. Compressor to level out voice (makes it "louder" and consistent)
+            audio_filters
+                .push("acompressor=threshold=-12dB:ratio=4:attack=5:release=50".to_string());
+            // 3. EQ Presense boost
+            audio_filters.push("equalizer=f=3000:t=q:w=1:g=5".to_string());
+            // 4. Loudness Normalization to standard -16 LUFS
+            audio_filters.push("loudnorm=I=-16:TP=-1.5:LRA=11".to_string());
         }
 
         info!("[CORTEX] 🚀 Executing FFmpeg Render...");

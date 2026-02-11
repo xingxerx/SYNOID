@@ -97,13 +97,12 @@ impl Brain {
             }
         }
 
-
         // 5. Vector Engine Heuristics
         if req_lower.contains("vector") || req_lower.contains("svg") {
-            let input = "input.mp4".to_string(); 
-            return Intent::Vectorize { 
+            let input = "input.mp4".to_string();
+            return Intent::Vectorize {
                 input,
-                preset: "default".to_string() 
+                preset: "default".to_string(),
             };
         }
 
@@ -116,22 +115,24 @@ impl Brain {
         }
 
         // 6. Voice Engine Heuristics
-        if req_lower.contains("clone voice") || (req_lower.contains("voice") && req_lower.contains("learn")) {
+        if req_lower.contains("clone voice")
+            || (req_lower.contains("voice") && req_lower.contains("learn"))
+        {
             return Intent::VoiceClone {
                 input: "sample.wav".to_string(),
                 name: "cloned_voice".to_string(),
             };
         }
-        
+
         if req_lower.contains("say") || req_lower.contains("speak") {
-             let text = if let Some(idx) = req_lower.find("say") {
-                 request[idx+3..].trim().to_string()
-             } else if let Some(idx) = req_lower.find("speak") {
-                 request[idx+5..].trim().to_string()
-             } else {
-                 "Hello".to_string()
-             };
-             
+            let text = if let Some(idx) = req_lower.find("say") {
+                request[idx + 3..].trim().to_string()
+            } else if let Some(idx) = req_lower.find("speak") {
+                request[idx + 5..].trim().to_string()
+            } else {
+                "Hello".to_string()
+            };
+
             return Intent::Speak {
                 text,
                 profile: "default".to_string(),
@@ -173,23 +174,29 @@ impl Brain {
                 info!("[BRAIN] 🧠 Learning style '{}' from video...", name);
                 use crate::agent::vision_tools;
                 let path = std::path::Path::new(&input);
-                
+
                 // 1. Analyze the video to extract style metrics
                 match vision_tools::scan_visual(path).await {
                     Ok(scenes) => {
                         if scenes.len() < 2 {
-                             return Err("Video too short or no scenes detected to learn from.".to_string());
+                            return Err(
+                                "Video too short or no scenes detected to learn from.".to_string()
+                            );
                         }
-                        
+
                         // Calculate average scene duration
-                        let total_duration = scenes.last().unwrap().timestamp - scenes.first().unwrap().timestamp;
+                        let total_duration =
+                            scenes.last().unwrap().timestamp - scenes.first().unwrap().timestamp;
                         let avg_duration = if scenes.len() > 1 {
-                             total_duration / (scenes.len() as f64 - 1.0)
+                            total_duration / (scenes.len() as f64 - 1.0)
                         } else {
                             total_duration
                         };
-                        
-                        info!("[BRAIN] Extracted style metrics: Avg Scene Duration = {:.2}s", avg_duration);
+
+                        info!(
+                            "[BRAIN] Extracted style metrics: Avg Scene Duration = {:.2}s",
+                            avg_duration
+                        );
 
                         // 2. Create and Store Pattern
                         let pattern = crate::agent::learning::EditingPattern {
@@ -200,9 +207,12 @@ impl Brain {
                             color_grade_style: "learned".to_string(),
                             success_rating: 5, // User explicitly asked to learn this, so we rate it high
                         };
-                        
+
                         self.learning_kernel.memorize(&name, pattern);
-                        Ok(format!("Learned new style '{}' with average scene duration of {:.2}s", name, avg_duration))
+                        Ok(format!(
+                            "Learned new style '{}' with average scene duration of {:.2}s",
+                            name, avg_duration
+                        ))
                     }
                     Err(e) => Err(format!("Failed to analyze video for learning: {}", e)),
                 }
