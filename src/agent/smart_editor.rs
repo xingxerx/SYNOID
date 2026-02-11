@@ -115,8 +115,14 @@ pub struct Scene {
 }
 
 /// Detect scenes in a video using FFmpeg scene detection
-pub async fn detect_scenes(input: &Path, threshold: f64) -> Result<Vec<Scene>, Box<dyn std::error::Error>> {
-    info!("[SMART] Detecting scenes in {:?} (threshold: {})", input, threshold);
+pub async fn detect_scenes(
+    input: &Path,
+    threshold: f64,
+) -> Result<Vec<Scene>, Box<dyn std::error::Error>> {
+    info!(
+        "[SMART] Detecting scenes in {:?} (threshold: {})",
+        input, threshold
+    );
 
     // Get total duration first
     let duration_output = Command::new("ffprobe")
@@ -214,8 +220,15 @@ pub async fn detect_scenes(input: &Path, threshold: f64) -> Result<Vec<Scene>, B
 }
 
 /// NEW: Ensure scenes that carry a single sentence are kept together
-fn ensure_speech_continuity(scenes: &mut [Scene], transcript: &[TranscriptSegment], config: &EditingStrategy) {
-    info!("[SMART] 🔗 Enforcing Speech Continuity (Boost: {})...", config.continuity_boost);
+fn ensure_speech_continuity(
+    scenes: &mut [Scene],
+    transcript: &[TranscriptSegment],
+    config: &EditingStrategy,
+) {
+    info!(
+        "[SMART] 🔗 Enforcing Speech Continuity (Boost: {})...",
+        config.continuity_boost
+    );
 
     // 1. Map sentences to scenes
     // If a sentence overlaps multiple scenes, and ANY of those scenes is 'kept' (score > 0.3),
@@ -272,8 +285,8 @@ pub fn score_scenes(
             if scene.duration > config.boring_penalty_threshold {
                 score -= 0.3; // Only penalize very long scenes
             } else if scene.duration > 15.0 {
-                score -= 0.1; 
-            } else if scene.duration < 5.0 { 
+                score -= 0.1;
+            } else if scene.duration < 5.0 {
                 score += 0.2; // Slight boost for fast cuts
             }
         }
@@ -477,7 +490,7 @@ pub async fn smart_edit(
         cmd.arg("-ss").arg(&scene.start_time.to_string());
         cmd.arg("-t").arg(&scene.duration.to_string());
         cmd.arg("-i").arg(input.to_str().unwrap());
-        
+
         if use_enhanced_audio {
             cmd.arg("-ss").arg(&scene.start_time.to_string());
             cmd.arg("-t").arg(&scene.duration.to_string());
@@ -487,7 +500,7 @@ pub async fn smart_edit(
         // Mapping
         // Always re-encode for frame accuracy (Fixes "doubling" issue)
         cmd.arg("-map").arg("0:v"); // Video from input 0
-        
+
         if use_enhanced_audio {
             cmd.arg("-map").arg("1:a:0"); // Audio from input 1 (enhanced)
         } else {
@@ -495,13 +508,15 @@ pub async fn smart_edit(
         }
 
         // CRF 23 is a good balance for quality/size. Preset faster for speed.
-        cmd.arg("-c:v").arg("libx264")
-           .arg("-preset").arg("faster")
-           .arg("-crf").arg("23");
+        cmd.arg("-c:v")
+            .arg("libx264")
+            .arg("-preset")
+            .arg("faster")
+            .arg("-crf")
+            .arg("23");
 
         // Always re-encode audio to AAC to ensure format consistency
-        cmd.arg("-c:a").arg("aac")
-           .arg("-b:a").arg("192k");
+        cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
 
         cmd.arg("-avoid_negative_ts").arg("make_zero");
         cmd.arg(seg_path.to_str().unwrap());

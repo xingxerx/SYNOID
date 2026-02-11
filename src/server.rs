@@ -1,18 +1,18 @@
 use axum::{
-    extract::{State, Query, Request},
+    extract::{Query, Request, State},
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
-    response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower::ServiceExt; // For oneshot
-use tower_http::services::ServeDir;
 use tower_http::cors::CorsLayer;
-use tracing::{info, error};
+use tower_http::services::ServeDir;
+use tracing::{error, info};
 
-use crate::state::{KernelState, DashboardStatus, TasksStatus, DashboardTask};
+use crate::state::{DashboardStatus, DashboardTask, KernelState, TasksStatus};
 
 pub type AppState = Arc<KernelState>;
 
@@ -47,7 +47,10 @@ pub async fn start_server(port: u16, state: Arc<KernelState>) {
     } else {
         addr.to_string()
     };
-    info!("🚀 SYNOID Dashboard Server running on http://{}", display_addr);
+    info!(
+        "🚀 SYNOID Dashboard Server running on http://{}",
+        display_addr
+    );
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -56,16 +59,19 @@ pub async fn start_server(port: u16, state: Arc<KernelState>) {
 async fn get_status(State(state): State<AppState>) -> Json<DashboardStatus> {
     let task = state.task.lock().unwrap();
     let active_count = if task.is_running { 1 } else { 0 };
-    
+
     Json(DashboardStatus {
-        tasks: TasksStatus { active: active_count, total: 20 },
+        tasks: TasksStatus {
+            active: active_count,
+            total: 20,
+        },
         productivity: 85,
     })
 }
 
 async fn get_tasks(State(state): State<AppState>) -> Json<Vec<DashboardTask>> {
     let task = state.task.lock().unwrap();
-    
+
     let mut tasks = vec![];
     if !task.input_path.is_empty() {
         tasks.push(DashboardTask {
@@ -93,7 +99,7 @@ async fn handle_chat(
     Json(payload): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
     info!("Brain receiving: {}", payload.message);
-    
+
     let mut engine = state.engine.lock().await;
     match engine.process_command(&payload.message).await {
         Ok(res) => Json(ChatResponse { response: res }),
@@ -106,12 +112,15 @@ async fn handle_chat(
     }
 }
 
-async fn stream_video(Query(params): Query<StreamParams>, req: Request) -> impl axum::response::IntoResponse {
+async fn stream_video(
+    Query(params): Query<StreamParams>,
+    req: Request,
+) -> impl axum::response::IntoResponse {
     let path = std::path::PathBuf::from(params.path);
     if !path.exists() {
         return axum::http::StatusCode::NOT_FOUND.into_response();
     }
-    
+
     let service = tower_http::services::ServeFile::new(path);
     match service.oneshot(req).await {
         Ok(res) => res.into_response(),
