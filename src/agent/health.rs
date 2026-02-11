@@ -76,7 +76,10 @@ impl HealthMonitor {
                 let disk_ok = check_disk_health();
 
                 if !mem_ok {
-                    warn!("[HEALTH] ⚠️ Memory pressure detected (heartbeat #{})", count);
+                    warn!(
+                        "[HEALTH] ⚠️ Memory pressure detected (heartbeat #{})",
+                        count
+                    );
                 }
                 if !disk_ok {
                     warn!("[HEALTH] ⚠️ Low disk space detected (heartbeat #{})", count);
@@ -118,7 +121,11 @@ impl HealthMonitor {
             minutes,
             secs,
             self.heartbeat_count(),
-            if self.is_running() { "MONITORING" } else { "STOPPED" },
+            if self.is_running() {
+                "MONITORING"
+            } else {
+                "STOPPED"
+            },
         )
     }
 }
@@ -157,4 +164,3 @@ fn check_disk_health() -> bool {
         Err(_) => false,
     }
 }
-

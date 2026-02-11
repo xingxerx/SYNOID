@@ -50,7 +50,8 @@ impl AutonomousLearner {
                 info!("[LEARNER] 🔍 Scouting topic: '{}'", topic);
 
                 // 1. Search for candidates
-                let search_result = source_tools::search_youtube(topic, 3).await
+                let search_result = source_tools::search_youtube(topic, 3)
+                    .await
                     .map_err(|e| e.to_string());
 
                 match search_result {
@@ -63,29 +64,39 @@ impl AutonomousLearner {
                             // Filter criteria (e.g., duration < 10 mins to be quick)
                             if source.duration > 60.0 && source.duration < 600.0 {
                                 info!("[LEARNER] 📥 Acquiring candidate: {}", source.title);
-                                
+
                                 let cache_dir = std::path::Path::new("cortex_cache");
                                 let download_result = source_tools::download_youtube(
                                     source.original_url.as_deref().unwrap_or(""),
                                     cache_dir,
                                     None,
-                                ).await.map_err(|e| e.to_string());
+                                )
+                                .await
+                                .map_err(|e| e.to_string());
 
-                                match download_result
-                                {
+                                match download_result {
                                     Ok(downloaded) => {
                                         info!("[LEARNER] 🎓 Learning from: {}", downloaded.title);
-                                        
+
                                         // 2. Process with Brain
                                         let mut brain_lock = brain.lock().await;
                                         let intent = Intent::LearnStyle {
-                                            input: downloaded.local_path.to_string_lossy().to_string(),
+                                            input: downloaded
+                                                .local_path
+                                                .to_string_lossy()
+                                                .to_string(),
                                             name: format!("auto_{}", topic.replace(" ", "_")),
                                         };
-                                        
+
                                         // We manually trigger processing logic here or assume brain handles it
                                         // For now, let's just log the 'success' of the attempt
-                                         match brain_lock.process(&format!("learn style '{:?}' from {:?}", intent, downloaded.local_path)).await {
+                                        match brain_lock
+                                            .process(&format!(
+                                                "learn style '{:?}' from {:?}",
+                                                intent, downloaded.local_path
+                                            ))
+                                            .await
+                                        {
                                             Ok(res) => info!("[LEARNER] ✅ {}", res),
                                             Err(e) => error!("[LEARNER] ❌ Failed to learn: {}", e),
                                         }
@@ -97,7 +108,7 @@ impl AutonomousLearner {
                                         error!("[LEARNER] Failed download: {}", e);
                                     }
                                 }
-                                
+
                                 // Sleep between successful learns
                                 tokio::time::sleep(Duration::from_secs(10)).await;
                             }
@@ -110,7 +121,7 @@ impl AutonomousLearner {
                 // Sleep between topic cycles
                 tokio::time::sleep(Duration::from_secs(30)).await;
             }
-            
+
             info!("[LEARNER] 🛑 Loop Stopped");
         });
     }
@@ -118,7 +129,7 @@ impl AutonomousLearner {
     pub fn stop(&self) {
         self.is_running.store(false, Ordering::SeqCst);
     }
-    
+
     pub fn is_active(&self) -> bool {
         self.is_running.load(Ordering::SeqCst)
     }

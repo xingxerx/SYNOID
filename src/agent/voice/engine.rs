@@ -167,7 +167,10 @@ impl VoiceEngine {
 
     /// Generate speech from text (TTS)
     pub fn speak(&self, text: &str, _output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-        info!("[VOICE] (Simulation) Synthesizing to {:?}: \"{}\"", _output_path, text);
+        info!(
+            "[VOICE] (Simulation) Synthesizing to {:?}: \"{}\"",
+            _output_path, text
+        );
         // Err("TTS model not yet loaded - run 'synoid voice --download' first".into())
         Ok(())
     }
@@ -185,7 +188,10 @@ impl VoiceEngine {
         _output_path: &Path,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // let profile = self.load_profile(profile_name)?;
-        info!("[VOICE] (Simulation) Synthesizing as '{}': \"{}\"", profile_name, text);
+        info!(
+            "[VOICE] (Simulation) Synthesizing as '{}': \"{}\"",
+            profile_name, text
+        );
         // Err("Voice cloning model not yet loaded".into())
         Ok(())
     }

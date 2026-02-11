@@ -298,7 +298,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Global panic handler: log panics instead of crashing silently
     std::panic::set_hook(Box::new(|panic_info| {
-        let location = panic_info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column())).unwrap_or_else(|| "unknown".to_string());
+        let location = panic_info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown".to_string());
         let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
             s.to_string()
         } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
@@ -318,11 +321,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match args.command {
         Commands::Gui => {
-            use synoid_core::state::KernelState;
-            use synoid_core::server;
-            use crate::agent::super_engine::SuperEngine;
             use crate::agent::health::HealthMonitor;
+            use crate::agent::super_engine::SuperEngine;
             use std::sync::Arc;
+            use synoid_core::server;
+            use synoid_core::state::KernelState;
 
             // Start health monitor (heartbeat every 30 seconds)
             let health = HealthMonitor::new(30);
@@ -454,12 +457,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Run { request } => {
             use agent::super_engine::SuperEngine;
             match SuperEngine::new(&api_url) {
-                Ok(mut engine) => {
-                    match engine.process_command(&request).await {
-                        Ok(res) => println!("✅ {}", res),
-                        Err(e) => error!("Processing Failed: {}", e),
-                    }
-                }
+                Ok(mut engine) => match engine.process_command(&request).await {
+                    Ok(res) => println!("✅ {}", res),
+                    Err(e) => error!("Processing Failed: {}", e),
+                },
                 Err(e) => error!("Failed to initialize SuperEngine: {}", e),
             }
         }
@@ -515,11 +516,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             synoid_core::gpu_backend::print_gpu_status().await;
         }
         Commands::Serve { port } => {
+            use crate::agent::health::HealthMonitor;
+            use crate::agent::super_engine::SuperEngine;
+            use std::sync::Arc;
             use synoid_core::server;
             use synoid_core::state::KernelState;
-            use crate::agent::super_engine::SuperEngine;
-            use crate::agent::health::HealthMonitor;
-            use std::sync::Arc;
 
             info!("🌐 Starting SYNOID Dashboard on port {}...", port);
 
@@ -580,7 +581,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             use std::{thread, time::Duration};
 
             println!("🛡️ ACTIVATING SENTINEL Cyberdefense System...");
-            println!("   Mode: {} | Scope: {}", mode, if mode == "file" { "Project Only" } else { "System Wide" });
+            println!(
+                "   Mode: {} | Scope: {}",
+                mode,
+                if mode == "file" {
+                    "Project Only"
+                } else {
+                    "System Wide"
+                }
+            );
 
             // 1. Setup Integrity Guard
             let mut integrity = IntegrityGuard::new();
@@ -770,21 +779,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             funny,
         } => {
             use agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipeline};
-            
+
             println!("🚀 SYNOID GPU-Accelerated Pipeline");
-            
+
             // Parse stages
             let parsed_stages = PipelineStage::parse_list(&stages);
             if parsed_stages.is_empty() {
                 error!("No valid stages specified. Use: transcribe,smart_edit,vectorize,upscale,enhance,encode");
                 return Ok(());
             }
-            
+
             info!("Stages: {:?}", parsed_stages);
-            
+
             // Initialize pipeline (auto-detects GPU)
             let pipeline = UnifiedPipeline::new().await;
-            
+
             // Configure pipeline
             let config = PipelineConfig {
                 stages: parsed_stages,
@@ -796,7 +805,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("  → {}", msg);
                 })),
             };
-            
+
             // Execute!
             match pipeline.process(&input, &output, config).await {
                 Ok(out_path) => {
@@ -808,34 +817,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Autonomous => {
-            use agent::brain::Brain;
             use agent::autonomous_learner::AutonomousLearner;
+            use agent::brain::Brain;
             use std::sync::Arc;
-            use tokio::sync::Mutex;
             use tokio::signal;
+            use tokio::sync::Mutex;
 
             info!("🚀 Starting Autonomous Learning Loop...");
             let brain = Arc::new(Mutex::new(Brain::new(&api_url)));
             let learner = AutonomousLearner::new(brain);
-            
+
             learner.start();
-            
+
             info!("Press Ctrl+C to stop.");
             signal::ctrl_c().await?;
             learner.stop();
             info!("🛑 Autonomous Loop Stopped.");
         }
         Commands::Funny { input, output } => {
-             use synoid_core::agent::smart_editor;
-             info!("🎭 Running Funny Mode on {:?}...", input);
-             
-             // Default intent for funny mode if none specified
-             let intent = "Keep interesting parts, remove silence, make it engaging";
-             
-             match smart_editor::smart_edit(&input, intent, &output, true, None).await {
-                 Ok(msg) => println!("{}", msg),
-                 Err(e) => error!("Funny mode failed: {}", e),
-             }
+            use synoid_core::funny_engine::FunnyEngine;
+
+            info!("🤡 Starting Funny Bits Engine on {:?}", input);
+            let engine = FunnyEngine::new();
+            match engine.process_video(&input, &output).await {
+                Ok(_) => println!("✅ Video enhanced with funny bits: {:?}", output),
+                Err(e) => error!("Funny processing failed: {}", e),
+            }
         }
     }
 

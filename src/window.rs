@@ -10,10 +10,10 @@ use std::sync::Arc;
 
 use std::thread;
 
-use crate::agent::production_tools;
-use crate::agent::vector_engine::{vectorize_video, VectorConfig};
 use crate::agent::autonomous_learner::AutonomousLearner;
 use crate::agent::brain::Brain;
+use crate::agent::production_tools;
+use crate::agent::vector_engine::{vectorize_video, VectorConfig};
 use crate::state::KernelState;
 
 // --- Color Palette (Premium Dark) ---
@@ -75,12 +75,11 @@ pub struct SynoidApp {
     api_url: String,
 }
 
-
 impl SynoidApp {
     pub fn new(state: Arc<KernelState>) -> Self {
         let api_url = std::env::var("SYNOID_API_URL")
             .unwrap_or_else(|_| "http://localhost:11434/v1".to_string());
-            
+
         Self {
             state: state.clone(),
             tree_state: TreeState {
@@ -92,7 +91,9 @@ impl SynoidApp {
                 research_expanded: false,
             },
             active_command: ActiveCommand::None,
-            learner: Arc::new(AutonomousLearner::new(Arc::new(tokio::sync::Mutex::new(Brain::new(&api_url))))),
+            learner: Arc::new(AutonomousLearner::new(Arc::new(tokio::sync::Mutex::new(
+                Brain::new(&api_url),
+            )))),
             api_url,
         }
     }
@@ -796,9 +797,11 @@ impl SynoidApp {
         ui.add_space(20.0);
 
         if ui.button("📥 Download/Verify TTS Model").clicked() {
-            task.logs.push("[VOICE] Checking model status...".to_string());
+            task.logs
+                .push("[VOICE] Checking model status...".to_string());
             // In a real app this would call VoiceEngine::download_model
-            task.logs.push("[VOICE] ✅ Model 'tiny' is ready.".to_string());
+            task.logs
+                .push("[VOICE] ✅ Model 'tiny' is ready.".to_string());
         }
         ui.add_space(10.0);
 
@@ -908,30 +911,37 @@ impl SynoidApp {
             lock.clone()
         };
 
-        if moments.is_empty() { return; }
+        if moments.is_empty() {
+            return;
+        }
 
         let window_rect = ui.ctx().screen_rect();
         let timeline_rect = egui::Rect::from_min_size(
             egui::pos2(window_rect.min.x + 200.0, window_rect.max.y - 40.0), // Sidebar width offset
-            egui::vec2(window_rect.width() - 220.0, 30.0)
+            egui::vec2(window_rect.width() - 220.0, 30.0),
         );
 
         let painter = ui.painter();
-        
+
         // Background
         painter.rect_filled(timeline_rect, 5.0, egui::Color32::from_black_alpha(200));
 
         // Let's assume the video duration is roughly the end of the last moment + buffer
         // In a real app we'd get actual duration from metadata
-        let max_time = moments.last().map(|m| m.start_time + m.duration).unwrap_or(100.0).max(60.0);
+        let max_time = moments
+            .last()
+            .map(|m| m.start_time + m.duration)
+            .unwrap_or(100.0)
+            .max(60.0);
 
         for moment in moments {
-            let start_x = timeline_rect.min.x + (moment.start_time as f32 / max_time as f32) * timeline_rect.width();
+            let start_x = timeline_rect.min.x
+                + (moment.start_time as f32 / max_time as f32) * timeline_rect.width();
             let width = (moment.duration as f32 / max_time as f32) * timeline_rect.width();
 
             let rect = egui::Rect::from_min_size(
                 egui::pos2(start_x, timeline_rect.min.y + 5.0),
-                egui::vec2(width.max(2.0), 20.0)
+                egui::vec2(width.max(2.0), 20.0),
             );
 
             let color = match moment.moment_type {
@@ -942,7 +952,7 @@ impl SynoidApp {
 
             painter.rect_filled(rect, 2.0, color);
         }
-        
+
         ui.ctx().request_repaint();
     }
 }
@@ -1087,22 +1097,32 @@ impl eframe::App for SynoidApp {
                         .size(11.0)
                         .color(COLOR_TEXT_SECONDARY),
                 );
-                
+
                 let mut is_learning = self.learner.is_active();
                 // Custom checkbox style
-                let text = if is_learning { 
-                    egui::RichText::new("⚡ Auto-Learning Active").color(COLOR_ACCENT_GREEN) 
-                } else { 
-                    egui::RichText::new("💤 Auto-Learning Paused").color(COLOR_TEXT_SECONDARY) 
+                let text = if is_learning {
+                    egui::RichText::new("⚡ Auto-Learning Active").color(COLOR_ACCENT_GREEN)
+                } else {
+                    egui::RichText::new("💤 Auto-Learning Paused").color(COLOR_TEXT_SECONDARY)
                 };
-                
+
                 if ui.checkbox(&mut is_learning, text).changed() {
                     if is_learning {
                         self.learner.start();
-                        self.state.task.lock().unwrap().logs.push("[AUTO] 🚀 Continuous Learning Started".to_string());
+                        self.state
+                            .task
+                            .lock()
+                            .unwrap()
+                            .logs
+                            .push("[AUTO] 🚀 Continuous Learning Started".to_string());
                     } else {
                         self.learner.stop();
-                        self.state.task.lock().unwrap().logs.push("[AUTO] 🛑 Continuous Learning Stopped".to_string());
+                        self.state
+                            .task
+                            .lock()
+                            .unwrap()
+                            .logs
+                            .push("[AUTO] 🛑 Continuous Learning Stopped".to_string());
                     }
                 }
 
