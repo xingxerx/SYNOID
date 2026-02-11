@@ -1,3 +1,8 @@
+use std::sync::{Arc, Mutex, RwLock};
+
+use serde::Serialize;
+
+use crate::agent::defense::pressure::{PressureLevel, PressureWatcher};
 use crate::agent::super_engine::SuperEngine;
 
 pub struct KernelState {
