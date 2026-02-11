@@ -213,8 +213,9 @@ impl UnifiedPipeline {
         self.report_progress(config, &format!("Smart editing: {}", intent));
 
         let progress_cb = config.progress_callback.clone();
-        let callback: Option<Box<dyn Fn(&str) + Send>> =
-            progress_cb.map(|cb| Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send>);
+        // Explicitly cast to the type expected by smart_edit (Send + Sync)
+        let callback: Option<Box<dyn Fn(&str) + Send + Sync>> = progress_cb
+            .map(|cb| Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send + Sync>);
 
         smart_editor::smart_edit(input, intent, output, config.funny_mode, callback).await?;
 

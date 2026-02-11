@@ -20,8 +20,7 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     info!("[EYES] Scanning visual content: {:?}", path);
 
     // Using ffprobe to detect scene changes (>0.3 difference)
-    // We request only the pkt_pts_time (timestamp) of frames that pass the scene change filter
-    // Using default=noprint_wrappers=1:nokey=1 to get clean timestamp output
+    // We pass the file directly with -i to avoid complex escaping issues with the 'movie' filter on Windows
     let output = Command::new("ffprobe")
         .args([
             "-v",
@@ -30,16 +29,11 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
             "frame=pkt_pts_time",
             "-of",
             "default=noprint_wrappers=1:nokey=1",
-            "-f",
-            "lavfi",
+            "-vf",
+            "select='gt(scene,0.3)'",
+            "-i",
         ])
-        .arg(&format!(
-            "movie='{}',select='gt(scene,0.01)'",
-            path.to_string_lossy()
-                .replace("\\", "/")
-                .replace(":", "\\:")
-                .replace("'", "'\\''")
-        ))
+        .arg(path)
         .output()
         .await?; // Async execution
 

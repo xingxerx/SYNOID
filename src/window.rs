@@ -92,7 +92,7 @@ impl SynoidApp {
             },
             active_command: ActiveCommand::None,
             learner: Arc::new(AutonomousLearner::new(Arc::new(tokio::sync::Mutex::new(
-                Brain::new(&api_url),
+                Brain::new(&api_url, "gpt-oss:20b"),
             )))),
             api_url,
         }

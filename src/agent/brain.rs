@@ -19,6 +19,8 @@ pub enum Intent {
     Upscale { input: String, scale: f64 },
     VoiceClone { input: String, name: String },
     Speak { text: String, profile: String },
+    /// Complex creative request requiring MoE orchestration
+    Orchestrate { goal: String, input_path: Option<String> },
     Unknown { request: String },
 }
 
@@ -28,18 +30,22 @@ use crate::agent::learning::LearningKernel;
 pub struct Brain {
     agent: Option<SynoidAgent>,
     api_url: String,
+    model: String,
     learning_kernel: LearningKernel,
+    pub neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity,
     // Integrated components (silences unused warnings)
     _consciousness: Consciousness,
     _body: Body,
 }
 
 impl Brain {
-    pub fn new(api_url: &str) -> Self {
+    pub fn new(api_url: &str, model: &str) -> Self {
         Self {
             agent: None,
             api_url: api_url.to_string(),
+            model: model.to_string(),
             learning_kernel: LearningKernel::new(),
+            neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity::new(),
             _consciousness: Consciousness::new(),
             _body: Body::new(),
         }
@@ -66,17 +72,18 @@ impl Brain {
 
         // 2. Visual Scan Heuristics
         if req_lower.contains("scan") || req_lower.contains("analyze") {
-            // If implicit video context or explicit mention
             return Intent::ScanVideo {
-                path: "input.mp4".to_string(),
+                path: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
             };
         }
 
         // 3. Learning Heuristics
         if req_lower.contains("learn") {
+            let name = Self::extract_quoted_value(request, "style")
+                .unwrap_or_else(|| "new_style".to_string());
             return Intent::LearnStyle {
-                input: "input.mp4".to_string(),
-                name: "new_style".to_string(),
+                input: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
+                name,
             };
         }
 
@@ -99,9 +106,8 @@ impl Brain {
 
         // 5. Vector Engine Heuristics
         if req_lower.contains("vector") || req_lower.contains("svg") {
-            let input = "input.mp4".to_string();
             return Intent::Vectorize {
-                input,
+                input: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
                 preset: "default".to_string(),
             };
         }
@@ -109,7 +115,7 @@ impl Brain {
         if req_lower.contains("upscale") || req_lower.contains("enhance") {
             let scale = if req_lower.contains("4x") { 4.0 } else { 2.0 };
             return Intent::Upscale {
-                input: "input.mp4".to_string(),
+                input: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
                 scale,
             };
         }
@@ -139,9 +145,91 @@ impl Brain {
             };
         }
 
+        // 7. Orchestrate Heuristics (MoE Dispatcher)
+        // Complex creative requests requiring multi-expert coordination
+        let orchestrate_verbs = ["create", "make", "produce", "build", "generate", "edit", "transform", "cut", "trim"];
+        let creative_nouns = ["video", "movie", "trailer", "montage", "highlight", "reel", "content", "clip"];
+        
+        let has_verb = orchestrate_verbs.iter().any(|v| req_lower.contains(v));
+        let has_noun = creative_nouns.iter().any(|n| req_lower.contains(n));
+        
+        if has_verb && has_noun {
+            return Intent::Orchestrate {
+                goal: request.to_string(),
+                input_path: Self::extract_path(request),
+            };
+        }
+
         Intent::Unknown {
             request: request.to_string(),
         }
+    }
+
+    /// Extract a file path from a request string.
+    /// Looks for quoted paths first, then common file extensions.
+    fn extract_path(request: &str) -> Option<String> {
+        // 1. Try to find a quoted path (e.g. "cortex_cache\video.mp4")
+        for quote in ['"', '\''] {
+            let mut chars = request.char_indices().peekable();
+            while let Some((start_idx, ch)) = chars.next() {
+                if ch == quote {
+                    let content_start = start_idx + 1;
+                    while let Some((end_idx, ch2)) = chars.next() {
+                        if ch2 == quote {
+                            let candidate = &request[content_start..end_idx];
+                            if Self::looks_like_path(candidate) {
+                                return Some(candidate.to_string());
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Try to find an unquoted path by looking for file extensions
+        for word in request.split_whitespace() {
+            // Strip surrounding punctuation
+            let clean = word.trim_matches(|c: char| c == ',' || c == ';' || c == ')' || c == '(');
+            if Self::looks_like_path(clean) {
+                return Some(clean.to_string());
+            }
+        }
+
+        None
+    }
+
+    /// Check if a string looks like a file path.
+    fn looks_like_path(s: &str) -> bool {
+        let extensions = [".mp4", ".mkv", ".mov", ".avi", ".webm", ".wav", ".mp3", ".flac", ".svg"];
+        let s_lower = s.to_lowercase();
+        extensions.iter().any(|ext| s_lower.ends_with(ext))
+            || s.contains(std::path::MAIN_SEPARATOR)
+            || s.contains('/')
+    }
+
+    /// Extract a value after a keyword, possibly quoted.
+    /// e.g. for "learn style 'cinematic' from video" with key="style" → "cinematic"
+    fn extract_quoted_value(request: &str, key: &str) -> Option<String> {
+        let lower = request.to_lowercase();
+        if let Some(idx) = lower.find(key) {
+            let after = &request[idx + key.len()..];
+            let trimmed = after.trim_start();
+            // Check for quoted value
+            if trimmed.starts_with('\'') || trimmed.starts_with('"') {
+                let quote = trimmed.chars().next().unwrap();
+                if let Some(end) = trimmed[1..].find(quote) {
+                    return Some(trimmed[1..1 + end].to_string());
+                }
+            }
+            // Unquoted: take first word
+            let word = trimmed.split_whitespace().next()?;
+            let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+            if !clean.is_empty() {
+                return Some(clean.to_string());
+            }
+        }
+        None
     }
 
     /// Process a request through the Brain
@@ -156,7 +244,10 @@ impl Brain {
                 let output_dir = std::path::Path::new("downloads");
                 // Brain fast-path doesn't support auth yet
                 match source_tools::download_youtube(&url, output_dir, None).await {
-                    Ok(info) => Ok(format!("Downloaded: {}", info.title)),
+                    Ok(info) => {
+                        self.neuroplasticity.record_success();
+                        Ok(format!("Downloaded: {}", info.title))
+                    }
                     Err(e) => Err(format!("Download failed: {}", e)),
                 }
             }
@@ -166,7 +257,10 @@ impl Brain {
                 use crate::agent::vision_tools;
                 let path = std::path::Path::new(&path);
                 match vision_tools::scan_visual(path).await {
-                    Ok(scenes) => Ok(format!("Scanned {} scenes.", scenes.len())),
+                    Ok(scenes) => {
+                        self.neuroplasticity.record_success();
+                        Ok(format!("Scanned {} scenes.", scenes.len()))
+                    }
                     Err(e) => Err(format!("Scan failed: {}", e)),
                 }
             }
@@ -208,7 +302,10 @@ impl Brain {
                             success_rating: 5, // User explicitly asked to learn this, so we rate it high
                         };
 
+                        // Removed extra closing brace
+
                         self.learning_kernel.memorize(&name, pattern);
+                        self.neuroplasticity.record_success();
                         Ok(format!(
                             "Learned new style '{}' with average scene duration of {:.2}s",
                             name, avg_duration
@@ -241,7 +338,7 @@ impl Brain {
                 info!("[BRAIN] 🧠 Complex request detected. Waking up Cortex (GPT-OSS)...");
                 // Lazy-load the heavy AI agent only now
                 if self.agent.is_none() {
-                    self.agent = Some(SynoidAgent::new(&self.api_url));
+                    self.agent = Some(SynoidAgent::new(&self.api_url, &self.model));
                 }
 
                 if let Some(agent) = &self.agent {
@@ -265,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_fast_classify_youtube() {
-        let brain = Brain::new("http://localhost");
+        let brain = Brain::new("http://localhost", "mock-model");
         let intent = brain.fast_classify("Download this video https://youtube.com/watch?v=123");
         match intent {
             Intent::DownloadYoutube { url } => assert!(url.contains("youtube.com")),
@@ -275,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_fast_classify_scan() {
-        let brain = Brain::new("http://localhost");
+        let brain = Brain::new("http://localhost", "mock-model");
         let intent = brain.fast_classify("scan this file");
         match intent {
             Intent::ScanVideo { .. } => assert!(true),

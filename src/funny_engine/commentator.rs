@@ -13,7 +13,7 @@ pub struct CommentaryGenerator {
 impl CommentaryGenerator {
     pub fn new(api_url: &str) -> Result<Self> {
         Ok(Self {
-            agent: SynoidAgent::new(api_url),
+            agent: SynoidAgent::new(api_url, "gpt-oss:20b"),
             tts: TTSEngine::new()?,
         })
     }

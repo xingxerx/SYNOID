@@ -94,6 +94,7 @@ async fn get_tasks(State(state): State<AppState>) -> Json<Vec<DashboardTask>> {
     Json(tasks)
 }
 
+#[axum::debug_handler]
 async fn handle_chat(
     State(state): State<AppState>,
     Json(payload): Json<ChatRequest>,

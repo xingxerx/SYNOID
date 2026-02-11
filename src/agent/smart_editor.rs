@@ -359,9 +359,9 @@ pub async fn smart_edit(
     intent_text: &str,
     output: &Path,
     funny_mode: bool,
-    progress_callback: Option<Box<dyn Fn(&str) + Send>>,
+    progress_callback: Option<Box<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let log = |msg: &str| {
+    let log = move |msg: &str| {
         info!("{}", msg);
         if let Some(ref cb) = progress_callback {
             cb(msg);

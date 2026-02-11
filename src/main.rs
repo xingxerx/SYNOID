@@ -733,7 +733,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             use agent::multi_agent::*;
 
             if role == "director" {
-                let mut dir = DirectorAgent::new("gpt-oss-20b", &api_url);
+                let mut dir = DirectorAgent::new("gpt-oss:20b", &api_url);
                 let intent = prompt.unwrap_or("Make a movie".to_string());
                 let style_deref = style.as_deref();
 
@@ -824,7 +824,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             use tokio::sync::Mutex;
 
             info!("🚀 Starting Autonomous Learning Loop...");
-            let brain = Arc::new(Mutex::new(Brain::new(&api_url)));
+            let brain = Arc::new(Mutex::new(Brain::new(&api_url, "gpt-oss-20b")));
             let learner = AutonomousLearner::new(brain);
 
             learner.start();
