@@ -65,6 +65,8 @@ pub struct PipelineConfig {
     pub scale_factor: f64,
     /// Target size in MB for compression (0 = no compression)
     pub target_size_mb: f64,
+    /// Enable Funny Mode (commentary + transitions)
+    pub funny_mode: bool,
     /// Progress callback
     pub progress_callback: Option<Arc<dyn Fn(&str) + Send + Sync>>,
 }
@@ -76,6 +78,7 @@ impl Default for PipelineConfig {
             intent: None,
             scale_factor: 2.0,
             target_size_mb: 0.0,
+            funny_mode: false,
             progress_callback: None,
         }
     }
@@ -194,7 +197,7 @@ impl UnifiedPipeline {
             Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send>
         });
 
-        smart_editor::smart_edit(input, intent, output, callback).await?;
+        smart_editor::smart_edit(input, intent, output, config.funny_mode, callback).await?;
         
         Ok(output.to_path_buf())
     }

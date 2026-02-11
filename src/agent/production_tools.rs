@@ -277,3 +277,60 @@ pub async fn combine_av(
         size_mb,
     })
 }
+
+/// Build a complex filtergraph for transitions
+pub fn build_transition_filter(
+    inputs: usize,
+    transition_duration: f64,
+    video_durations: &[f64],
+) -> String {
+    let mut filter = String::new();
+    let mut offset = 0.0;
+    
+    // We need at least 2 inputs to transition
+    if inputs < 2 {
+        return "".to_string();
+    }
+
+    for i in 0..inputs - 1 {
+        let seg_duration = video_durations[i];
+        offset += seg_duration - transition_duration;
+        
+        let prev_label = if i == 0 { "0:v".to_string() } else { format!("v{}", i) };
+        let next_label = format!("{}:v", i + 1);
+        let out_label = format!("v{}", i + 1);
+
+        // Select random transition effect
+        let transitions = ["fade", "wipeleft", "wiperight", "slideleft", "slideright", "circlecrop", "rectcrop"];
+        let effect = transitions[i % transitions.len()];
+
+        filter.push_str(&format!(
+            "[{}{}][{}]xfade=transition={}:duration={}:offset={}[{}];",
+            if i == 0 { "" } else { "" }, // Empty prefix hack
+            prev_label,
+            next_label,
+            effect,
+            transition_duration,
+            offset,
+            out_label
+        ));
+    }
+    
+    // Audio crossfade (acrossfade)
+    
+    for i in 0..inputs - 1 {
+         let prev_label = if i == 0 { "0:a".to_string() } else { format!("a{}", i) };
+         let next_label = format!("{}:a", i + 1);
+         let out_label = format!("a{}", i + 1);
+         
+         filter.push_str(&format!(
+             "[{}][{}]acrossfade=d={}[{}];",
+             prev_label,
+             next_label,
+             transition_duration,
+             out_label
+         ));
+    }
+
+    filter
+}

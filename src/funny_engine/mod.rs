@@ -1,5 +1,6 @@
 pub mod analyzer;
 pub mod injector;
+pub mod commentator;
 
 use std::path::Path;
 use anyhow::Result;

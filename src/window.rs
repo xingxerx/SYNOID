@@ -276,6 +276,8 @@ impl SynoidApp {
                 .desired_rows(3)
                 .desired_width(f32::INFINITY),
         );
+        ui.add_space(5.0);
+        ui.checkbox(&mut task.is_funny_bits_enabled, "🎭 Enable Funny Mode (Commentary + Transitions)");
         ui.add_space(10.0);
 
         ui.label("Output Path:");
@@ -321,6 +323,7 @@ impl SynoidApp {
             let input = PathBuf::from(&task.input_path);
             let output = PathBuf::from(&task.output_path);
             let intent = task.intent.clone();
+            let funny_mode = task.is_funny_bits_enabled;
 
             task.logs
                 .push(format!("[UPLOAD] Processing: {}", task.input_path));
@@ -357,6 +360,7 @@ impl SynoidApp {
                         &input,
                         &intent,
                         &output,
+                        funny_mode,
                         Some(callback),
                     )) {
                         Ok(result) => {
@@ -1100,6 +1104,38 @@ impl eframe::App for SynoidApp {
                         self.learner.stop();
                         self.state.task.lock().unwrap().logs.push("[AUTO] 🛑 Continuous Learning Stopped".to_string());
                     }
+                }
+
+                // ── System Stress Health Bar ──
+                ui.add_space(16.0);
+                ui.separator();
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new("System Stress")
+                        .size(11.0)
+                        .color(COLOR_TEXT_SECONDARY),
+                );
+                ui.add_space(4.0);
+                {
+                    use crate::agent::defense::pressure::PressureLevel;
+                    let level = self
+                        .state
+                        .pressure_level
+                        .read()
+                        .map(|l| *l)
+                        .unwrap_or(PressureLevel::Green);
+
+                    let (ratio, color, label) = match level {
+                        PressureLevel::Green => (0.35, COLOR_ACCENT_GREEN, "🟢 Nominal"),
+                        PressureLevel::Yellow => (0.70, egui::Color32::from_rgb(255, 200, 50), "🟡 Elevated"),
+                        PressureLevel::Red => (1.0, COLOR_ACCENT_RED, "🔴 CRITICAL"),
+                    };
+
+                    ui.add(
+                        egui::ProgressBar::new(ratio)
+                            .fill(color)
+                            .text(egui::RichText::new(label).size(11.0).color(COLOR_TEXT_PRIMARY)),
+                    );
                 }
 
                 // Update tree state

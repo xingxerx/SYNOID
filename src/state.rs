@@ -1,21 +1,28 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use serde::Serialize;
 use crate::agent::super_engine::SuperEngine;
+use crate::agent::defense::pressure::{PressureLevel, PressureWatcher};
 
 pub struct KernelState {
     pub task: Mutex<TaskState>,
     pub engine: tokio::sync::Mutex<SuperEngine>,
     pub funny_engine: Arc<crate::funny_engine::FunnyEngine>,
     pub funny_moments: Mutex<Vec<crate::funny_engine::analyzer::FunnyMoment>>,
+    /// Shared pressure level for the GUI health bar.
+    pub pressure_level: Arc<RwLock<PressureLevel>>,
 }
 
 impl KernelState {
     pub fn new(engine: SuperEngine) -> Self {
+        let watcher = PressureWatcher::new();
+        let pressure_handle = watcher.level_handle();
+
         Self {
             task: Mutex::new(TaskState::default()),
             engine: tokio::sync::Mutex::new(engine),
             funny_engine: Arc::new(crate::funny_engine::FunnyEngine::new()),
             funny_moments: Mutex::new(Vec::new()),
+            pressure_level: pressure_handle,
         }
     }
 }

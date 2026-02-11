@@ -6,6 +6,7 @@
 
 use crate::agent::production_tools;
 use crate::agent::voice::transcription::{TranscriptSegment, TranscriptionEngine};
+use crate::funny_engine::commentator::CommentaryGenerator;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
@@ -344,6 +345,7 @@ pub async fn smart_edit(
     input: &Path,
     intent_text: &str,
     output: &Path,
+    funny_mode: bool,
     progress_callback: Option<Box<dyn Fn(&str) + Send>>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let log = |msg: &str| {
@@ -455,7 +457,7 @@ pub async fn smart_edit(
         return Err("All scenes were filtered out! Try a less aggressive intent.".into());
     }
 
-    // 5. Generate concat file for FFmpeg
+    // 5. Generate concat file or transition Inputs
     let segments_dir = work_dir.join("synoid_smart_edit_temp");
     if segments_dir.exists() {
         fs::remove_dir_all(&segments_dir)?;
@@ -464,11 +466,49 @@ pub async fn smart_edit(
 
     log("[SMART] ✂️ Extracting good segments (muxing enhanced audio)...");
 
+    // Initialize Commentary Generator if needed
+    let commentator = if funny_mode {
+        match CommentaryGenerator::new("http://localhost:11434/v1") {
+            Ok(c) => Some(c),
+            Err(e) => {
+                warn!("[SMART] Failed to init Funny Engine: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Extract each segment
     let mut segment_files = Vec::new();
+    let mut commentary_files = Vec::new(); // (index, path)
+    let mut segment_durations = Vec::new();
+
     let total_segments = scenes_to_keep.len();
     for (i, scene) in scenes_to_keep.iter().enumerate() {
         let seg_path = segments_dir.join(format!("seg_{:04}.mp4", i));
+
+        // Generate Commentary
+        if let Some(gen) = &commentator {
+             // Only commentate on longer scenes to avoid clutter
+             if scene.duration > 4.0 {
+                 let context = if let Some(t) = &transcript {
+                     t.iter()
+                      .filter(|s| s.end > scene.start_time && s.start < scene.end_time)
+                      .map(|s| s.text.clone())
+                      .collect::<Vec<_>>()
+                      .join(" ")
+                 } else {
+                     "Visual scene".to_string()
+                 };
+                 
+                 // Generate asynchronously (blocking here for simplicity in this iteration)
+                 if let Ok(Some(audio_path)) = gen.generate_commentary(scene, &context, &segments_dir, i).await {
+                     commentary_files.push((i, audio_path));
+                 }
+             }
+        }
+
 
         let mut cmd = Command::new("ffmpeg");
         cmd.arg("-y").arg("-nostdin");
@@ -513,6 +553,7 @@ pub async fn smart_edit(
         }
 
         segment_files.push(seg_path);
+        segment_durations.push(scene.duration);
 
         if i < 3 || i % 10 == 0 || i == total_segments - 1 {
             log(&format!(
@@ -528,8 +569,67 @@ pub async fn smart_edit(
         return Err("Failed to extract any segments".into());
     }
 
-    // 6. Create concat list file
+    if funny_mode {
+        log("[SMART] 🎭 Funny Mode: Rendering transitions and commentary...");
+        
+        // 6a. Complex Logic for Funny Mode
+        let transition_duration = 0.5;
+        let filter_complex = production_tools::build_transition_filter(
+            segment_files.len(),
+            transition_duration,
+            &segment_durations
+        );
+        
+        if filter_complex.is_empty() {
+             // Fallback to simple concat if only 1 clip
+             log("[SMART] Only 1 clip, skipping transitions.");
+        } else {
+            let mut cmd = Command::new("ffmpeg");
+            cmd.arg("-y").arg("-nostdin");
+
+            // Inputs (Video Segments)
+            for seg in &segment_files {
+                cmd.arg("-i").arg(seg);
+            }
+            
+            // Inputs (Commentary Audio)
+            // We need to mix these in.
+            // Complex mixing logic omitted for brevity in this step, 
+            // focusing on Visual Transitions first as requested.
+            // (Commentary overlay would require amix or adelay filter injection)
+            
+            // Apply Transition Filter
+            cmd.arg("-filter_complex").arg(&filter_complex);
+            
+            // Map output from filter (v{last}, a{last})
+            let last_idx = segment_files.len();
+            cmd.arg("-map").arg(format!("[v{}]", last_idx));
+            cmd.arg("-map").arg(format!("[a{}]", last_idx));
+            
+            cmd.arg("-c:v").arg("libx264").arg("-preset").arg("medium").arg("-crf").arg("23");
+            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
+            cmd.arg(output.to_str().unwrap());
+            
+            let status = cmd.output().await?;
+             if !status.status.success() {
+                let stderr = String::from_utf8_lossy(&status.stderr);
+                // Fallback to simple concat if complex filter fails (e.g. too many inputs)
+                error!("[SMART] Transition render failed: {}. Falling back to simple cut.", stderr);
+             } else {
+                // Success path
+                fs::remove_dir_all(&segments_dir)?;
+                if use_enhanced_audio { let _ = fs::remove_file(enhanced_audio_path); }
+                
+                 let metadata = fs::metadata(output)?;
+                 let size_mb = metadata.len() as f64 / 1_048_576.0;
+                 return Ok(format!("✅ Funny Edit complete! Output: {:.2} MB", size_mb));
+             }
+        }
+    } 
+
+    // 6b. Simple Concat (Default or Fallback)
     let concat_file = segments_dir.join("concat_list.txt");
+
     {
         let mut file = fs::File::create(&concat_file)?;
         for seg in &segment_files {

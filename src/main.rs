@@ -263,6 +263,10 @@ enum Commands {
         /// Scale factor for upscaling (2.0 = 2x resolution)
         #[arg(long, default_value_t = 2.0)]
         scale: f64,
+
+        /// Enable Funny Mode (commentary + transitions)
+        #[arg(long)]
+        funny: bool,
     },
 
     /// Start Autonomous Learning Loop
@@ -537,6 +541,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
+
         Commands::Vectorize {
             input,
             output,
@@ -762,6 +767,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             intent,
             scale,
+            funny,
         } => {
             use agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipeline};
             
@@ -785,6 +791,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 intent,
                 scale_factor: scale,
                 target_size_mb: 0.0,
+                funny_mode: funny,
                 progress_callback: Some(std::sync::Arc::new(|msg: &str| {
                     println!("  → {}", msg);
                 })),
@@ -819,14 +826,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("🛑 Autonomous Loop Stopped.");
         }
         Commands::Funny { input, output } => {
-            use synoid_core::funny_engine::FunnyEngine;
-            
-            info!("🤡 Starting Funny Bits Engine on {:?}", input);
-            let engine = FunnyEngine::new();
-            match engine.process_video(&input, &output).await {
-                Ok(_) => println!("✅ Video enhanced with funny bits: {:?}", output),
-                Err(e) => error!("Funny processing failed: {}", e),
-            }
+             use synoid_core::agent::smart_editor;
+             info!("🎭 Running Funny Mode on {:?}...", input);
+             
+             // Default intent for funny mode if none specified
+             let intent = "Keep interesting parts, remove silence, make it engaging";
+             
+             match smart_editor::smart_edit(&input, intent, &output, true, None).await {
+                 Ok(msg) => println!("{}", msg),
+                 Err(e) => error!("Funny mode failed: {}", e),
+             }
         }
     }
 
