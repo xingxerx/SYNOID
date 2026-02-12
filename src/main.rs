@@ -496,7 +496,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let mut transcript = Vec::new();
             if audio_path.exists() {
-                match TranscriptionEngine::new() {
+                match TranscriptionEngine::new(None).await {
                     Ok(engine) => match engine.transcribe(&audio_path).await {
                         Ok(segs) => transcript = segs,
                         Err(e) => error!("Transcription failed: {}", e),
@@ -614,7 +614,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Guard { mode, watch } => {
             use agent::defense::{IntegrityGuard, Sentinel};
-            use std::{thread, time::Duration};
+            use std::time::Duration;
 
             println!("🛡️ ACTIVATING SENTINEL Cyberdefense System...");
             println!(
@@ -632,7 +632,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(path) = watch {
                 println!("   Watching Path: {:?}", path);
                 integrity.watch_path(path);
-                let _ = integrity.build_baseline();
+                let _ = integrity.build_baseline().await;
             }
 
             // 2. Setup Process Sentinel
@@ -652,13 +652,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Check File Integrity
                 if mode == "all" || mode == "file" {
-                    let violations = integrity.verify_integrity();
+                    let violations = integrity.verify_integrity().await;
                     for v in violations {
                         println!("❌ [INTEGRITY] {}", v);
                     }
                 }
 
-                thread::sleep(Duration::from_secs(5));
+                tokio::time::sleep(Duration::from_secs(5)).await;
             }
         }
         Commands::Voice {
@@ -681,7 +681,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let out_path = output
                     .clone()
                     .unwrap_or_else(|| PathBuf::from("voice_sample.wav"));
-                match audio_io.record_to_file(&out_path, duration) {
+                match audio_io.record_to_file(&out_path, duration).await {
                     Ok(_) => println!("✅ Recorded {} seconds to {:?}", duration, out_path),
                     Err(e) => println!("❌ Recording failed: {}", e),
                 }
@@ -743,7 +743,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             match engine.speak_as(&text, profile_name, &out_path) {
                                 Ok(_) => {
                                     println!("✅ Speech saved to {:?}", out_path);
-                                    let _ = audio_io.play_file(&out_path);
+                                    let _ = audio_io.play_file(&out_path).await;
                                 }
                                 Err(e) => println!("⚠️ {}", e),
                             }
@@ -751,7 +751,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             match engine.speak(&text, &out_path) {
                                 Ok(_) => {
                                     println!("✅ Speech saved to {:?}", out_path);
-                                    let _ = audio_io.play_file(&out_path);
+                                    let _ = audio_io.play_file(&out_path).await;
                                 }
                                 Err(e) => println!("⚠️ {}", e),
                             }

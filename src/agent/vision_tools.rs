@@ -45,41 +45,47 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
         .into());
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut scenes = Vec::new();
+    // Offload parsing to blocking task
+    let stdout_bytes = output.stdout;
+    let scenes = tokio::task::spawn_blocking(move || {
+        let stdout = String::from_utf8_lossy(&stdout_bytes);
+        let mut scenes = Vec::new();
 
-    // Always add start as a scene
-    scenes.push(VisualScene {
-        timestamp: 0.0,
-        motion_score: 0.0,
-        scene_score: 1.0,
-    });
+        // Always add start as a scene
+        scenes.push(VisualScene {
+            timestamp: 0.0,
+            motion_score: 0.0,
+            scene_score: 1.0,
+        });
 
-    for line in stdout.lines() {
-        // Output format: timestamp,score
-        let parts: Vec<&str> = line.split(',').collect();
-        if parts.len() >= 1 {
-            if let Ok(ts) = parts[0].trim().parse::<f64>() {
-                // Parse score if available, otherwise default to 1.0
-                let score = if parts.len() >= 2 {
-                    parts[1].trim().parse::<f64>().unwrap_or(1.0)
-                } else {
-                    1.0
-                };
+        for line in stdout.lines() {
+            // Output format: timestamp,score
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() >= 1 {
+                if let Ok(ts) = parts[0].trim().parse::<f64>() {
+                    // Parse score if available, otherwise default to 1.0
+                    let score = if parts.len() >= 2 {
+                        parts[1].trim().parse::<f64>().unwrap_or(1.0)
+                    } else {
+                        1.0
+                    };
 
-                // Avoid duplicate 0.0 or very close timestamps
-                if !scenes.is_empty() && (ts - scenes.last().unwrap().timestamp).abs() < 0.5 {
-                    continue;
+                    // Avoid duplicate 0.0 or very close timestamps
+                    if !scenes.is_empty() && (ts - scenes.last().unwrap().timestamp).abs() < 0.5 {
+                        continue;
+                    }
+
+                    scenes.push(VisualScene {
+                        timestamp: ts,
+                        motion_score: score, // Use scene score as proxy for motion intensity
+                        scene_score: score,
+                    });
                 }
-
-                scenes.push(VisualScene {
-                    timestamp: ts,
-                    motion_score: score, // Use scene score as proxy for motion intensity
-                    scene_score: score,
-                });
             }
         }
-    }
+        scenes
+    })
+    .await?;
 
     // Fallback if no scenes detected (e.g. short video or no changes) - ensure at least start is there
     if scenes.is_empty() {

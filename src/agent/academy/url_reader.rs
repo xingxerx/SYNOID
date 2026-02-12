@@ -91,15 +91,22 @@ impl UrlReader {
         // 1. Fetch HTML
         let resp = reqwest::get(url).await?.text().await?;
 
-        // 2. Extract Text (Naive implementation)
-        let document = Html::parse_document(&resp);
-        let selector = Selector::parse("p, h1, h2, h3").unwrap();
+        // 2. Extract Text (Offload CPU-heavy parsing)
+        let text_content = tokio::task::spawn_blocking(move || {
+            let document = Html::parse_document(&resp);
+            let selector = Selector::parse("p, h1, h2, h3").unwrap();
 
-        let mut text_content = String::new();
-        for element in document.select(&selector) {
-            text_content.push_str(&element.text().collect::<Vec<_>>().join(" "));
-            text_content.push('\n');
-        }
+            let mut text = String::with_capacity(resp.len());
+            for element in document.select(&selector) {
+                for chunk in element.text() {
+                    text.push_str(chunk);
+                    text.push(' ');
+                }
+                text.push('\n');
+            }
+            text
+        })
+        .await?;
 
         // Truncate to avoid context window overflow
         let truncated_text: String = text_content.chars().take(2000).collect();

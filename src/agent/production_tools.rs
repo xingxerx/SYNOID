@@ -32,6 +32,20 @@ pub async fn trim_video(
     duration: f64,
     output: &Path,
 ) -> Result<ProductionResult, Box<dyn std::error::Error>> {
+    if input == output {
+        return Err("Input and output paths must be different to prevent data loss".into());
+    }
+
+    // Ensure valid video extension
+    if let Some(ext) = output.extension() {
+        let ext_str = ext.to_string_lossy().to_lowercase();
+        if !["mp4", "mov", "mkv", "avi", "webm"].contains(&ext_str.as_str()) {
+             return Err("Invalid output extension. Supported: mp4, mov, mkv, avi, webm".into());
+        }
+    } else {
+        return Err("Output path must have a video extension".into());
+    }
+
     info!(
         "[PROD] Trimming video: {:?} ({:.2}s + {:.2}s)",
         input, start_time, duration
@@ -109,6 +123,10 @@ pub async fn compress_video(
     target_size_mb: f64,
     output: &Path,
 ) -> Result<ProductionResult, Box<dyn std::error::Error>> {
+    if input == output {
+        return Err("Input and output paths must be different".into());
+    }
+
     info!(
         "[PROD] Compressing video: {:?} -> {:.2} MB",
         input, target_size_mb
@@ -176,6 +194,15 @@ pub async fn compress_video(
 
 /// Enhance audio using vocal processing chain (EQ -> Compression -> Normalization)
 pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if input == output {
+        return Err("Input and output paths must be different".into());
+    }
+
+    // Implicit Sidecar Check: Warn if overwriting existing file that isn't the input
+    if output.exists() {
+        warn!("[PROD] Overwriting existing audio file: {:?}", output);
+    }
+
     info!("[PROD] Enhancing audio: {:?}", input);
 
     // Filter Chain:
@@ -221,6 +248,10 @@ pub async fn combine_av(
     audio_path: &Path,
     output_path: &Path,
 ) -> Result<ProductionResult, Box<dyn std::error::Error>> {
+    if video_path == output_path {
+        return Err("Input video and output path must be different".into());
+    }
+
     info!(
         "[PROD] Combining Video: {:?} + Audio: {:?}",
         video_path, audio_path

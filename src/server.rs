@@ -41,12 +41,10 @@ pub async fn start_server(port: u16, state: Arc<KernelState>) {
         .with_state(state)
         .layer(CorsLayer::permissive());
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    let display_addr = if addr.ip().is_unspecified() {
-        format!("127.0.0.1:{}", port)
-    } else {
-        addr.to_string()
-    };
+    // Bind to localhost for security (prevent external access by default)
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let display_addr = addr.to_string();
+
     info!(
         "🚀 SYNOID Dashboard Server running on http://{}",
         display_addr

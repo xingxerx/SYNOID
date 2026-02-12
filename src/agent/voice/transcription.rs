@@ -21,18 +21,28 @@ pub struct TranscriptionEngine {
 }
 
 impl TranscriptionEngine {
-    pub fn new() -> Result<Self> {
-        // Locate or download the model
-        let model_path = Self::ensure_model("base.en")?;
+    pub async fn new(model_name: Option<String>) -> Result<Self> {
+        let model_name = model_name.unwrap_or_else(|| "base.en".to_string());
+
+        // Locate or download the model in blocking task
+        let model_path = tokio::task::spawn_blocking(move || {
+            Self::ensure_model(&model_name)
+        }).await??;
+
         Ok(Self { model_path })
     }
 
     /// Ensure the GGML model is present (Sovereign Ear - ModelDownloader)
     fn ensure_model(model_name: &str) -> Result<PathBuf> {
-        let base_dir = dirs::cache_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("synoid")
-            .join("models");
+        // Use environment variable for cache dir if available
+        let base_dir = if let Ok(cache_env) = std::env::var("SYNOID_CACHE_DIR") {
+            PathBuf::from(cache_env).join("models")
+        } else {
+             dirs::cache_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("synoid")
+                .join("models")
+        };
 
         fs::create_dir_all(&base_dir)?;
 

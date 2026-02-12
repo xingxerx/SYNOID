@@ -249,12 +249,12 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
 
 /// Scan a directory for all valid video files
 #[allow(dead_code)]
-pub fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
+pub async fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
     let mut videos = Vec::new();
     let extensions = ["mp4", "mov", "mkv", "avi", "webm"];
 
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
+    if let Ok(mut entries) = tokio::fs::read_dir(dir).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
             let path = entry.path();
             if path.is_file() {
                 if let Some(ext) = path.extension() {
