@@ -73,3 +73,4 @@ brain_memory.json
 # Secrets
 .env
 temp_verification/
+check_errors*.txt
