@@ -101,11 +101,11 @@ async fn handle_chat(
 ) -> Json<ChatResponse> {
     info!("Brain receiving: {}", payload.message);
 
-    let mut engine = state.engine.lock().await;
-    match engine.process_command(&payload.message).await {
+    let mut brain = state.core.brain.lock().await;
+    match brain.process(&payload.message).await {
         Ok(res) => Json(ChatResponse { response: res }),
         Err(e) => {
-            error!("SuperEngine Error: {}", e);
+            error!("Brain Error: {}", e);
             Json(ChatResponse {
                 response: format!("Error: {}", e),
             })
