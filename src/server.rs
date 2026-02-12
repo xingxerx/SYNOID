@@ -31,6 +31,19 @@ struct StreamParams {
     path: String,
 }
 
+const ALLOWED_EXTENSIONS: &[&str] = &[
+    "mp4", "mkv", "mov", "avi", "webm", "flv", "wmv",
+    "mp3", "wav", "flac", "aac", "ogg", "m4a",
+    "jpg", "jpeg", "png", "gif", "bmp", "webp",
+];
+
+fn is_safe_media_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ALLOWED_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
+        .unwrap_or(false)
+}
+
 pub async fn start_server(port: u16, state: Arc<KernelState>) {
     let app = Router::new()
         .nest_service("/", ServeDir::new("dashboard"))
@@ -113,11 +126,45 @@ async fn handle_chat(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_is_safe_media_path() {
+        // Safe paths
+        assert!(is_safe_media_path(Path::new("video.mp4")));
+        assert!(is_safe_media_path(Path::new("movie.mkv")));
+        assert!(is_safe_media_path(Path::new("image.jpg")));
+        assert!(is_safe_media_path(Path::new("image.PNG"))); // Case insensitive
+        assert!(is_safe_media_path(Path::new("/path/to/video.mp4")));
+
+        // Unsafe paths
+        assert!(!is_safe_media_path(Path::new("script.sh")));
+        assert!(!is_safe_media_path(Path::new("/etc/passwd")));
+        assert!(!is_safe_media_path(Path::new("config.json")));
+        assert!(!is_safe_media_path(Path::new("no_extension")));
+        assert!(!is_safe_media_path(Path::new("malicious.exe")));
+        assert!(!is_safe_media_path(Path::new("image.svg"))); // SVG is unsafe
+        assert!(!is_safe_media_path(Path::new("..")));
+    }
+}
+
 async fn stream_video(
     Query(params): Query<StreamParams>,
     req: Request,
 ) -> impl axum::response::IntoResponse {
     let path = std::path::PathBuf::from(params.path);
+
+    if !is_safe_media_path(&path) {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            "Access Denied: Invalid file type",
+        )
+            .into_response();
+    }
+
     if !path.exists() {
         return axum::http::StatusCode::NOT_FOUND.into_response();
     }
