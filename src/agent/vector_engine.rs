@@ -6,8 +6,9 @@ use crate::agent::vision_tools::calculate_optical_flow_diff;
 use rayon::prelude::*;
 use resvg::tiny_skia;
 use resvg::usvg;
-use std::fs;
+use std::fs as std_fs;
 use std::path::{Path, PathBuf};
+use tokio::fs;
 use tokio::process::Command;
 use tracing::{error, info};
 
@@ -24,18 +25,18 @@ pub async fn upscale_video(
 
     // 1. Setup Directories
     let work_dir = input.parent().unwrap().join("synoid_upscale_work");
-    if work_dir.exists() {
-        fs::remove_dir_all(&work_dir)?;
+    if fs::try_exists(&work_dir).await? {
+        fs::remove_dir_all(&work_dir).await?;
     }
-    fs::create_dir_all(&work_dir)?;
+    fs::create_dir_all(&work_dir).await?;
 
     let frames_src = work_dir.join("src_frames");
     let frames_svg = work_dir.join("vectors");
     let frames_out = work_dir.join("high_res_frames");
 
-    fs::create_dir_all(&frames_src)?;
-    fs::create_dir_all(&frames_svg)?;
-    fs::create_dir_all(&frames_out)?;
+    fs::create_dir_all(&frames_src).await?;
+    fs::create_dir_all(&frames_svg).await?;
+    fs::create_dir_all(&frames_out).await?;
 
     // 2. Extract Source Frames
     info!("[UPSCALE] Extracting source frames...");
@@ -55,7 +56,9 @@ pub async fn upscale_video(
 
     // 3. Resolution Safety Check
     // Calculate theoretical output size based on first frame
-    if let Some(first_frame) = fs::read_dir(&frames_src)?.filter_map(|e| e.ok()).next() {
+    let mut dir = fs::read_dir(&frames_src).await?;
+    // We only need the first valid entry
+    if let Ok(Some(first_frame)) = dir.next_entry().await {
         if let Ok(dims) = image::image_dimensions(first_frame.path()) {
             let (orig_w, orig_h) = dims;
             let target_w = (orig_w as f64 * scale_factor) as u32;
@@ -76,10 +79,11 @@ pub async fn upscale_video(
     }
 
     // 4. Vectorize & Render High-Res (Parallel)
-    let paths: Vec<PathBuf> = fs::read_dir(&frames_src)?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .collect();
+    let mut paths: Vec<PathBuf> = Vec::new();
+    let mut dir = fs::read_dir(&frames_src).await?;
+    while let Ok(Some(entry)) = dir.next_entry().await {
+        paths.push(entry.path());
+    }
     info!(
         "[UPSCALE] Processing {} frames (Vectorize -> Render {}x)...",
         paths.len(),
@@ -113,7 +117,7 @@ pub async fn upscale_video(
         .await?;
 
     // Cleanup
-    fs::remove_dir_all(work_dir)?;
+    fs::remove_dir_all(work_dir).await?;
 
     if status_enc.status.success() {
         Ok(format!("Upscaled video saved to {:?}", output))
@@ -214,7 +218,7 @@ fn process_frames_core(
             let out_png = frames_out.join(format!("{}.png", current_stem));
 
             // B. Render (SVG -> High-Res Raster)
-            if let Ok(svg_data) = fs::read(&key_svg_path) {
+            if let Ok(svg_data) = std_fs::read(&key_svg_path) {
                 let opt = usvg::Options::default();
                 if let Ok(tree) = usvg::Tree::from_data(&svg_data, &opt) {
                     let size = tree.size.to_screen_size();
@@ -309,13 +313,13 @@ pub async fn vectorize_video(
 ) -> Result<String, Box<dyn std::error::Error>> {
     info!("[VECTOR] Starting vectorization engine on {:?}", input);
 
-    if !output_dir.exists() {
-        fs::create_dir_all(output_dir)?;
+    if !fs::try_exists(output_dir).await? {
+        fs::create_dir_all(output_dir).await?;
     }
 
     // 1. Extract Frames using FFmpeg
     let frames_dir = output_dir.join("frames_src");
-    fs::create_dir_all(&frames_dir)?;
+    fs::create_dir_all(&frames_dir).await?;
 
     info!("[VECTOR] Extracting frames...");
     let status = Command::new("ffmpeg")
@@ -331,10 +335,11 @@ pub async fn vectorize_video(
     }
 
     // 2. Vectorize Frames using vtracer (Parallelized)
-    let paths: Vec<PathBuf> = fs::read_dir(&frames_dir)?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .collect();
+    let mut paths: Vec<PathBuf> = Vec::new();
+    let mut dir = fs::read_dir(&frames_dir).await?;
+    while let Ok(Some(entry)) = dir.next_entry().await {
+        paths.push(entry.path());
+    }
 
     info!("[VECTOR] Vectorizing {} frames (Parallel)...", paths.len());
 
@@ -351,18 +356,22 @@ pub async fn vectorize_video(
     };
 
     // Parallel processing with Rayon
-    paths.par_iter().for_each(|frame_path| {
-        let stem = frame_path.file_stem().unwrap().to_string_lossy();
-        let out_svg = output_dir.join(format!("{}.svg", stem));
+    let output_dir_owned = output_dir.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        paths.par_iter().for_each(|frame_path| {
+            let stem = frame_path.file_stem().unwrap().to_string_lossy();
+            let out_svg = output_dir_owned.join(format!("{}.svg", stem));
 
-        match vtracer::convert_image_to_svg(frame_path, &out_svg, vt_config.clone()) {
-            Ok(_) => {} // Silent success for speed
-            Err(e) => error!("Failed frame {}: {}", stem, e),
-        }
-    });
+            match vtracer::convert_image_to_svg(frame_path, &out_svg, vt_config.clone()) {
+                Ok(_) => {} // Silent success for speed
+                Err(e) => error!("Failed frame {}: {}", stem, e),
+            }
+        });
+    })
+    .await?;
 
     // 3. Cleanup Source Frames
-    fs::remove_dir_all(&frames_dir)?;
+    fs::remove_dir_all(&frames_dir).await?;
 
     Ok(format!(
         "Vectorization complete. SVGs saved in {:?}",
