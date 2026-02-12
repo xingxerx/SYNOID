@@ -318,7 +318,11 @@ mod tests {
         assert_eq!(args.last(), Some(&"https://youtube.com".to_string()));
         // check sanitized path is present (either "out.mp4" if absolute or "./out.mp4" if relative)
         // safe_arg_path prepends ./ for relative paths
-        assert!(args.contains(&"./out.mp4".to_string()) || args.contains(&".\\out.mp4".to_string()) || args.contains(&"out.mp4".to_string()));
+        assert!(
+            args.contains(&"./out.mp4".to_string())
+                || args.contains(&".\\out.mp4".to_string())
+                || args.contains(&"out.mp4".to_string())
+        );
     }
 
     #[test]
@@ -327,7 +331,9 @@ mod tests {
         let args = build_ytdlp_download_args("https://youtube.com", path, None).unwrap();
         // Should be sanitized to ./ -out.mp4 or similar to prevent flag interpretation
         // safe_arg_path turns "-out.mp4" into "./-out.mp4"
-        assert!(args.contains(&"./-out.mp4".to_string()) || args.contains(&".\\-out.mp4".to_string()));
+        assert!(
+            args.contains(&"./-out.mp4".to_string()) || args.contains(&".\\-out.mp4".to_string())
+        );
         // Should NOT contain raw "-out.mp4" as an isolated argument (it's part of -o value)
         // Actually, it is passed as value to -o.
         // The check is that it starts with ./

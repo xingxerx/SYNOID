@@ -9,8 +9,7 @@ use std::pin::Pin;
 use tracing::{info, warn};
 
 /// Type alias for the async emergency-save callback.
-pub type EmergencySaveFn =
-    Box<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+pub type EmergencySaveFn = Box<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 /// Spawn a background task that waits for Ctrl-C and then runs the
 /// provided emergency-save closure before exiting.

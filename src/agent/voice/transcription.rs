@@ -1,13 +1,13 @@
-// SYNOID Transcription Bridge
-// Wraps generic Python Whisper script for robust local transcription.
+// SYNOID Sovereign Ear
+// Native Rust implementation of Whisper for local, private transcription.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use hf_hub::api::sync::Api;
 use serde::{Deserialize, Serialize};
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tokio::process::Command;
-use tracing::{info, warn};
+use tracing::info;
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptSegment {
@@ -17,171 +17,131 @@ pub struct TranscriptSegment {
 }
 
 pub struct TranscriptionEngine {
-    script_path: PathBuf,
+    model_path: PathBuf,
 }
 
 impl TranscriptionEngine {
     pub fn new() -> Result<Self> {
-        let script_path = if let Ok(env_path) = env::var("SYNOID_TRANSCRIPTION_SCRIPT") {
-            PathBuf::from(env_path)
-        } else {
-            // Check relative to executable (robust for release builds)
-            let mut found_path = None;
+        // Locate or download the model
+        let model_path = Self::ensure_model("base.en")?;
+        Ok(Self { model_path })
+    }
 
-            if let Ok(exe_path) = env::current_exe() {
-                // Try walking up from exe location (target/release/synoid -> root/tools/transcribe.py)
-                // Try: exe_dir/tools/transcribe.py
-                // Try: exe_dir/../tools/transcribe.py
-                // Try: exe_dir/../../tools/transcribe.py
-                // Try: exe_dir/../../../tools/transcribe.py
+    /// Ensure the GGML model is present (Sovereign Ear - ModelDownloader)
+    fn ensure_model(model_name: &str) -> Result<PathBuf> {
+        let base_dir = dirs::cache_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("synoid")
+            .join("models");
 
-                let candidates = [
-                    exe_path
-                        .parent()
-                        .map(|p| p.join("tools").join("transcribe.py")),
-                    exe_path
-                        .parent()
-                        .and_then(|p| p.parent())
-                        .map(|p| p.join("tools").join("transcribe.py")),
-                    exe_path
-                        .parent()
-                        .and_then(|p| p.parent())
-                        .and_then(|p| p.parent())
-                        .map(|p| p.join("tools").join("transcribe.py")),
-                    exe_path
-                        .parent()
-                        .and_then(|p| p.parent())
-                        .and_then(|p| p.parent())
-                        .and_then(|p| p.parent())
-                        .map(|p| p.join("tools").join("transcribe.py")),
-                ];
+        fs::create_dir_all(&base_dir)?;
 
-                for candidate in candidates.iter().flatten() {
-                    if candidate.exists() {
-                        found_path = Some(candidate.clone());
-                        break;
-                    }
-                }
-            }
+        let filename = format!("ggml-{}.bin", model_name);
+        let model_path = base_dir.join(&filename);
 
-            if let Some(p) = found_path {
-                p
-            } else {
-                // Fallback to CWD
-                let cwd_path = Path::new("tools").join("transcribe.py");
-                if cwd_path.exists() {
-                    cwd_path
-                } else {
-                    // Default to CWD path anyway, will warn below
-                    cwd_path
-                }
-            }
-        };
-
-        if !script_path.exists() {
-            warn!("[TRANSCRIBE] Warning: Transcription script not found at: {:?}. Transcription may fail.", script_path);
-        } else {
-            info!("[TRANSCRIBE] Using script at: {:?}", script_path);
+        if model_path.exists() {
+            info!("[SOVEREIGN] Found cached Whisper model: {:?}", model_path);
+            return Ok(model_path);
         }
 
-        Ok(Self { script_path })
+        info!("[SOVEREIGN] Downloading Whisper model: {}...", filename);
+
+        // Use hf-hub to fetch from ggerganov/whisper.cpp
+        let api = Api::new()?;
+        let repo = api.model("ggerganov/whisper.cpp".to_string());
+        let downloaded_path = repo.get(&filename)?;
+
+        // Copy/Move to our cache location for persistence/control
+        fs::copy(&downloaded_path, &model_path)?;
+
+        info!("[SOVEREIGN] Model secured: {:?}", model_path);
+        Ok(model_path)
     }
 
     pub async fn transcribe(&self, audio_path: &Path) -> Result<Vec<TranscriptSegment>> {
-        info!("[TRANSCRIBE] Audio: {:?}", audio_path);
+        info!("[SOVEREIGN] Transcribing: {:?}", audio_path);
 
-        let work_dir = audio_path.parent().unwrap_or(Path::new("."));
-        let output_json = work_dir.join("transcript.json");
+        // 1. Prepare Audio
+        // Running CPU-heavy audio processing in blocking thread
+        let audio_path_buf = audio_path.to_path_buf();
+        let model_path = self.model_path.clone();
 
-        // Ensure python is available
-        // We assume 'python' is in PATH or use generic 'python' command
-        // Generate sidecar text file
-        let output_txt = work_dir.join("transcript.txt");
-
-        let status = Command::new("python")
-            .arg(&self.script_path)
-            .arg("--input") // Fixed argument name (was --audio)
-            .arg(audio_path.to_str().unwrap())
-            .arg("--model")
-            .arg("small") // Better accuracy than tiny
-            .arg("--output")
-            .arg(output_json.to_str().unwrap())
-            .arg("--save-txt")
-            .arg(output_txt.to_str().unwrap())
-            .status()
-            .await?;
-
-        if !status.success() {
-            anyhow::bail!("Transcription script failed - is openai-whisper installed?");
-        }
-
-        // Read result
-        let segments: Vec<TranscriptSegment> =
-            serde_json::from_str(&fs::read_to_string(&output_json)?)?;
+        let segments = tokio::task::spawn_blocking(move || {
+            Self::transcribe_blocking(&model_path, &audio_path_buf)
+        })
+        .await??;
 
         info!(
-            "[TRANSCRIBE] Success! {} segments generated.",
+            "[SOVEREIGN] Transcription Complete: {} segments.",
             segments.len()
         );
-
-        // Cleanup JSON
-        // fs::remove_file(output_json)?;
-        // Keeping it might be useful for debug for now
-
         Ok(segments)
     }
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs::File;
-    use std::sync::Mutex;
 
-    // Mutex to serialize tests that modify env vars
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    fn transcribe_blocking(model_path: &Path, audio_path: &Path) -> Result<Vec<TranscriptSegment>> {
+        // Read audio
+        let mut reader = hound::WavReader::open(audio_path).context("Open WAV")?;
+        let spec = reader.spec();
+        let samples: Vec<i16> = reader.samples().filter_map(|s| s.ok()).collect();
 
-    #[test]
-    fn test_transcription_engine_config() {
-        let _lock = ENV_LOCK.lock().unwrap();
+        // Manual conversion and resampling
+        let mut pcm_data: Vec<f32> = Vec::new();
+        let channels = spec.channels as usize;
 
-        // 1. Test Env Var Override
-        let temp_script = "test_script.py";
-        // Create a dummy file
-        File::create(temp_script).unwrap();
-        let abs_path = env::current_dir().unwrap().join(temp_script);
-
-        env::set_var("SYNOID_TRANSCRIPTION_SCRIPT", &abs_path);
-        let engine = TranscriptionEngine::new();
-        assert!(engine.is_ok(), "Should find script via env var");
-        if let Ok(e) = engine {
-            assert_eq!(e.script_path, abs_path);
+        // Convert to float and mix to mono
+        for chunk in samples.chunks(channels) {
+            let sum: f32 = chunk.iter().map(|&s| s as f32).sum();
+            pcm_data.push((sum / channels as f32) / 32768.0);
         }
 
-        // Cleanup
-        env::remove_var("SYNOID_TRANSCRIPTION_SCRIPT");
-        let _ = fs::remove_file(temp_script);
-
-        // 2. Test Fallback
-        // This assumes tools/transcribe.py exists in the repo root as seen in `ls`.
-        // If the test runner changes CWD, this might fail, but standard cargo test runs in crate root.
-        let engine = TranscriptionEngine::new();
-        // We expect this to pass if tools/transcribe.py exists
-        if Path::new("tools/transcribe.py").exists() {
-            assert!(engine.is_ok(), "Should find default tools/transcribe.py");
-        } else {
-            // If the file doesn't exist in the environment (e.g. CI without it), it should fail.
-            // But for this environment, we know it exists.
-            println!("Note: tools/transcribe.py not found in CWD, skipping default path test");
+        // Resample if needed (Naive linear)
+        if spec.sample_rate != 16000 {
+            let ratio = 16000.0 / spec.sample_rate as f32;
+            let new_len = (pcm_data.len() as f32 * ratio) as usize;
+            let mut resampled = Vec::with_capacity(new_len);
+            for i in 0..new_len {
+                let src_idx = (i as f32 / ratio) as usize;
+                if src_idx < pcm_data.len() {
+                    resampled.push(pcm_data[src_idx]);
+                }
+            }
+            pcm_data = resampled;
         }
 
-        // 3. Test Non-Existent - Now returns Ok but logs warning
-        env::set_var("SYNOID_TRANSCRIPTION_SCRIPT", "non_existent_file_xyz.py");
-        let engine = TranscriptionEngine::new();
-        assert!(
-            engine.is_ok(),
-            "Should accept non-existent file but warn (returning Ok struct)"
-        );
+        // Initialize Whisper
+        let ctx = WhisperContext::new_with_params(
+            model_path.to_str().unwrap(),
+            WhisperContextParameters::default(),
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to load model: {:?}", e))?;
 
-        env::remove_var("SYNOID_TRANSCRIPTION_SCRIPT");
+        let mut state = ctx.create_state().context("Create state")?;
+
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        params.set_print_special(false);
+        params.set_print_progress(false);
+        params.set_print_realtime(false);
+        params.set_print_timestamps(false);
+
+        // Run
+        state.full(params, &pcm_data).context("Running inference")?;
+
+        // Extract
+        let num_segments = state.full_n_segments().context("Get segments count")?;
+        let mut segments = Vec::new();
+
+        for i in 0..num_segments {
+            let start = state.full_get_segment_t0(i).unwrap_or(0) as f64 / 100.0; // cs to s
+            let end = state.full_get_segment_t1(i).unwrap_or(0) as f64 / 100.0;
+            let text = state.full_get_segment_text(i).unwrap_or_default();
+
+            segments.push(TranscriptSegment {
+                start,
+                end,
+                text: text.to_string(),
+            });
+        }
+
+        Ok(segments)
     }
 }

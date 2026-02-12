@@ -278,7 +278,10 @@ impl SynoidApp {
                 .desired_width(f32::INFINITY),
         );
         ui.add_space(5.0);
-        ui.checkbox(&mut task.is_funny_bits_enabled, "🎭 Enable Funny Mode (Commentary + Transitions)");
+        ui.checkbox(
+            &mut task.is_funny_bits_enabled,
+            "🎭 Enable Funny Mode (Commentary + Transitions)",
+        );
         ui.add_space(10.0);
 
         ui.label("Output Path:");
@@ -1147,14 +1150,18 @@ impl eframe::App for SynoidApp {
 
                     let (ratio, color, label) = match level {
                         PressureLevel::Green => (0.35, COLOR_ACCENT_GREEN, "🟢 Nominal"),
-                        PressureLevel::Yellow => (0.70, egui::Color32::from_rgb(255, 200, 50), "🟡 Elevated"),
+                        PressureLevel::Yellow => {
+                            (0.70, egui::Color32::from_rgb(255, 200, 50), "🟡 Elevated")
+                        }
                         PressureLevel::Red => (1.0, COLOR_ACCENT_RED, "🔴 CRITICAL"),
                     };
 
                     ui.add(
-                        egui::ProgressBar::new(ratio)
-                            .fill(color)
-                            .text(egui::RichText::new(label).size(11.0).color(COLOR_TEXT_PRIMARY)),
+                        egui::ProgressBar::new(ratio).fill(color).text(
+                            egui::RichText::new(label)
+                                .size(11.0)
+                                .color(COLOR_TEXT_PRIMARY),
+                        ),
                     );
                 }
 

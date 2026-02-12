@@ -503,25 +503,27 @@ pub async fn smart_edit(
 
         // Generate Commentary
         if let Some(gen) = &commentator {
-             // Only commentate on longer scenes to avoid clutter
-             if scene.duration > 4.0 {
-                 let context = if let Some(t) = &transcript {
-                     t.iter()
-                      .filter(|s| s.end > scene.start_time && s.start < scene.end_time)
-                      .map(|s| s.text.clone())
-                      .collect::<Vec<_>>()
-                      .join(" ")
-                 } else {
-                     "Visual scene".to_string()
-                 };
-                 
-                 // Generate asynchronously (blocking here for simplicity in this iteration)
-                 if let Ok(Some(audio_path)) = gen.generate_commentary(scene, &context, &segments_dir, i).await {
-                     commentary_files.push((i, audio_path));
-                 }
-             }
-        }
+            // Only commentate on longer scenes to avoid clutter
+            if scene.duration > 4.0 {
+                let context = if let Some(t) = &transcript {
+                    t.iter()
+                        .filter(|s| s.end > scene.start_time && s.start < scene.end_time)
+                        .map(|s| s.text.clone())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                } else {
+                    "Visual scene".to_string()
+                };
 
+                // Generate asynchronously (blocking here for simplicity in this iteration)
+                if let Ok(Some(audio_path)) = gen
+                    .generate_commentary(scene, &context, &segments_dir, i)
+                    .await
+                {
+                    commentary_files.push((i, audio_path));
+                }
+            }
+        }
 
         let mut cmd = Command::new("ffmpeg");
         cmd.arg("-y").arg("-nostdin");
@@ -586,18 +588,18 @@ pub async fn smart_edit(
 
     if funny_mode {
         log("[SMART] 🎭 Funny Mode: Rendering transitions and commentary...");
-        
+
         // 6a. Complex Logic for Funny Mode
         let transition_duration = 0.5;
         let filter_complex = production_tools::build_transition_filter(
             segment_files.len(),
             transition_duration,
-            &segment_durations
+            &segment_durations,
         );
-        
+
         if filter_complex.is_empty() {
-             // Fallback to simple concat if only 1 clip
-             log("[SMART] Only 1 clip, skipping transitions.");
+            // Fallback to simple concat if only 1 clip
+            log("[SMART] Only 1 clip, skipping transitions.");
         } else {
             let mut cmd = Command::new("ffmpeg");
             cmd.arg("-y").arg("-nostdin");
@@ -606,41 +608,51 @@ pub async fn smart_edit(
             for seg in &segment_files {
                 cmd.arg("-i").arg(seg);
             }
-            
+
             // Inputs (Commentary Audio)
             // We need to mix these in.
-            // Complex mixing logic omitted for brevity in this step, 
+            // Complex mixing logic omitted for brevity in this step,
             // focusing on Visual Transitions first as requested.
             // (Commentary overlay would require amix or adelay filter injection)
-            
+
             // Apply Transition Filter
             cmd.arg("-filter_complex").arg(&filter_complex);
-            
+
             // Map output from filter (v{last}, a{last})
             let last_idx = segment_files.len();
             cmd.arg("-map").arg(format!("[v{}]", last_idx));
             cmd.arg("-map").arg(format!("[a{}]", last_idx));
-            
-            cmd.arg("-c:v").arg("libx264").arg("-preset").arg("medium").arg("-crf").arg("23");
+
+            cmd.arg("-c:v")
+                .arg("libx264")
+                .arg("-preset")
+                .arg("medium")
+                .arg("-crf")
+                .arg("23");
             cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
             cmd.arg(output.to_str().unwrap());
-            
+
             let status = cmd.output().await?;
-             if !status.status.success() {
+            if !status.status.success() {
                 let stderr = String::from_utf8_lossy(&status.stderr);
                 // Fallback to simple concat if complex filter fails (e.g. too many inputs)
-                error!("[SMART] Transition render failed: {}. Falling back to simple cut.", stderr);
-             } else {
+                error!(
+                    "[SMART] Transition render failed: {}. Falling back to simple cut.",
+                    stderr
+                );
+            } else {
                 // Success path
                 fs::remove_dir_all(&segments_dir)?;
-                if use_enhanced_audio { let _ = fs::remove_file(enhanced_audio_path); }
-                
-                 let metadata = fs::metadata(output)?;
-                 let size_mb = metadata.len() as f64 / 1_048_576.0;
-                 return Ok(format!("✅ Funny Edit complete! Output: {:.2} MB", size_mb));
-             }
+                if use_enhanced_audio {
+                    let _ = fs::remove_file(enhanced_audio_path);
+                }
+
+                let metadata = fs::metadata(output)?;
+                let size_mb = metadata.len() as f64 / 1_048_576.0;
+                return Ok(format!("✅ Funny Edit complete! Output: {:.2} MB", size_mb));
+            }
         }
-    } 
+    }
 
     // 6b. Simple Concat (Default or Fallback)
     let concat_file = segments_dir.join("concat_list.txt");

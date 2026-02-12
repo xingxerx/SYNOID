@@ -16,9 +16,10 @@ impl Sentinel {
     pub fn new() -> Self {
         let mut system = System::new_all();
         system.refresh_all();
-        
+
         // Default to local Ollama instance for Sentinel
-        let api_url = std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
+        let api_url =
+            std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
 
         Self {
             system,
@@ -29,9 +30,10 @@ impl Sentinel {
     }
 
     /// Perform a scan of current system processes
+    pub fn scan_processes(&mut self) -> Vec<String> {
         // Throttle refresh to at most once per second to get stable CPU readings
         if self.last_refresh.elapsed().as_millis() < 800 {
-             return Vec::new(); // Too soon for a reliable diff
+            return Vec::new(); // Too soon for a reliable diff
         }
         self.system.refresh_all();
         self.last_refresh = std::time::Instant::now();
@@ -41,7 +43,7 @@ impl Sentinel {
 
         for (pid, process) in self.system.processes() {
             let name = process.name();
-            
+
             // Normalize CPU usage (sysinfo returns total % across all cores)
             let cpu_usage = process.cpu_usage() / cpu_count.max(1.0);
 
@@ -50,9 +52,7 @@ impl Sentinel {
             if cpu_usage > 80.0 && !name.contains("synoid-core") {
                 let msg = format!(
                     "High CPU Alert: Process '{}' (PID: {}) is using {:.1}% CPU",
-                    name,
-                    pid,
-                    cpu_usage
+                    name, pid, cpu_usage
                 );
                 warn!("[SENTINEL] {}", msg);
                 alerts.push(msg);
@@ -96,15 +96,15 @@ impl Sentinel {
         }
         false
     }
-    
+
     /// Analyze a system alert using DeepSeek R1
     pub async fn analyze_anomaly(&self, alert: &str) -> String {
         let prompt = format!(
             "Analyze this system alert from a cyberdefense perspective: '{}'. \
-            Is this dangerous? What should be done? Short answer.", 
+            Is this dangerous? What should be done? Short answer.",
             alert
         );
-        
+
         match self.agent.reason(&prompt).await {
             Ok(analysis) => analysis,
             Err(e) => format!("Analysis failed: {}", e),

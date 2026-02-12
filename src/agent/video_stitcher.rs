@@ -48,12 +48,7 @@ impl VideoStitcher {
         );
 
         let status = Command::new("ffmpeg")
-            .args([
-                "-y",
-                "-f", "concat",
-                "-safe", "0",
-                "-i",
-            ])
+            .args(["-y", "-f", "concat", "-safe", "0", "-i"])
             .arg(&manifest_path)
             .args(["-c", "copy"])
             .arg(output_path)
