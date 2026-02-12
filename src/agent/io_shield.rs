@@ -38,15 +38,11 @@ impl AtomicMover {
             }
             Err(_rename_err) => {
                 // Likely a cross-drive scenario — fall back to copy-then-delete.
-                warn!(
-                    "[IO_SHIELD] Rename failed (cross-drive?). Falling back to copy-delete."
-                );
-                fs::copy(temp_path, final_path).map_err(|e| {
-                    format!("Cross-drive copy failed: {}", e)
-                })?;
-                fs::remove_file(temp_path).map_err(|e| {
-                    format!("Temp cleanup after copy failed: {}", e)
-                })?;
+                warn!("[IO_SHIELD] Rename failed (cross-drive?). Falling back to copy-delete.");
+                fs::copy(temp_path, final_path)
+                    .map_err(|e| format!("Cross-drive copy failed: {}", e))?;
+                fs::remove_file(temp_path)
+                    .map_err(|e| format!("Temp cleanup after copy failed: {}", e))?;
                 info!(
                     "[IO_SHIELD] ✅ Cross-drive move complete: {:?} → {:?}",
                     temp_path, final_path

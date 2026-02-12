@@ -12,16 +12,13 @@ use tracing::{info, warn};
 
 /// Allowed media extensions for downloaded content.
 const SAFE_EXTENSIONS: &[&str] = &[
-    ".mp4", ".mkv", ".webm", ".mov", ".avi",
-    ".wav", ".mp3", ".flac", ".ogg", ".aac",
+    ".mp4", ".mkv", ".webm", ".mov", ".avi", ".wav", ".mp3", ".flac", ".ogg", ".aac",
 ];
 
 /// Suspicious URL patterns that indicate non-media content.
 const BLOCKED_URL_PATTERNS: &[&str] = &[
-    ".exe", ".bat", ".cmd", ".ps1", ".msi", ".scr",
-    ".vbs", ".js", ".hta", ".pif", ".cpl",
-    ".dll", ".sys", ".inf", ".reg",
-    "malware", "trojan", "crack", "keygen", "warez",
+    ".exe", ".bat", ".cmd", ".ps1", ".msi", ".scr", ".vbs", ".js", ".hta", ".pif", ".cpl", ".dll",
+    ".sys", ".inf", ".reg", "malware", "trojan", "crack", "keygen", "warez",
 ];
 
 /// Minimum sane file size (10 KB) — smaller files are likely stubs/traps.
@@ -103,8 +100,8 @@ impl DownloadGuard {
         }
 
         // 3. File size bounds
-        let metadata = fs::metadata(path)
-            .map_err(|e| format!("Cannot read file metadata: {}", e))?;
+        let metadata =
+            fs::metadata(path).map_err(|e| format!("Cannot read file metadata: {}", e))?;
 
         let size = metadata.len();
         if size < MIN_FILE_SIZE {
@@ -294,8 +291,7 @@ mod tests {
         );
         assert_eq!(
             DownloadGuard::sanitize_filename("video<>|.mp4"),
-            "video___. mp4"
-                .replace(". ", ".")
+            "video___. mp4".replace(". ", ".")
         );
     }
 

@@ -76,7 +76,11 @@ impl AutonomousLearner {
                             if source.duration > 60.0 && source.duration < 600.0 {
                                 // 1b. Safety Check URL
                                 if let Some(url) = &source.original_url {
-                                    if let Err(e) = crate::agent::download_guard::DownloadGuard::validate_url(url) {
+                                    if let Err(e) =
+                                        crate::agent::download_guard::DownloadGuard::validate_url(
+                                            url,
+                                        )
+                                    {
                                         error!("[LEARNER] 🛡️ Skipped unsafe URL: {}", e);
                                         continue;
                                     }
@@ -110,7 +114,8 @@ impl AutonomousLearner {
                                         // Calculate adaptive delay based on neuroplasticity
                                         let speed = brain_lock.neuroplasticity.current_speed();
                                         let level = brain_lock.neuroplasticity.adaptation_level();
-                                        let sleep_duration = brain_lock.neuroplasticity.adaptive_delay_secs(30);
+                                        let sleep_duration =
+                                            brain_lock.neuroplasticity.adaptive_delay_secs(30);
 
                                         let intent = Intent::LearnStyle {
                                             input: downloaded
@@ -127,7 +132,10 @@ impl AutonomousLearner {
                                             ))
                                             .await
                                         {
-                                            Ok(res) => info!("[LEARNER] ✅ {} (Speed: {:.1}× - {})", res, speed, level),
+                                            Ok(res) => info!(
+                                                "[LEARNER] ✅ {} (Speed: {:.1}× - {})",
+                                                res, speed, level
+                                            ),
                                             Err(e) => error!("[LEARNER] ❌ Failed to learn: {}", e),
                                         }
 
@@ -136,8 +144,12 @@ impl AutonomousLearner {
 
                                         // Adaptive Sleep
                                         drop(brain_lock); // Unlock before sleeping
-                                        info!("[LEARNER] 💤 Resting for {}s (Adaptive)", sleep_duration);
-                                        tokio::time::sleep(Duration::from_secs(sleep_duration)).await;
+                                        info!(
+                                            "[LEARNER] 💤 Resting for {}s (Adaptive)",
+                                            sleep_duration
+                                        );
+                                        tokio::time::sleep(Duration::from_secs(sleep_duration))
+                                            .await;
                                     }
                                     Err(e) => {
                                         error!("[LEARNER] Failed download: {}", e);

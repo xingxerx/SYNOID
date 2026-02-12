@@ -26,9 +26,9 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
             "-v",
             "error",
             "-show_entries",
-            "frame=pkt_pts_time",
+            "frame=pkt_pts_time,frame_tags=lavfi.scene_score",
             "-of",
-            "default=noprint_wrappers=1:nokey=1",
+            "csv=p=0", // Comma separated values for easier parsing
             "-vf",
             "select='gt(scene,0.3)'",
             "-i",
@@ -56,17 +56,28 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
     });
 
     for line in stdout.lines() {
-        if let Ok(ts) = line.trim().parse::<f64>() {
-            // Avoid duplicate 0.0 or very close timestamps
-            if !scenes.is_empty() && (ts - scenes.last().unwrap().timestamp).abs() < 0.5 {
-                continue;
-            }
+        // Output format: timestamp,score
+        let parts: Vec<&str> = line.split(',').collect();
+        if parts.len() >= 1 {
+            if let Ok(ts) = parts[0].trim().parse::<f64>() {
+                // Parse score if available, otherwise default to 1.0
+                let score = if parts.len() >= 2 {
+                    parts[1].trim().parse::<f64>().unwrap_or(1.0)
+                } else {
+                    1.0
+                };
 
-            scenes.push(VisualScene {
-                timestamp: ts,
-                motion_score: 0.5, // We don't have motion data from this simple scan, defaulting
-                scene_score: 1.0,  // It's a detected scene change
-            });
+                // Avoid duplicate 0.0 or very close timestamps
+                if !scenes.is_empty() && (ts - scenes.last().unwrap().timestamp).abs() < 0.5 {
+                    continue;
+                }
+
+                scenes.push(VisualScene {
+                    timestamp: ts,
+                    motion_score: score, // Use scene score as proxy for motion intensity
+                    scene_score: score,
+                });
+            }
         }
     }
 

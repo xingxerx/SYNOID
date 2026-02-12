@@ -26,10 +26,9 @@ impl ValidationGate {
 
         let output = Command::new("ffmpeg")
             .args([
-                "-v", "error",   // Only report real errors
-                "-i", path_str,
-                "-f", "null",    // Don't produce output
-                "-",             // Null sink
+                "-v", "error", // Only report real errors
+                "-i", path_str, "-f", "null", // Don't produce output
+                "-",    // Null sink
             ])
             .output();
 
@@ -70,8 +69,7 @@ mod tests {
 
     #[test]
     fn test_verify_nonexistent_file() {
-        let result =
-            ValidationGate::verify_chunk(&PathBuf::from("__nonexistent_file_xyz.mp4"));
+        let result = ValidationGate::verify_chunk(&PathBuf::from("__nonexistent_file_xyz.mp4"));
         assert!(!result, "Non-existent file should fail validation");
     }
 }

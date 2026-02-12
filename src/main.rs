@@ -470,25 +470,76 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             dry_run,
         } => {
+            use agent::brain::EditorBrain;
             use agent::motor_cortex::MotorCortex;
+            use agent::production_tools;
+            use agent::voice::transcription::{TranscriptAnalysis, TranscriptionEngine};
+
             info!("🧠 Embodied Agent Activating for: {}", intent);
 
             let mut cortex = MotorCortex::new(&api_url);
 
-            // 1. Scan Context
+            // 1. Audio Enhancement & Transcription (Sovereign Ear)
+            let audio_path = input.with_extension("wav");
+            info!("🎤 Enhancing audio for transcription: {:?}", audio_path);
+
+            if let Err(e) = production_tools::enhance_audio(&input, &audio_path).await {
+                error!(
+                    "Audio enhancement failed: {}. Continuing with raw audio...",
+                    e
+                );
+            }
+
+            let mut transcript = Vec::new();
+            if audio_path.exists() {
+                match TranscriptionEngine::new(None) {
+                    Ok(engine) => match engine.transcribe(&audio_path).await {
+                        Ok(segs) => transcript = segs,
+                        Err(e) => error!("Transcription failed: {}", e),
+                    },
+                    Err(e) => error!("Failed to initialize Sovereign Ear: {}", e),
+                }
+            }
+
+            // 2. Scan Context (Visual Cortex)
             let visual_data = agent::vision_tools::scan_visual(&input).await?;
             let audio_data = agent::audio_tools::scan_audio(&input).await?;
 
-            // 2. Generate Command
+            // 3. Smart Viewing Decision Matrix
+            info!("👀 Watching and Listening to media to plan transitions...");
+            for scene in &visual_data {
+                // Calculate silence gap near scene change
+                let gap = transcript.find_silence_near(scene.timestamp);
+
+                // Use EditorBrain to decide transition
+                let t_type = EditorBrain::decide_transition(scene, gap);
+
+                info!(
+                    "[SMART-VIEW] At {:.2}s: Detected {:.1}s gap + Score {:.2} -> Applying {:?}",
+                    scene.timestamp, gap, scene.motion_score, t_type
+                );
+
+                // Note: MotorCortex::execute_smart_render will re-run similar logic internally or
+                // we could pass the decision plan. For now, we pass the raw data (visual + transcript)
+                // and let MotorCortex execute the decision logic we just logged.
+            }
+
+            // 4. Generate & Execute Command
             match cortex
-                .execute_one_shot_render(&intent, &input, &output, &visual_data, &audio_data)
+                .execute_smart_render(
+                    &intent,
+                    &input,
+                    &output,
+                    &visual_data,
+                    &transcript,
+                    &audio_data,
+                )
                 .await
             {
                 Ok(cmd_str) => {
                     if dry_run {
                         info!("🎬 Dry-Run Command:\n{}", cmd_str);
                     } else {
-                        // MotorCortex already executed the render
                         info!("✅ {}", cmd_str);
                     }
                 }
@@ -541,7 +592,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-
 
         Commands::Vectorize {
             input,

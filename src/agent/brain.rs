@@ -4,24 +4,81 @@
 use crate::agent::body::Body;
 use crate::agent::consciousness::Consciousness;
 use crate::agent::gpt_oss_bridge::SynoidAgent;
+use crate::agent::motor_cortex::TransitionType;
+use crate::agent::vision_tools::VisualScene;
 use tracing::info;
+
+/// The Creative Director Brain (Smart Viewing)
+pub struct EditorBrain;
+
+impl EditorBrain {
+    /// Decides the best transition based on visual motion and audio pacing
+    pub fn decide_transition(scene: &VisualScene, transcript_gap: f32) -> TransitionType {
+        // 1. High-Energy Decision (Motion Vectors)
+        // If scene.motion_score > 0.6, it's a high-action scene.
+        // Fast Wipe/Slide maintains momentum.
+        if scene.motion_score > 0.6 {
+            return TransitionType::WipeLeft; // Energetic shift
+        }
+
+        // 2. Dead-Air Decision (Smart Zoom)
+        // If there is a silence > 1.5s, the viewer's attention drops.
+        // A "Punch-in" zoom re-frames the speaker and hides the jump cut.
+        if transcript_gap > 1.5 {
+            return TransitionType::ZoomPan; // "Punch-in" to fix pacing
+        }
+
+        // 3. Narrative/Soft Decision
+        // Default cinematic flow for standard dialogue or low motion.
+        TransitionType::Mix // Cross-Dissolve
+    }
+}
 
 /// Intents that the Brain can classify
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum Intent {
-    DownloadYoutube { url: String },
-    ScanVideo { path: String },
-    LearnStyle { input: String, name: String },
-    CreateEdit { input: String, instruction: String },
-    Research { topic: String },
-    Vectorize { input: String, preset: String },
-    Upscale { input: String, scale: f64 },
-    VoiceClone { input: String, name: String },
-    Speak { text: String, profile: String },
+    DownloadYoutube {
+        url: String,
+    },
+    ScanVideo {
+        path: String,
+    },
+    LearnStyle {
+        input: String,
+        name: String,
+    },
+    CreateEdit {
+        input: String,
+        instruction: String,
+    },
+    Research {
+        topic: String,
+    },
+    Vectorize {
+        input: String,
+        preset: String,
+    },
+    Upscale {
+        input: String,
+        scale: f64,
+    },
+    VoiceClone {
+        input: String,
+        name: String,
+    },
+    Speak {
+        text: String,
+        profile: String,
+    },
     /// Complex creative request requiring MoE orchestration
-    Orchestrate { goal: String, input_path: Option<String> },
-    Unknown { request: String },
+    Orchestrate {
+        goal: String,
+        input_path: Option<String>,
+    },
+    Unknown {
+        request: String,
+    },
 }
 
 use crate::agent::learning::LearningKernel;
@@ -147,12 +204,31 @@ impl Brain {
 
         // 7. Orchestrate Heuristics (MoE Dispatcher)
         // Complex creative requests requiring multi-expert coordination
-        let orchestrate_verbs = ["create", "make", "produce", "build", "generate", "edit", "transform", "cut", "trim"];
-        let creative_nouns = ["video", "movie", "trailer", "montage", "highlight", "reel", "content", "clip"];
-        
+        let orchestrate_verbs = [
+            "create",
+            "make",
+            "produce",
+            "build",
+            "generate",
+            "edit",
+            "transform",
+            "cut",
+            "trim",
+        ];
+        let creative_nouns = [
+            "video",
+            "movie",
+            "trailer",
+            "montage",
+            "highlight",
+            "reel",
+            "content",
+            "clip",
+        ];
+
         let has_verb = orchestrate_verbs.iter().any(|v| req_lower.contains(v));
         let has_noun = creative_nouns.iter().any(|n| req_lower.contains(n));
-        
+
         if has_verb && has_noun {
             return Intent::Orchestrate {
                 goal: request.to_string(),
@@ -201,7 +277,9 @@ impl Brain {
 
     /// Check if a string looks like a file path.
     fn looks_like_path(s: &str) -> bool {
-        let extensions = [".mp4", ".mkv", ".mov", ".avi", ".webm", ".wav", ".mp3", ".flac", ".svg"];
+        let extensions = [
+            ".mp4", ".mkv", ".mov", ".avi", ".webm", ".wav", ".mp3", ".flac", ".svg",
+        ];
         let s_lower = s.to_lowercase();
         extensions.iter().any(|ext| s_lower.ends_with(ext))
             || s.contains(std::path::MAIN_SEPARATOR)
