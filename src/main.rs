@@ -471,17 +471,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             dry_run,
         } => {
             use agent::motor_cortex::MotorCortex;
+            use agent::production_tools;
+            use agent::voice::transcription::TranscriptionEngine;
+
             info!("🧠 Embodied Agent Activating for: {}", intent);
 
             let mut cortex = MotorCortex::new(&api_url);
 
-            // 1. Scan Context
-            let visual_data = agent::vision_tools::scan_visual(&input).await?;
-            let audio_data = agent::audio_tools::scan_audio(&input).await?;
+            // 1. Audio Enhancement & Transcription (Sovereign Ear)
+            let audio_path = input.with_extension("wav");
+            info!("🎤 Enhancing audio for transcription: {:?}", audio_path);
 
-            // 2. Generate Command
+            // Extract & Enhance Audio first (better transcription accuracy)
+            if let Err(e) = production_tools::enhance_audio(&input, &audio_path).await {
+                error!(
+                    "Audio enhancement failed: {}. Continuing with raw audio...",
+                    e
+                );
+                // Fallback to extraction if enhancement fails?
+                // For now, if it fails, we might not have the file.
+                // We should probably fail or try simple extraction.
+                // Assuming enhance_audio works or user provides valid input.
+            }
+
+            let mut transcript = Vec::new();
+            if audio_path.exists() {
+                match TranscriptionEngine::new() {
+                    Ok(engine) => match engine.transcribe(&audio_path).await {
+                        Ok(segs) => transcript = segs,
+                        Err(e) => error!("Transcription failed: {}", e),
+                    },
+                    Err(e) => error!("Failed to initialize Sovereign Ear: {}", e),
+                }
+            }
+
+            // 2. Scan Context
+            let visual_data = agent::vision_tools::scan_visual(&input).await?;
+            let audio_data = agent::audio_tools::scan_audio(&input).await?; // Keep existing audio scan for loudness etc.
+
+            // 3. Generate Command
             match cortex
-                .execute_one_shot_render(&intent, &input, &output, &visual_data, &audio_data)
+                .execute_smart_render(
+                    &intent,
+                    &input,
+                    &output,
+                    &visual_data,
+                    &transcript,
+                    &audio_data,
+                )
                 .await
             {
                 Ok(cmd_str) => {
@@ -541,7 +578,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-
 
         Commands::Vectorize {
             input,

@@ -4,8 +4,8 @@
 // The "Nervous System" of the kernel. Polls CPU/RAM to produce a
 // PressureLevel (Green/Yellow/Red) that the Supervisor and GUI consume.
 
-use sysinfo::{System, SystemExt};
 use std::sync::{Arc, RwLock};
+use sysinfo::{System, SystemExt};
 use tracing::{info, warn};
 
 /// System stress level, used to gate throughput and trigger Atomic Stops.
@@ -22,9 +22,9 @@ pub enum PressureLevel {
 impl std::fmt::Display for PressureLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PressureLevel::Green  => write!(f, "🟢 Green"),
+            PressureLevel::Green => write!(f, "🟢 Green"),
             PressureLevel::Yellow => write!(f, "🟡 Yellow"),
-            PressureLevel::Red    => write!(f, "🔴 Red"),
+            PressureLevel::Red => write!(f, "🔴 Red"),
         }
     }
 }
@@ -74,10 +74,16 @@ impl PressureWatcher {
         if prev != new_level {
             match new_level {
                 PressureLevel::Red => {
-                    warn!("[PRESSURE] ⛔ CRITICAL — Memory at {:.1}%. Triggering Atomic Stop.", usage_pct);
+                    warn!(
+                        "[PRESSURE] ⛔ CRITICAL — Memory at {:.1}%. Triggering Atomic Stop.",
+                        usage_pct
+                    );
                 }
                 PressureLevel::Yellow => {
-                    warn!("[PRESSURE] ⚠️ Elevated — Memory at {:.1}%. Throttling.", usage_pct);
+                    warn!(
+                        "[PRESSURE] ⚠️ Elevated — Memory at {:.1}%. Throttling.",
+                        usage_pct
+                    );
                 }
                 PressureLevel::Green => {
                     info!("[PRESSURE] ✅ Memory nominal at {:.1}%.", usage_pct);
@@ -92,7 +98,10 @@ impl PressureWatcher {
 
     /// Read the current pressure level (lock-free read).
     pub fn get_level(&self) -> PressureLevel {
-        self.current_level.read().map(|l| *l).unwrap_or(PressureLevel::Green)
+        self.current_level
+            .read()
+            .map(|l| *l)
+            .unwrap_or(PressureLevel::Green)
     }
 
     /// Get a shareable handle to the pressure level for the GUI.
@@ -104,7 +113,9 @@ impl PressureWatcher {
     pub fn memory_ratio(&mut self) -> f32 {
         self.sys.refresh_memory();
         let total = self.sys.total_memory() as f32;
-        if total == 0.0 { return 0.0; }
+        if total == 0.0 {
+            return 0.0;
+        }
         self.sys.used_memory() as f32 / total
     }
 }

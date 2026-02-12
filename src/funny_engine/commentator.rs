@@ -1,9 +1,9 @@
 use crate::agent::gpt_oss_bridge::SynoidAgent;
-use crate::agent::voice::TTSEngine;
 use crate::agent::smart_editor::Scene;
+use crate::agent::voice::TTSEngine;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use tracing::{info, error};
+use tracing::{error, info};
 
 pub struct CommentaryGenerator {
     agent: SynoidAgent,
@@ -20,11 +20,11 @@ impl CommentaryGenerator {
 
     /// Generate a funny comment for a specific scene context
     pub async fn generate_commentary(
-        &self, 
-        scene: &Scene, 
+        &self,
+        scene: &Scene,
         context_text: &str,
         output_dir: &Path,
-        index: usize
+        index: usize,
     ) -> Result<Option<PathBuf>> {
         // 1. Ask LLM for a funny one-liner
         let prompt = format!(
@@ -49,7 +49,7 @@ impl CommentaryGenerator {
 
         // Clean quotes
         let clean_text = response.replace("\"", "").replace("*", "");
-        
+
         info!("[FUNNY] Generated command: \"{}\"", clean_text);
 
         // 2. Synthesize Audio

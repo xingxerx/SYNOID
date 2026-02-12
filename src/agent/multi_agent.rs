@@ -91,7 +91,10 @@ impl DirectorAgent {
         );
 
         // Call LLM
-        let response_text = self.agent.reason(&prompt).await
+        let response_text = self
+            .agent
+            .reason(&prompt)
+            .await
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         // Attempt to parse JSON.

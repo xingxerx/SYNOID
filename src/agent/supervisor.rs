@@ -29,11 +29,7 @@ impl ErrorHealer {
             || err_lower.contains("gpu")
         {
             warn!("[HEALER] GPU failure detected — switching to CPU (libx264).");
-            new_args.retain(|a| {
-                !a.contains("nvenc")
-                    && !a.contains("cuda")
-                    && !a.contains("gpu")
-            });
+            new_args.retain(|a| !a.contains("nvenc") && !a.contains("cuda") && !a.contains("gpu"));
             new_args.extend([
                 "-c:v".to_string(),
                 "libx264".to_string(),
@@ -59,10 +55,7 @@ impl ErrorHealer {
             || err_lower.contains("incompatible")
         {
             warn!("[HEALER] Pixel format issue — normalizing to yuv420p.");
-            new_args.extend([
-                "-vf".to_string(),
-                "format=yuv420p".to_string(),
-            ]);
+            new_args.extend(["-vf".to_string(), "format=yuv420p".to_string()]);
         }
 
         new_args
@@ -100,7 +93,10 @@ impl AntifragileSupervisor {
 
             match run().await {
                 Ok(result) => {
-                    info!("[SUPERVISOR] ✅ Task '{}' succeeded on attempt {}.", task_name, attempt);
+                    info!(
+                        "[SUPERVISOR] ✅ Task '{}' succeeded on attempt {}.",
+                        task_name, attempt
+                    );
                     return Ok(result);
                 }
                 Err(e) => {
@@ -122,10 +118,7 @@ impl AntifragileSupervisor {
 
                     // Exponential backoff: 2s, 4s, 8s
                     let delay = Duration::from_secs(2u64.pow(attempt));
-                    warn!(
-                        "[SUPERVISOR] Retrying '{}' in {:?}...",
-                        task_name, delay
-                    );
+                    warn!("[SUPERVISOR] Retrying '{}' in {:?}...", task_name, delay);
                     tokio::time::sleep(delay).await;
                 }
             }
@@ -143,7 +136,10 @@ mod tests {
     fn test_error_healer_oom() {
         let args = vec!["-c:v".to_string(), "h264_nvenc".to_string()];
         let fixed = ErrorHealer::suggest_fix("Error: Out of memory allocating frame", args);
-        assert!(fixed.contains(&"libx264".to_string()), "Should fall back to libx264");
+        assert!(
+            fixed.contains(&"libx264".to_string()),
+            "Should fall back to libx264"
+        );
         assert!(fixed.contains(&"1".to_string()), "Should set threads to 1");
     }
 
@@ -151,7 +147,10 @@ mod tests {
     fn test_error_healer_nvenc() {
         let args = vec!["-c:v".to_string(), "h264_nvenc".to_string()];
         let fixed = ErrorHealer::suggest_fix("NVENC codec not supported on this GPU", args);
-        assert!(!fixed.contains(&"h264_nvenc".to_string()), "Should remove nvenc");
+        assert!(
+            !fixed.contains(&"h264_nvenc".to_string()),
+            "Should remove nvenc"
+        );
         assert!(fixed.contains(&"libx264".to_string()));
     }
 

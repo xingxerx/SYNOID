@@ -10,18 +10,47 @@ use tracing::info;
 #[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum Intent {
-    DownloadYoutube { url: String },
-    ScanVideo { path: String },
-    LearnStyle { input: String, name: String },
-    CreateEdit { input: String, instruction: String },
-    Research { topic: String },
-    Vectorize { input: String, preset: String },
-    Upscale { input: String, scale: f64 },
-    VoiceClone { input: String, name: String },
-    Speak { text: String, profile: String },
+    DownloadYoutube {
+        url: String,
+    },
+    ScanVideo {
+        path: String,
+    },
+    LearnStyle {
+        input: String,
+        name: String,
+    },
+    CreateEdit {
+        input: String,
+        instruction: String,
+    },
+    Research {
+        topic: String,
+    },
+    Vectorize {
+        input: String,
+        preset: String,
+    },
+    Upscale {
+        input: String,
+        scale: f64,
+    },
+    VoiceClone {
+        input: String,
+        name: String,
+    },
+    Speak {
+        text: String,
+        profile: String,
+    },
     /// Complex creative request requiring MoE orchestration
-    Orchestrate { goal: String, input_path: Option<String> },
-    Unknown { request: String },
+    Orchestrate {
+        goal: String,
+        input_path: Option<String>,
+    },
+    Unknown {
+        request: String,
+    },
 }
 
 use crate::agent::learning::LearningKernel;
@@ -147,12 +176,31 @@ impl Brain {
 
         // 7. Orchestrate Heuristics (MoE Dispatcher)
         // Complex creative requests requiring multi-expert coordination
-        let orchestrate_verbs = ["create", "make", "produce", "build", "generate", "edit", "transform", "cut", "trim"];
-        let creative_nouns = ["video", "movie", "trailer", "montage", "highlight", "reel", "content", "clip"];
-        
+        let orchestrate_verbs = [
+            "create",
+            "make",
+            "produce",
+            "build",
+            "generate",
+            "edit",
+            "transform",
+            "cut",
+            "trim",
+        ];
+        let creative_nouns = [
+            "video",
+            "movie",
+            "trailer",
+            "montage",
+            "highlight",
+            "reel",
+            "content",
+            "clip",
+        ];
+
         let has_verb = orchestrate_verbs.iter().any(|v| req_lower.contains(v));
         let has_noun = creative_nouns.iter().any(|n| req_lower.contains(n));
-        
+
         if has_verb && has_noun {
             return Intent::Orchestrate {
                 goal: request.to_string(),
@@ -201,7 +249,9 @@ impl Brain {
 
     /// Check if a string looks like a file path.
     fn looks_like_path(s: &str) -> bool {
-        let extensions = [".mp4", ".mkv", ".mov", ".avi", ".webm", ".wav", ".mp3", ".flac", ".svg"];
+        let extensions = [
+            ".mp4", ".mkv", ".mov", ".avi", ".webm", ".wav", ".mp3", ".flac", ".svg",
+        ];
         let s_lower = s.to_lowercase();
         extensions.iter().any(|ext| s_lower.ends_with(ext))
             || s.contains(std::path::MAIN_SEPARATOR)
