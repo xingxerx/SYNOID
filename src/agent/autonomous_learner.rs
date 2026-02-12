@@ -2,17 +2,19 @@
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use crate::agent::brain::{Brain, Intent};
-use crate::agent::source_tools;
+use crate::agent::{source_tools, academy::code_scanner::CodeScanner};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 pub struct AutonomousLearner {
     is_running: Arc<AtomicBool>,
     brain: Arc<Mutex<Brain>>,
     learning_topics: Vec<String>,
+    repo_targets: Vec<String>,
+    wiki_targets: Vec<String>,
 }
 
 impl AutonomousLearner {
@@ -25,6 +27,18 @@ impl AutonomousLearner {
                 "gaming montage editing".to_string(),
                 "vlog editing tips".to_string(),
                 "documentary style editing".to_string(),
+            ],
+            repo_targets: vec![
+                // Targeted files for specific algorithms (e.g. Transitions, Color, Audio)
+                "https://github.com/mltframework/course-code/blob/master/cpp/catmull_rom.cpp".to_string(), // Mock URL for logic
+                "https://github.com/KDE/kdenlive/blob/master/src/effects/effectstack/model/effectstackmodel.cpp".to_string(),
+                "https://github.com/OpenShot/libopenshot/blob/master/src/Clip.cpp".to_string(),
+            ],
+            wiki_targets: vec![
+                "https://en.wikipedia.org/wiki/Film_editing".to_string(),
+                "https://en.wikipedia.org/wiki/Montage_(filmmaking)".to_string(),
+                "https://en.wikipedia.org/wiki/Color_grading".to_string(),
+                "https://en.wikipedia.org/wiki/Kuleshov_effect".to_string(),
             ],
         }
     }
@@ -39,9 +53,12 @@ impl AutonomousLearner {
         let is_running = self.is_running.clone();
         let brain = self.brain.clone();
         let topics = self.learning_topics.clone();
+        let repos = self.repo_targets.clone();
+        let wikis = self.wiki_targets.clone();
 
-        // Initialize Sentinel for health monitoring
+        // Initialize Sentinel & Scanner
         let mut sentinel = crate::agent::defense::Sentinel::new();
+        let scanner = CodeScanner::new("http://localhost:11434/v1");
 
         info!("[LEARNER] 🚀 Autonomous Learning Loop Started (Sentinel Active)");
 
@@ -159,6 +176,83 @@ impl AutonomousLearner {
                         }
                     }
                     Err(e) => error!("[LEARNER] Search failed: {}", e),
+                }
+
+
+
+                // 2. Interleaved Code Analysis (Stealthy)
+                // Random chance or round-robin to scan a repo file
+                if topic_index % 3 == 0 {
+                   let repo_url = &repos[topic_index % repos.len()];
+                   info!("[LEARNER] 🕵️ Switching mode: Stealth Analysis on {}", repo_url);
+                   
+                   match scanner.scan_remote_code(repo_url).await {
+                       Ok(concept) => {
+                             info!("[LEARNER] 💡 Discovered Logic: '{}' ({})", concept.logic_summary, concept.file_type);
+                             
+                             // Memorize the abstract concept
+                             let mut brain_lock = brain.lock().await;
+                             // We map this to a "Conceptual" pattern
+                             let pattern = crate::agent::learning::EditingPattern {
+                                intent_tag: format!("algo_{}", concept.file_type),
+                                avg_scene_duration: 0.0, // N/A
+                                transition_speed: 1.0,
+                                music_sync_strictness: 0.0,
+                                color_grade_style: "algorithmic".to_string(),
+                                success_rating: 5,
+                             };
+                             brain_lock.learning_kernel.memorize(&format!("algo_{}", concept.file_type), pattern);
+                             brain_lock.neuroplasticity.record_success();
+                             // We don't save the code, just the "success" of learning
+                             info!("[LEARNER] 🧠 Integrated concept into neuroplasticity network.");
+                       }
+                       Err(e) => {
+                           warn!("[LEARNER] Analysis skipped (Stealth Mode): {}", e);
+                       }
+                   }
+                }
+
+
+
+                // 3. Interleaved Theory Learning (Wikipedia)
+                if topic_index % 3 == 1 {
+                    let wiki_url = &wikis[topic_index % wikis.len()];
+                    info!("[LEARNER] 📖 Studying Theory: {}", wiki_url);
+
+                    // Use Wikipedia REST API for plain text extract (Send-safe, no scraper)
+                    let title = wiki_url.rsplit('/').next().unwrap_or("Film_editing");
+                    let api_url = format!(
+                        "https://en.wikipedia.org/api/rest_v1/page/summary/{}",
+                        title
+                    );
+
+                    match reqwest::get(&api_url).await {
+                        Ok(resp) => {
+                            if let Ok(text) = resp.text().await {
+                                // Extract the "extract" field from the JSON
+                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    let extract = json["extract"].as_str().unwrap_or("No content");
+                                    info!("[LEARNER] 📖 Read: {} ({} chars)", title, extract.len());
+
+                                    let mut brain_lock = brain.lock().await;
+                                    let mem_pattern = crate::agent::learning::EditingPattern {
+                                        intent_tag: format!("theory_{}", title),
+                                        avg_scene_duration: 0.0,
+                                        transition_speed: 1.0,
+                                        music_sync_strictness: 0.0,
+                                        color_grade_style: "theoretical".to_string(),
+                                        success_rating: 5,
+                                    };
+                                    brain_lock.learning_kernel.memorize(&format!("theory_{}", title), mem_pattern);
+                                    brain_lock.neuroplasticity.record_success();
+                                    info!("[LEARNER] 🎓 Absorbed theory on '{}'", title);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("[LEARNER] Theory study failed: {}", e);
+                        }
+                    }
                 }
 
                 topic_index += 1;

@@ -17,6 +17,7 @@ use crate::agent::vector_engine::{self, VectorConfig};
 use crate::agent::unified_pipeline::{UnifiedPipeline, PipelineConfig, PipelineStage};
 use crate::agent::voice::VoiceEngine;
 use crate::agent::defense::{IntegrityGuard, Sentinel};
+use crate::gpu_backend;
 
 /// The shared state of the agent
 #[derive(Clone)]
@@ -50,6 +51,24 @@ impl AgentCore {
             voice_engine: Arc::new(Mutex::new(None)),
             pipeline: Arc::new(AsyncMutex::new(None)),
         }
+    }
+
+    /// Connect GPU context to the Brain for CUDA-accelerated processing.
+    /// Call this after async GPU detection completes.
+    pub async fn connect_gpu_to_brain(&self) {
+        let gpu = gpu_backend::get_gpu_context().await;
+        let mut brain = self.brain.lock().await;
+        brain.connect_gpu(gpu);
+        self.log(&format!(
+            "[CORE] 🔗 Neural-GPU bridge active: {}",
+            brain.acceleration_status()
+        ));
+    }
+
+    /// Get combined acceleration status from Brain + GPU + Neuroplasticity.
+    pub async fn acceleration_status(&self) -> String {
+        let brain = self.brain.lock().await;
+        brain.acceleration_status()
     }
 
     // --- State Helpers ---
@@ -227,7 +246,7 @@ impl AgentCore {
         input: &Path,
         intent: &str,
         output: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🤖 Embodying...");
         self.log(&format!("[CORE] Embodied Agent Activating for: {}", intent));
 
@@ -240,7 +259,7 @@ impl AgentCore {
             Ok(d) => d,
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Vision scan failed: {}", e));
-                return Err(e.into());
+                return Err(e.to_string().into());
             }
         };
 
@@ -249,21 +268,44 @@ impl AgentCore {
             Ok(d) => d,
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Audio scan failed: {}", e));
-                return Err(e.into());
+                return Err(e.to_string().into());
             }
         };
 
-        // 2. Execute
-        let mut cortex = self.cortex.lock().await;
-        match cortex.execute_one_shot_render(intent, input, output, &visual_data, &audio_data).await {
-            Ok(cmd) => {
-                self.log(&format!("[CORE] 🎬 Generated FFmpeg Command: {}", cmd));
-                // In a real run, we would execute this command here.
+        // 2. Execute — extract args and drop the cortex lock before awaiting
+        let args = {
+            let mut cortex = self.cortex.lock().await;
+            match cortex.execute_one_shot_render(intent, input, output, &visual_data, &audio_data).await {
+                Ok(a) => a,
+                Err(e) => {
+                    self.log(&format!("[CORE] ❌ Embodiment failed: {}", e));
+                    return Err(e.to_string().into());
+                }
             }
-            Err(e) => {
-                self.log(&format!("[CORE] ❌ Embodiment failed: {}", e));
-                return Err(e);
-            }
+        }; // cortex lock is dropped here
+
+        let cmd_str = args.join(" ");
+        self.log(&format!("[CORE] 🎬 Generated FFmpeg Command: {}", cmd_str));
+
+        if let Some((prog, cmd_args)) = args.split_first() {
+             let mut child = tokio::process::Command::new(prog)
+                .args(cmd_args)
+                .kill_on_drop(true)
+                .spawn()?;
+             
+             let status = child.wait().await?;
+             if status.success() {
+                 self.log("[CORE] ✅ Render Complete");
+             } else {
+                 self.log("[CORE] ❌ Render Failed");
+                 return Err("FFmpeg execution failed".into());
+             }
+        }
+
+        // Record success in neuroplasticity so the system speeds up
+        {
+            let mut brain = self.brain.lock().await;
+            brain.neuroplasticity.record_success();
         }
 
         self.set_status("⚡ Ready");

@@ -120,6 +120,34 @@ impl Neuroplasticity {
         dir.join("neuroplasticity.json")
     }
 
+    // -------------------------------------------------------------------
+    // GPU-aware adaptive parameters
+    // -------------------------------------------------------------------
+
+    /// Batch size scaling factor for CUDA workloads.
+    /// Higher experience → larger GPU batches.
+    pub fn gpu_batch_multiplier(&self) -> usize {
+        (self.speed_multiplier as usize).max(1)
+    }
+
+    /// Recommended FFmpeg thread count based on neuroplasticity level.
+    pub fn gpu_thread_count(&self) -> usize {
+        let base = num_cpus::get();
+        let scaled = (base as f64 * self.speed_multiplier).min(base as f64 * 2.0);
+        (scaled as usize).max(1)
+    }
+
+    /// Formatted acceleration report combining speed + adaptation level.
+    pub fn acceleration_report(&self) -> String {
+        format!(
+            "⚡ {:.1}× speed | {} | {} XP | {} adaptations",
+            self.speed_multiplier,
+            self.adaptation_level(),
+            self.experience_points,
+            self.adaptations,
+        )
+    }
+
     fn save(&self) {
         if let Ok(data) = serde_json::to_string_pretty(self) {
             let _ = fs::write(Self::persistence_path(), data);

@@ -1,11 +1,9 @@
 use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
-use crate::agent::production_tools::safe_arg_path;
 use crate::agent::vision_tools::VisualScene;
 use crate::agent::voice::transcription::TranscriptSegment;
 use std::path::Path;
-use tokio::process::Command;
-use tracing::{error, info};
+use tracing::info;
 
 #[allow(dead_code)]
 pub struct MotorCortex {
@@ -122,7 +120,7 @@ impl MotorCortex {
         visual_data: &[VisualScene],
         transcript: &[TranscriptSegment],
         _audio_data: &AudioAnalysis,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         info!("[CORTEX] 🧠 Planning Smart Render based on Visual Analysis & Sovereign Ear...");
 
         // 1. Analyze Scenes
@@ -190,6 +188,7 @@ impl MotorCortex {
 
         self.execute_one_shot_render(intent, input, output, visual_data, _audio_data)
             .await
+            .map(|args| args.join(" "))
     }
 
     pub async fn execute_one_shot_render(
@@ -199,7 +198,7 @@ impl MotorCortex {
         output: &Path,
         _visual_data: &[VisualScene],
         _audio_data: &AudioAnalysis,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
         let library = StyleLibrary::new();
         let profile = library.get_profile(intent);
 
@@ -217,12 +216,10 @@ impl MotorCortex {
             filters.push(format!("lut3d={}", lut));
         }
 
-        // 2. Build Video Filtergraph
-        let filter_arg = if filters.is_empty() {
-            String::new()
-        } else {
-            filters.join(",")
-        };
+        // 2. Build FFmpeg Filtergraph (Video)
+        if filters.is_empty() {
+            // No video filters
+        }
 
         // 3. Build Audio Filtergraph (Enhanced Voice & Smart Cut)
         let mut audio_filters = Vec::new();
@@ -260,52 +257,41 @@ impl MotorCortex {
             audio_filters.push("loudnorm=I=-16:TP=-1.5:LRA=11".to_string());
         }
 
-        info!("[CORTEX] 🚀 Executing FFmpeg Render...");
-
-        let mut cmd = Command::new("ffmpeg");
-        // Use standard flags separate from arguments for security and correctness
-        cmd.arg("-y")
-            .arg("-i")
-            .arg(safe_arg_path(input))
-            .arg("-c:v")
-            .arg("libx264")
-            .arg("-preset")
-            .arg("medium")
-            .arg("-crf")
-            .arg("23")
-            // FIX: Force yuv420p for compatibility to prevent playback lag
-            .arg("-pix_fmt")
-            .arg("yuv420p");
+        // Construct Final Command using Vec<String> to avoid shell injection and space issues
+        let mut args = Vec::new();
+        args.push("ffmpeg".to_string());
+        args.push("-y".to_string());
+        args.push("-i".to_string());
+        args.push(input.to_string_lossy().to_string());
 
         if !filters.is_empty() {
-            cmd.arg("-vf").arg(&filter_arg);
+            args.push("-vf".to_string());
+            args.push(filters.join(","));
         }
 
         if !audio_filters.is_empty() {
-            cmd.arg("-af").arg(audio_filters.join(","));
-            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
+            args.push("-af".to_string());
+            args.push(audio_filters.join(","));
+            args.push("-c:a".to_string());
+            args.push("aac".to_string());
+            args.push("-b:a".to_string());
+            args.push("192k".to_string());
         } else {
-            // Default copy if no processing
-            cmd.arg("-c:a").arg("copy");
+            args.push("-c:a".to_string());
+            args.push("copy".to_string());
         }
 
-        cmd.arg(safe_arg_path(output));
+        args.push("-c:v".to_string());
+        args.push("libx264".to_string());
+        args.push("-preset".to_string());
+        args.push("medium".to_string()); // Kept 'medium' from HEAD
+        args.push("-crf".to_string());
+        args.push("23".to_string()); // Kept '23' from HEAD
+        args.push("-pix_fmt".to_string());
+        args.push("yuv420p".to_string());
 
-        // STREAMING OUTPUT
-        // We spawn the child process which inherits stdout/stderr by default in tokio::process::Command unless piped.
-        // Wait, tokio Command defaults to inheriting stdio? No, it inherits if not specified?
-        // Docs say: "By default, stdin, stdout and stderr are inherited from the parent."
-        // So this should stream to the console automatically.
+        args.push(output.to_string_lossy().to_string());
 
-        let mut child = cmd.spawn()?;
-        let status = child.wait().await?;
-
-        if status.success() {
-            info!("[CORTEX] ✅ Render Complete: {:?}", output);
-            Ok(format!("Rendered: {:?}", output))
-        } else {
-            error!("[CORTEX] ❌ Render Failed");
-            Err("FFmpeg execution failed".into())
-        }
+        Ok(args)
     }
 }

@@ -321,6 +321,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the Ghost (Agent Core)
     let core = Arc::new(AgentCore::new(&api_url));
 
+    // Connect Brain → GPU/CUDA backend (neuroplasticity-tuned acceleration)
+    core.connect_gpu_to_brain().await;
+    info!("🧠⚡ Neural-GPU bridge active: {}", core.acceleration_status().await);
+
     let args = Cli::parse();
 
     match args.command {
@@ -408,7 +412,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             dry_run: _,
         } => {
-            core.embody_intent(&input, &intent, &output).await?;
+            core.embody_intent(&input, &intent, &output)
+                .await
+                .map_err(|e| e as Box<dyn std::error::Error>)?;
         }
         Commands::Learn { input, name } => {
             core.learn_style(&input, &name).await?;
