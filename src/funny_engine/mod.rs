@@ -1,8 +1,8 @@
 pub mod analyzer;
 pub mod injector;
 
-use std::path::Path;
 use anyhow::Result;
+use std::path::Path;
 
 pub struct FunnyEngine {
     analyzer: analyzer::AudioAnalyzer,
@@ -20,10 +20,12 @@ impl FunnyEngine {
     pub async fn process_video(&self, input: &Path, output: &Path) -> Result<()> {
         // 1. Analyze Audio for Funny Moments
         let moments = self.analyzer.find_funny_moments(input)?;
-        
+
         // 2. Inject Content at those moments
-        self.injector.inject_content(input, output, &moments).await?;
-        
+        self.injector
+            .inject_content(input, output, &moments)
+            .await?;
+
         Ok(())
     }
 }

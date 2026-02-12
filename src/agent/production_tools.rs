@@ -92,12 +92,7 @@ pub async fn apply_anamorphic_mask(
         .arg("-y")
         .arg("-i")
         .arg(&safe_input)
-        .args([
-            "-vf",
-            "crop=in_w:in_w/2.39",
-            "-c:a",
-            "copy",
-        ])
+        .args(["-vf", "crop=in_w:in_w/2.39", "-c:a", "copy"])
         .arg(&safe_output)
         .status()
         .await?;
@@ -195,11 +190,7 @@ pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn st
     let safe_output = safe_arg_path(output);
 
     let status = Command::new("ffmpeg")
-        .args([
-            "-y",
-            "-nostdin",
-            "-i",
-        ])
+        .args(["-y", "-nostdin", "-i"])
         .arg(&safe_input)
         .args([
             "-vn", // Disable video (audio only)
@@ -245,7 +236,7 @@ pub async fn combine_av(
     // -c:v copy (Copy video stream directly - fast!)
     // -c:a aac (Re-encode audio to AAC for compatibility)
     // -shortest (Finish when the shortest stream ends)
-    
+
     let status = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
@@ -253,10 +244,14 @@ pub async fn combine_av(
         .arg("-i")
         .arg(&safe_audio)
         .args([
-            "-map", "0:v",
-            "-map", "1:a",
-            "-c:v", "copy",
-            "-c:a", "aac",
+            "-map",
+            "0:v",
+            "-map",
+            "1:a",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
             "-shortest",
         ])
         .arg(&safe_output)

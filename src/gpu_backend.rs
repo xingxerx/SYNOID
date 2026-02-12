@@ -11,7 +11,10 @@ use tracing::{info, warn};
 #[derive(Debug, Clone)]
 pub enum GpuBackend {
     /// NVIDIA GPU with NVENC (detected via FFmpeg)
-    NvencGpu { name: String, driver_version: String },
+    NvencGpu {
+        name: String,
+        driver_version: String,
+    },
     /// CPU fallback (rayon parallel)
     Cpu { threads: usize },
 }
@@ -19,7 +22,10 @@ pub enum GpuBackend {
 impl std::fmt::Display for GpuBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GpuBackend::NvencGpu { name, driver_version } => {
+            GpuBackend::NvencGpu {
+                name,
+                driver_version,
+            } => {
                 write!(f, "NVENC: {} (Driver {})", name, driver_version)
             }
             GpuBackend::Cpu { threads } => write!(f, "CPU ({} threads)", threads),
@@ -42,7 +48,10 @@ impl GpuContext {
 
         // Final fallback: CPU
         let threads = num_cpus::get();
-        warn!("[GPU] No NVIDIA GPU detected. Using CPU ({} threads)", threads);
+        warn!(
+            "[GPU] No NVIDIA GPU detected. Using CPU ({} threads)",
+            threads
+        );
         Self {
             backend: GpuBackend::Cpu { threads },
         }
@@ -61,16 +70,22 @@ impl GpuContext {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let parts: Vec<&str> = stdout.trim().split(',').collect();
-        
+
         if parts.len() >= 2 {
             let name = parts[0].trim().to_string();
             let driver_version = parts[1].trim().to_string();
-            
-            info!("[GPU] ✓ NVIDIA GPU detected: {} (Driver {})", name, driver_version);
+
+            info!(
+                "[GPU] ✓ NVIDIA GPU detected: {} (Driver {})",
+                name, driver_version
+            );
             info!("[GPU] FFmpeg NVENC hardware encoding enabled");
-            
+
             return Some(Self {
-                backend: GpuBackend::NvencGpu { name, driver_version },
+                backend: GpuBackend::NvencGpu {
+                    name,
+                    driver_version,
+                },
             });
         }
 
@@ -85,7 +100,7 @@ impl GpuContext {
     /// Get the number of parallel workers for this backend
     pub fn parallel_workers(&self) -> usize {
         match &self.backend {
-            GpuBackend::NvencGpu { .. } => 1,  // GPU handles parallelism internally
+            GpuBackend::NvencGpu { .. } => 1, // GPU handles parallelism internally
             GpuBackend::Cpu { threads } => *threads,
         }
     }
@@ -115,7 +130,7 @@ pub async fn get_gpu_context() -> &'static GpuContext {
     if let Some(ctx) = GPU_CONTEXT.get() {
         return ctx;
     }
-    
+
     let ctx = GpuContext::auto_detect().await;
     GPU_CONTEXT.get_or_init(|| ctx)
 }
@@ -123,16 +138,23 @@ pub async fn get_gpu_context() -> &'static GpuContext {
 /// Print GPU status (for CLI `gpu` command)
 pub async fn print_gpu_status() {
     let ctx = get_gpu_context().await;
-    
+
     println!("=== SYNOID GPU Status ===");
     println!("Backend: {}", ctx.backend);
-    println!("Hardware Encoding: {}", if ctx.has_gpu() { "✓ NVENC" } else { "✗ CPU" });
+    println!(
+        "Hardware Encoding: {}",
+        if ctx.has_gpu() {
+            "✓ NVENC"
+        } else {
+            "✗ CPU"
+        }
+    );
     println!("FFmpeg Encoder: {}", ctx.ffmpeg_encoder());
     if let Some(hwaccel) = ctx.ffmpeg_hwaccel() {
         println!("FFmpeg HW Accel: {}", hwaccel);
     }
     println!("Parallel Workers: {}", ctx.parallel_workers());
-    
+
     if ctx.has_gpu() {
         println!("\n[Note] RTX 50 series CUDA compute (sm_120) not yet supported");
         println!("       by Rust ML libs. Using FFmpeg NVENC for encoding.");

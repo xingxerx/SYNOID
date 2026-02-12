@@ -1,7 +1,7 @@
-use std::path::Path;
-use anyhow::{Result, Context};
-use std::process::Command;
+use anyhow::{Context, Result};
 use hound::WavReader;
+use std::path::Path;
+use std::process::Command;
 
 #[derive(Debug, Clone)]
 pub struct FunnyMoment {
@@ -27,21 +27,26 @@ impl AudioAnalyzer {
 
     pub fn find_funny_moments(&self, input: &Path) -> Result<Vec<FunnyMoment>> {
         let temp_wav = input.with_extension("temp_analysis.wav");
-        
+
         // 1. Extract Audio
         println!("🎧 Extracting audio for analysis...");
         let status = Command::new("ffmpeg")
             .arg("-y")
             .arg("-i")
             .arg(input)
-            .arg("-ac").arg("1") // Mono
-            .arg("-ar").arg("16000") // Low sample rate for speed
+            .arg("-ac")
+            .arg("1") // Mono
+            .arg("-ar")
+            .arg("16000") // Low sample rate for speed
             .arg(&temp_wav)
             .output()
             .context("Failed to run ffmpeg for audio extraction")?;
 
         if !status.status.success() {
-            anyhow::bail!("FFmpeg audio extraction failed: {:?}", String::from_utf8_lossy(&status.stderr));
+            anyhow::bail!(
+                "FFmpeg audio extraction failed: {:?}",
+                String::from_utf8_lossy(&status.stderr)
+            );
         }
 
         // 2. Analyze Audio
@@ -50,24 +55,27 @@ impl AudioAnalyzer {
         let mut reader = WavReader::open(&temp_wav).context("Failed to open temp wav file")?;
         let samples: Vec<i16> = reader.samples().map(|s| s.unwrap_or(0)).collect();
         let sample_rate = reader.spec().sample_rate as usize;
-        
+
         let chunk_size = sample_rate / 2; // 0.5 seconds
         let mut chunk_index = 0;
 
         for chunk in samples.chunks(chunk_size) {
             let start_time = (chunk_index * chunk_size) as f64 / sample_rate as f64;
             let duration = chunk_size as f64 / sample_rate as f64;
-            
+
             // Calculate RMS
             let sum_squares: f64 = chunk.iter().map(|&s| (s as f64).powi(2)).sum();
             let rms = (sum_squares / chunk.len() as f64).sqrt();
-            
+
             // Normalize RMS (roughly, assuming 16-bit audio)
             let intensity = rms / 32768.0;
 
             // Simple Heuristics
             if intensity > 0.4 {
-                println!("  Found loud moment at {:.1}s (Intensity: {:.2})", start_time, intensity);
+                println!(
+                    "  Found loud moment at {:.1}s (Intensity: {:.2})",
+                    start_time, intensity
+                );
                 moments.push(FunnyMoment {
                     start_time,
                     duration,
@@ -75,8 +83,8 @@ impl AudioAnalyzer {
                     moment_type: MomentType::Laughter, // Assuming loud is funny/laughter
                 });
             } else if intensity < 0.001 {
-               // Silence detection (maybe too sensitive)
-               // moments.push(FunnyMoment { start_time, duration, intensity, moment_type: MomentType::DeadSilence });
+                // Silence detection (maybe too sensitive)
+                // moments.push(FunnyMoment { start_time, duration, intensity, moment_type: MomentType::DeadSilence });
             }
 
             chunk_index += 1;
@@ -93,8 +101,10 @@ impl AudioAnalyzer {
     }
 
     fn merge_moments(&self, raw: Vec<FunnyMoment>) -> Vec<FunnyMoment> {
-        if raw.is_empty() { return vec![]; }
-        
+        if raw.is_empty() {
+            return vec![];
+        }
+
         let mut merged = Vec::new();
         let mut current = raw[0].clone();
 

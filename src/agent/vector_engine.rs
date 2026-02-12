@@ -2,14 +2,14 @@
 // SYNOID Vector Engine
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
+use crate::agent::vision_tools::calculate_optical_flow_diff;
 use rayon::prelude::*;
 use resvg::tiny_skia;
 use resvg::usvg;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::agent::vision_tools::calculate_optical_flow_diff;
 use tokio::process::Command;
-use tracing::{info, error};
+use tracing::{error, info};
 
 /// Upscale video by converting to Vector and re-rendering at higher resolution
 pub async fn upscale_video(
@@ -23,7 +23,8 @@ pub async fn upscale_video(
     );
 
     // 1. Setup Directories
-    let work_dir = input.parent().unwrap().join("synoid_upscale_work");
+    let parent = input.parent().ok_or("Input path has no parent")?;
+    let work_dir = parent.join("synoid_upscale_work");
     if work_dir.exists() {
         fs::remove_dir_all(&work_dir)?;
     }
@@ -150,10 +151,10 @@ fn process_frames_core(
 
     info!("[UPSCALE] Analyzing temporal coherence (Optical Flow Check)...");
     for i in 1..paths.len() {
-        let diff = calculate_optical_flow_diff(&paths[i], &paths[i-1]);
+        let diff = calculate_optical_flow_diff(&paths[i], &paths[i - 1]);
         if diff < static_threshold {
             // Scene is static, reuse previous keyframe
-            keyframe_map.push(keyframe_map[i-1]);
+            keyframe_map.push(keyframe_map[i - 1]);
         } else {
             // Scene changed, new keyframe
             keyframe_map.push(i);
@@ -164,8 +165,12 @@ fn process_frames_core(
     unique_keyframes.sort();
     unique_keyframes.dedup();
 
-    info!("[UPSCALE] Temporal Optimization: {}/{} frames are static. Vectorizing {} keyframes.",
-        paths.len() - unique_keyframes.len(), paths.len(), unique_keyframes.len());
+    info!(
+        "[UPSCALE] Temporal Optimization: {}/{} frames are static. Vectorizing {} keyframes.",
+        paths.len() - unique_keyframes.len(),
+        paths.len(),
+        unique_keyframes.len()
+    );
 
     // 2. Vectorize Keyframes (Parallel)
     let keyframe_indices = unique_keyframes;
@@ -237,7 +242,7 @@ pub async fn upscale_video_cuda(
     output: &Path,
 ) -> Result<String, Box<dyn std::error::Error>> {
     // use cudarc::driver::CudaDevice;
-    
+
     // info!("[UPSCALE-CUDA] Initializing CUDA 13.1 context...");
     // let dev = match CudaDevice::new(0) {
     //     Ok(d) => d,
@@ -248,11 +253,11 @@ pub async fn upscale_video_cuda(
     // };
 
     // info!("[UPSCALE-CUDA] Using device: {:?}", dev.ordinal());
-    
+
     // For now, satisfy the interface while we build out the kernels
     // Later phases will move the processing_frames_core logic to GPU kernels
     info!("[UPSCALE-CUDA] CUDA temporarily disabled due to build stub issues. Proceeding with CPU pipeline...");
-    
+
     // Fallback to CPU for the actual processing logic until kernels are compiled
     upscale_video(input, scale_factor, output).await
 }

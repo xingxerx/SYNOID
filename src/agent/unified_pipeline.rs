@@ -3,8 +3,8 @@
 //
 // Combines all processing stages into a single, GPU-accelerated pipeline.
 
-use crate::gpu_backend::{get_gpu_context, GpuBackend, GpuContext};
 use crate::agent::production_tools::safe_arg_path;
+use crate::gpu_backend::{get_gpu_context, GpuBackend, GpuContext};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::process::Command;
@@ -13,14 +13,14 @@ use tracing::{info, warn};
 /// Pipeline stages that can be executed
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipelineStage {
-    Download,      // Download from YouTube/URL
-    Transcribe,    // Speech-to-text transcription
-    SmartEdit,     // Intent-based smart editing
-    Vectorize,     // Convert to vector graphics
-    Upscale,       // Upscale via vector rendering
-    Enhance,       // Audio enhancement
-    Encode,        // Final video encoding
-    VoiceTts,      // Text-to-speech synthesis
+    Download,   // Download from YouTube/URL
+    Transcribe, // Speech-to-text transcription
+    SmartEdit,  // Intent-based smart editing
+    Vectorize,  // Convert to vector graphics
+    Upscale,    // Upscale via vector rendering
+    Enhance,    // Audio enhancement
+    Encode,     // Final video encoding
+    VoiceTts,   // Text-to-speech synthesis
 }
 
 impl PipelineStage {
@@ -103,16 +103,25 @@ impl UnifiedPipeline {
         config: PipelineConfig,
     ) -> Result<PathBuf, Box<dyn std::error::Error>> {
         let mut current_input = input.to_path_buf();
-        let work_dir = input.parent().unwrap_or(Path::new(".")).join(".synoid_work");
+        let work_dir = input
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join(".synoid_work");
         std::fs::create_dir_all(&work_dir)?;
 
-        self.report_progress(&config, &format!("Starting pipeline with {} stages", config.stages.len()));
+        self.report_progress(
+            &config,
+            &format!("Starting pipeline with {} stages", config.stages.len()),
+        );
         self.report_progress(&config, &format!("GPU Backend: {}", self.gpu.backend));
 
         for (i, stage) in config.stages.iter().enumerate() {
             let stage_output = work_dir.join(format!("stage_{:02}_{:?}.mp4", i, stage));
 
-            self.report_progress(&config, &format!("Stage {}/{}: {:?}", i + 1, config.stages.len(), stage));
+            self.report_progress(
+                &config,
+                &format!("Stage {}/{}: {:?}", i + 1, config.stages.len(), stage),
+            );
 
             match stage {
                 PipelineStage::Transcribe => {
@@ -121,22 +130,32 @@ impl UnifiedPipeline {
                 }
                 PipelineStage::SmartEdit => {
                     if let Some(ref intent) = config.intent {
-                        current_input = self.run_smart_edit(&current_input, &stage_output, intent, &config).await?;
+                        current_input = self
+                            .run_smart_edit(&current_input, &stage_output, intent, &config)
+                            .await?;
                     } else {
                         warn!("[PIPELINE] SmartEdit skipped: no intent provided");
                     }
                 }
                 PipelineStage::Vectorize => {
-                    current_input = self.run_vectorize(&current_input, &stage_output, &config).await?;
+                    current_input = self
+                        .run_vectorize(&current_input, &stage_output, &config)
+                        .await?;
                 }
                 PipelineStage::Upscale => {
-                    current_input = self.run_upscale(&current_input, &stage_output, config.scale_factor, &config).await?;
+                    current_input = self
+                        .run_upscale(&current_input, &stage_output, config.scale_factor, &config)
+                        .await?;
                 }
                 PipelineStage::Enhance => {
-                    current_input = self.run_enhance(&current_input, &stage_output, &config).await?;
+                    current_input = self
+                        .run_enhance(&current_input, &stage_output, &config)
+                        .await?;
                 }
                 PipelineStage::Encode => {
-                    current_input = self.run_encode(&current_input, &stage_output, &config).await?;
+                    current_input = self
+                        .run_encode(&current_input, &stage_output, &config)
+                        .await?;
                 }
                 _ => {
                     info!("[PIPELINE] Stage {:?} not yet implemented", stage);
@@ -191,9 +210,8 @@ impl UnifiedPipeline {
         self.report_progress(config, &format!("Smart editing: {}", intent));
 
         let progress_cb = config.progress_callback.clone();
-        let callback: Option<Box<dyn Fn(&str) + Send>> = progress_cb.map(|cb| {
-            Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send>
-        });
+        let callback: Option<Box<dyn Fn(&str) + Send>> =
+            progress_cb.map(|cb| Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send>);
 
         smart_editor::smart_edit(input, intent, output, callback).await?;
 
@@ -260,10 +278,13 @@ impl UnifiedPipeline {
             cmd.args(["-hwaccel", hwaccel]);
         }
 
-        cmd.arg("-i").arg(safe_arg_path(input))
-            .arg("-i").arg(safe_arg_path(&audio_path))
+        cmd.arg("-i")
+            .arg(safe_arg_path(input))
+            .arg("-i")
+            .arg(safe_arg_path(&audio_path))
             .args(["-map", "0:v:0", "-map", "1:a:0"])
-            .arg("-c:v").arg(encoder)
+            .arg("-c:v")
+            .arg(encoder)
             .args(["-c:a", "aac", "-b:a", "192k"])
             .arg(safe_arg_path(output));
 
@@ -284,7 +305,10 @@ impl UnifiedPipeline {
         output: &Path,
         config: &PipelineConfig,
     ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-        self.report_progress(config, &format!("Encoding with {}...", self.gpu.ffmpeg_encoder()));
+        self.report_progress(
+            config,
+            &format!("Encoding with {}...", self.gpu.ffmpeg_encoder()),
+        );
 
         // let encoder = self.gpu.ffmpeg_encoder();
         let mut cmd = Command::new("ffmpeg");
@@ -301,19 +325,20 @@ impl UnifiedPipeline {
         match &self.gpu.backend {
             GpuBackend::NvencGpu { .. } => {
                 cmd.args([
-                    "-c:v", "h264_nvenc",
-                    "-preset", "p4",        // Quality/speed balance
-                    "-rc", "vbr",           // Variable bitrate
-                    "-cq", "23",            // Quality level
-                    "-b:v", "0",            // Let CQ control bitrate
+                    "-c:v",
+                    "h264_nvenc",
+                    "-preset",
+                    "p4", // Quality/speed balance
+                    "-rc",
+                    "vbr", // Variable bitrate
+                    "-cq",
+                    "23", // Quality level
+                    "-b:v",
+                    "0", // Let CQ control bitrate
                 ]);
             }
             GpuBackend::Cpu { .. } => {
-                cmd.args([
-                    "-c:v", "libx264",
-                    "-preset", "medium",
-                    "-crf", "23",
-                ]);
+                cmd.args(["-c:v", "libx264", "-preset", "medium", "-crf", "23"]);
             }
         }
 
