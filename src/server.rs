@@ -113,11 +113,55 @@ async fn handle_chat(
     }
 }
 
+fn is_safe_path(path: &std::path::Path) -> bool {
+    // 1. Check for directory traversal (..)
+    for component in path.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return false;
+        }
+    }
+
+    // 2. Check for hidden files (starting with .)
+    if let Some(file_name) = path.file_name() {
+        let name = file_name.to_string_lossy();
+        if name.starts_with('.') {
+            return false;
+        }
+    } else {
+        return false; // No filename? Unlikely to be a valid file to stream
+    }
+
+    // 3. Check extension against strict allowlist
+    if let Some(ext) = path.extension() {
+        let ext_str = ext.to_string_lossy().to_lowercase();
+        let allowed_extensions = [
+            "mp4", "mkv", "avi", "mov", "webm", // Video
+            "mp3", "wav", "flac", "aac", "ogg", // Audio
+            "jpg", "jpeg", "png", "webp", "gif", // Image
+        ];
+
+        // Explicitly reject SVG as per security standards
+        if ext_str == "svg" {
+            return false;
+        }
+
+        allowed_extensions.contains(&ext_str.as_str())
+    } else {
+        false // No extension is suspicious for media streaming
+    }
+}
+
 async fn stream_video(
     Query(params): Query<StreamParams>,
     req: Request,
 ) -> impl axum::response::IntoResponse {
     let path = std::path::PathBuf::from(params.path);
+
+    // Security check: Validate path before accessing filesystem
+    if !is_safe_path(&path) {
+        return axum::http::StatusCode::BAD_REQUEST.into_response();
+    }
+
     if !path.exists() {
         return axum::http::StatusCode::NOT_FOUND.into_response();
     }
@@ -129,5 +173,45 @@ async fn stream_video(
             error!("ServeFile error: {}", err);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_is_safe_path_valid() {
+        assert!(is_safe_path(Path::new("video.mp4")));
+        assert!(is_safe_path(Path::new("music.mp3")));
+        assert!(is_safe_path(Path::new("image.jpg")));
+        assert!(is_safe_path(Path::new("subdir/video.mkv")));
+        assert!(is_safe_path(Path::new("/abs/path/to/video.mov")));
+    }
+
+    #[test]
+    fn test_is_safe_path_traversal() {
+        assert!(!is_safe_path(Path::new("../secret.txt")));
+        assert!(!is_safe_path(Path::new("subdir/../../etc/passwd")));
+    }
+
+    #[test]
+    fn test_is_safe_path_invalid_extension() {
+        assert!(!is_safe_path(Path::new("config.toml")));
+        assert!(!is_safe_path(Path::new("id_rsa")));
+        assert!(!is_safe_path(Path::new("script.sh")));
+        assert!(!is_safe_path(Path::new("image.svg"))); // Explicitly banned
+    }
+
+    #[test]
+    fn test_is_safe_path_hidden_files() {
+        assert!(!is_safe_path(Path::new(".env")));
+        assert!(!is_safe_path(Path::new("subdir/.hidden.mp4")));
+    }
+
+    #[test]
+    fn test_is_safe_path_no_extension() {
+        assert!(!is_safe_path(Path::new("README")));
     }
 }
