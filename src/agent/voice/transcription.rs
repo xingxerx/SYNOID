@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::info;
+use crate::gpu_backend::get_gpu_context;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,13 +62,23 @@ impl TranscriptionEngine {
     pub async fn transcribe(&self, audio_path: &Path) -> Result<Vec<TranscriptSegment>> {
         info!("[SOVEREIGN] Transcribing: {:?}", audio_path);
 
+        // Check for GPU availability
+        let gpu = get_gpu_context().await;
+        let use_gpu = gpu.has_gpu();
+
+        if use_gpu {
+            info!("[SOVEREIGN] 🚀 GPU Acceleration ENABLED for Whisper");
+        } else {
+            info!("[SOVEREIGN] 🐌 Using CPU for transcription");
+        }
+
         // 1. Prepare Audio
         // Running CPU-heavy audio processing in blocking thread
         let audio_path_buf = audio_path.to_path_buf();
         let model_path = self.model_path.clone();
 
         let segments = tokio::task::spawn_blocking(move || {
-            Self::transcribe_blocking(&model_path, &audio_path_buf)
+            Self::transcribe_blocking(&model_path, &audio_path_buf, use_gpu)
         })
         .await??;
 
@@ -78,7 +89,11 @@ impl TranscriptionEngine {
         Ok(segments)
     }
 
-    fn transcribe_blocking(model_path: &Path, audio_path: &Path) -> Result<Vec<TranscriptSegment>> {
+    fn transcribe_blocking(
+        model_path: &Path,
+        audio_path: &Path,
+        use_gpu: bool,
+    ) -> Result<Vec<TranscriptSegment>> {
         // Read audio
         let mut reader = hound::WavReader::open(audio_path).context("Open WAV")?;
         let spec = reader.spec();
@@ -108,12 +123,14 @@ impl TranscriptionEngine {
             pcm_data = resampled;
         }
 
-        // Initialize Whisper
-        let ctx = WhisperContext::new_with_params(
-            model_path.to_str().unwrap(),
-            WhisperContextParameters::default(),
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to load model: {:?}", e))?;
+        // Initialize Whisper with GPU parameters if requested
+        let params = WhisperContextParameters {
+            use_gpu,
+            ..Default::default()
+        };
+
+        let ctx = WhisperContext::new_with_params(model_path.to_str().unwrap(), params)
+            .map_err(|e| anyhow::anyhow!("Failed to load model: {:?}", e))?;
 
         let mut state = ctx.create_state().context("Create state")?;
 

@@ -28,7 +28,7 @@ impl UrlReader {
     }
 
     /// Ingest a URL and return a learned editing pattern
-    pub async fn ingest(&self, url: &str) -> Result<LearnedPattern, Box<dyn std::error::Error>> {
+    pub async fn ingest(&self, url: &str) -> Result<LearnedPattern, Box<dyn std::error::Error + Send + Sync>> {
         info!("[SENSES] Ingesting URL: {}", url);
 
         let parsed_url = Url::parse(url)?;
@@ -49,7 +49,7 @@ impl UrlReader {
     }
 
     /// Learn from a video URL (Visual Analysis)
-    async fn ingest_video(&self, url: &str) -> Result<LearnedPattern, Box<dyn std::error::Error>> {
+    async fn ingest_video(&self, url: &str) -> Result<LearnedPattern, Box<dyn std::error::Error + Send + Sync>> {
         info!("[SENSES] Detected Video URL. Initiating Visual Analysis...");
 
         // 1. Download metadata via yt-dlp (requires local install)
@@ -85,21 +85,23 @@ impl UrlReader {
     async fn ingest_article(
         &self,
         url: &str,
-    ) -> Result<LearnedPattern, Box<dyn std::error::Error>> {
+    ) -> Result<LearnedPattern, Box<dyn std::error::Error + Send + Sync>> {
         info!("[SENSES] Detected Article URL. Scraping text...");
 
         // 1. Fetch HTML
         let resp = reqwest::get(url).await?.text().await?;
 
         // 2. Extract Text (Naive implementation)
-        let document = Html::parse_document(&resp);
-        let selector = Selector::parse("p, h1, h2, h3").unwrap();
-
         let mut text_content = String::new();
-        for element in document.select(&selector) {
-            text_content.push_str(&element.text().collect::<Vec<_>>().join(" "));
-            text_content.push('\n');
-        }
+        {
+            let document = Html::parse_document(&resp);
+            let selector = Selector::parse("p, h1, h2, h3").unwrap();
+
+            for element in document.select(&selector) {
+                text_content.push_str(&element.text().collect::<Vec<_>>().join(" "));
+                text_content.push('\n');
+            }
+        } // document is dropped here
 
         // Truncate to avoid context window overflow
         let truncated_text: String = text_content.chars().take(2000).collect();

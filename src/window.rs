@@ -26,23 +26,21 @@ const COLOR_TREE_ITEM: egui::Color32 = egui::Color32::from_rgb(100, 180, 255);
 #[derive(PartialEq, Clone, Copy, Debug)]
 enum ActiveCommand {
     None,
-    // Video
+    // Media
     Youtube,
     Clip,
     Compress,
-    // Vector
+    // Visual
     Vectorize,
     Upscale,
-    // AI
+    // AI Core
     Brain,
     Embody,
     Learn,
     Suggest,
-    // Voice
-    VoiceRecord,
-    VoiceClone,
-    VoiceSpeak,
-    // Defense
+    // Voice (Unified)
+    Voice,
+    // Security
     Guard,
     // Research
     Research,
@@ -50,11 +48,11 @@ enum ActiveCommand {
 
 #[derive(Default, Clone)]
 pub struct TreeState {
-    pub video_expanded: bool,
-    pub vector_expanded: bool,
-    pub ai_expanded: bool,
+    pub media_expanded: bool,
+    pub visual_expanded: bool,
+    pub ai_core_expanded: bool,
     pub voice_expanded: bool,
-    pub defense_expanded: bool,
+    pub security_expanded: bool,
     pub research_expanded: bool,
 }
 
@@ -78,6 +76,17 @@ pub struct UiState {
     pub guard_mode: String,
     pub guard_watch_path: String,
     pub is_funny_bits_enabled: bool,
+    pub is_autonomous_running: bool,
+    // UI specific
+    pub voice_tab: VoiceTab,
+}
+
+#[derive(Clone, PartialEq, Default)]
+pub enum VoiceTab {
+    #[default]
+    Record,
+    Clone,
+    Speak,
 }
 
 pub struct SynoidApp {
@@ -101,11 +110,11 @@ impl SynoidApp {
             core,
             ui_state: Arc::new(Mutex::new(ui_state)),
             tree_state: TreeState {
-                video_expanded: true,
-                vector_expanded: true,
-                ai_expanded: false,
+                media_expanded: true,
+                visual_expanded: true,
+                ai_core_expanded: true,
                 voice_expanded: false,
-                defense_expanded: false,
+                security_expanded: false,
                 research_expanded: false,
             },
             active_command: ActiveCommand::None,
@@ -256,11 +265,28 @@ impl SynoidApp {
             ActiveCommand::Embody => self.render_embody_panel(ui, state),
             ActiveCommand::Learn => self.render_learn_panel(ui, state),
             ActiveCommand::Suggest => self.render_suggest_panel(ui, state),
-            ActiveCommand::VoiceRecord => self.render_voice_record_panel(ui, state),
-            ActiveCommand::VoiceClone => self.render_voice_clone_panel(ui, state),
-            ActiveCommand::VoiceSpeak => self.render_voice_speak_panel(ui, state),
+            ActiveCommand::Voice => self.render_voice_unified_panel(ui, state),
             ActiveCommand::Guard => self.render_guard_panel(ui, state),
             ActiveCommand::Research => self.render_research_panel(ui, state),
+        }
+    }
+
+    fn render_voice_unified_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.heading(egui::RichText::new("🗣️ Voice Studio").color(COLOR_ACCENT_GREEN));
+        ui.separator();
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+             ui.selectable_value(&mut state.voice_tab, VoiceTab::Record, "🎙️ Record");
+             ui.selectable_value(&mut state.voice_tab, VoiceTab::Clone, "🎭 Clone");
+             ui.selectable_value(&mut state.voice_tab, VoiceTab::Speak, "🔊 Speak");
+        });
+        ui.add_space(15.0);
+
+        match state.voice_tab {
+            VoiceTab::Record => self.render_voice_record_panel(ui, state),
+            VoiceTab::Clone => self.render_voice_clone_panel(ui, state),
+            VoiceTab::Speak => self.render_voice_speak_panel(ui, state),
         }
     }
 
@@ -520,6 +546,19 @@ impl SynoidApp {
         ui.separator();
         ui.add_space(10.0);
 
+        if ui.checkbox(&mut state.is_autonomous_running, "🚀 Autonomous Learning Loop (Videos + Code + Wiki)").changed() {
+            let core = self.core.clone();
+            let is_running = state.is_autonomous_running;
+            tokio::spawn(async move {
+                if is_running {
+                    core.start_autonomous_learning();
+                } else {
+                    core.stop_autonomous_learning();
+                }
+            });
+        }
+        ui.add_space(10.0);
+
         self.render_input_file_picker(ui, state);
         ui.add_space(10.0);
 
@@ -752,24 +791,24 @@ impl eframe::App for SynoidApp {
                 ui.add_space(12.0);
 
                 // Clone expanded states for mutable borrow
-                let mut video_exp = self.tree_state.video_expanded;
-                let mut vector_exp = self.tree_state.vector_expanded;
-                let mut ai_exp = self.tree_state.ai_expanded;
+                let mut media_exp = self.tree_state.media_expanded;
+                let mut visual_exp = self.tree_state.visual_expanded;
+                let mut ai_exp = self.tree_state.ai_core_expanded;
                 let mut voice_exp = self.tree_state.voice_expanded;
-                let mut defense_exp = self.tree_state.defense_expanded;
+                let mut security_exp = self.tree_state.security_expanded;
                 let mut research_exp = self.tree_state.research_expanded;
 
                 let mut new_cmd: Option<ActiveCommand> = None;
 
-                // Video Production
+                // Media
                 if let Some(cmd) = self.render_tree_category(
                     ui,
-                    "video",
+                    "Media",
                     "📹",
                     COLOR_ACCENT_ORANGE,
-                    &mut video_exp,
+                    &mut media_exp,
                     vec![
-                        ("📤", "Upload Video", ActiveCommand::Youtube),
+                        ("📤", "Upload", ActiveCommand::Youtube),
                         ("✂️", "Clip", ActiveCommand::Clip),
                         ("📦", "Compress", ActiveCommand::Compress),
                     ],
@@ -777,13 +816,13 @@ impl eframe::App for SynoidApp {
                     new_cmd = Some(cmd);
                 }
 
-                // Vector Engine
+                // Visual
                 if let Some(cmd) = self.render_tree_category(
                     ui,
-                    "vector",
+                    "Visual",
                     "🎨",
                     COLOR_ACCENT_PURPLE,
-                    &mut vector_exp,
+                    &mut visual_exp,
                     vec![
                         ("✨", "Vectorize", ActiveCommand::Vectorize),
                         ("🔎", "Upscale", ActiveCommand::Upscale),
@@ -792,10 +831,10 @@ impl eframe::App for SynoidApp {
                     new_cmd = Some(cmd);
                 }
 
-                // AI Brain
+                // AI Core
                 if let Some(cmd) = self.render_tree_category(
                     ui,
-                    "ai",
+                    "AI Core",
                     "🧠",
                     COLOR_ACCENT_BLUE,
                     &mut ai_exp,
@@ -812,27 +851,25 @@ impl eframe::App for SynoidApp {
                 // Voice
                 if let Some(cmd) = self.render_tree_category(
                     ui,
-                    "voice",
+                    "Voice",
                     "🗣️",
                     COLOR_ACCENT_GREEN,
                     &mut voice_exp,
                     vec![
-                        ("🎙️", "Record", ActiveCommand::VoiceRecord),
-                        ("🎭", "Clone", ActiveCommand::VoiceClone),
-                        ("🔊", "Speak", ActiveCommand::VoiceSpeak),
+                        ("🎙️", "Voice", ActiveCommand::Voice),
                     ],
                 ) {
                     new_cmd = Some(cmd);
                 }
 
-                // Defense
+                // Security
                 if let Some(cmd) = self.render_tree_category(
                     ui,
-                    "defense",
+                    "Security",
                     "🛡️",
                     COLOR_ACCENT_RED,
-                    &mut defense_exp,
-                    vec![("👁️", "Guard", ActiveCommand::Guard)],
+                    &mut security_exp,
+                    vec![("👁️", "Defense", ActiveCommand::Guard)],
                 ) {
                     new_cmd = Some(cmd);
                 }
@@ -840,21 +877,21 @@ impl eframe::App for SynoidApp {
                 // Research
                 if let Some(cmd) = self.render_tree_category(
                     ui,
-                    "research",
+                    "Research",
                     "🔍",
                     COLOR_TEXT_PRIMARY,
                     &mut research_exp,
-                    vec![("📚", "Search", ActiveCommand::Research)],
+                    vec![("📚", "Research", ActiveCommand::Research)],
                 ) {
                     new_cmd = Some(cmd);
                 }
 
                 // Update tree state
-                self.tree_state.video_expanded = video_exp;
-                self.tree_state.vector_expanded = vector_exp;
-                self.tree_state.ai_expanded = ai_exp;
+                self.tree_state.media_expanded = media_exp;
+                self.tree_state.visual_expanded = visual_exp;
+                self.tree_state.ai_core_expanded = ai_exp;
                 self.tree_state.voice_expanded = voice_exp;
-                self.tree_state.defense_expanded = defense_exp;
+                self.tree_state.security_expanded = security_exp;
                 self.tree_state.research_expanded = research_exp;
 
                 // Apply command selection

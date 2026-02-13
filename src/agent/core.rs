@@ -17,6 +17,7 @@ use crate::agent::vector_engine::{self, VectorConfig};
 use crate::agent::unified_pipeline::{UnifiedPipeline, PipelineConfig, PipelineStage};
 use crate::agent::voice::VoiceEngine;
 use crate::agent::defense::{IntegrityGuard, Sentinel};
+use crate::agent::autonomous_learner::AutonomousLearner;
 use crate::gpu_backend;
 
 /// The shared state of the agent
@@ -36,6 +37,9 @@ pub struct AgentCore {
 
     // Unified Pipeline (Async Mutex)
     pub pipeline: Arc<AsyncMutex<Option<UnifiedPipeline>>>,
+
+    // Autonomous Learner (Sync Mutex)
+    pub autonomous_learner: Arc<Mutex<Option<AutonomousLearner>>>,
 }
 
 impl AgentCore {
@@ -50,6 +54,7 @@ impl AgentCore {
             cortex: Arc::new(AsyncMutex::new(MotorCortex::new(api_url))),
             voice_engine: Arc::new(Mutex::new(None)),
             pipeline: Arc::new(AsyncMutex::new(None)),
+            autonomous_learner: Arc::new(Mutex::new(None)), // Lazy init
         }
     }
 
@@ -96,6 +101,22 @@ impl AgentCore {
 
     // --- Core Logic Methods ---
 
+    fn sanitize_input(input: &str) -> String {
+        let mut s = input.trim().to_string();
+        
+        // Remove surrounding quotes if they exist
+        if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
+            s.remove(0);
+            s.pop();
+        }
+
+        // Remove hidden control characters (e.g., \u{202a} Left-to-Right Embedding)
+        // This is common when copying paths from Windows Explorer property dialogs.
+        s.chars()
+            .filter(|c| !c.is_control() && *c != '\u{202a}' && *c != '\u{202b}' && *c != '\u{202c}')
+            .collect()
+    }
+
     pub async fn process_youtube_intent(
         &self,
         url: &str,
@@ -104,23 +125,43 @@ impl AgentCore {
         login: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("📥 Downloading...");
-        self.log(&format!("[CORE] Processing YouTube: {}", url));
+        let sanitized_url = Self::sanitize_input(url);
+        self.log(&format!("[CORE] Processing YouTube: {}", sanitized_url));
 
         let output_dir = Path::new("downloads");
+        let path_obj = Path::new(&sanitized_url);
 
-        if !source_tools::check_ytdlp().await {
-            let msg = "yt-dlp not found! Please install it via pip.";
-            self.log(&format!("[CORE] ❌ {}", msg));
-            return Err(msg.into());
-        }
+        // Check if input is a local file string or has a drive letter
+        let is_local = path_obj.exists() 
+            || (sanitized_url.len() > 1 && sanitized_url.chars().nth(1) == Some(':'))
+            || sanitized_url.starts_with("\\\\"); // UNC Path Support
 
-        // Extract needed fields immediately so the non-Send Result is dropped before next await
-        let (title, local_path) = match source_tools::download_youtube(url, output_dir, login).await {
-            Ok(info) => (info.title, info.local_path),
-            Err(e) => {
-                let msg = format!("[CORE] ❌ Download failed: {}", e);
-                self.log(&msg);
+        let (title, local_path) = if is_local {
+            if !path_obj.exists() {
+                 let msg = format!("[CORE] ❌ Local file check failed: '{}' not found.", sanitized_url);
+                 self.log(&msg);
+                 return Err(msg.into());
+            }
+            self.log(&format!("[CORE] 📁 Using local file: {}", sanitized_url));
+            (
+                path_obj.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                path_obj.to_path_buf()
+            )
+        } else {
+            if !source_tools::check_ytdlp().await {
+                let msg = "yt-dlp not found! Please install it via pip.";
+                self.log(&format!("[CORE] ❌ {}", msg));
                 return Err(msg.into());
+            }
+
+            // Extract needed fields immediately so the non-Send Result is dropped before next await
+            match source_tools::download_youtube(&sanitized_url, output_dir, login).await {
+                Ok(info) => (info.title, info.local_path),
+                Err(e) => {
+                    let msg = format!("[CORE] ❌ Download failed: {}", e);
+                    self.log(&msg);
+                    return Err(msg.into());
+                }
             }
         };
 
@@ -154,7 +195,7 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn process_research(&self, topic: &str, limit: usize) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn process_research(&self, topic: &str, limit: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status(&format!("🕵️ Researching: {}", topic));
         self.log(&format!("[CORE] Researching topic: {}", topic));
 
@@ -168,7 +209,7 @@ impl AgentCore {
             }
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Research failed: {}", e));
-                return Err(e);
+                return Err(e.to_string().into());
             }
         }
 
@@ -182,7 +223,7 @@ impl AgentCore {
         start: f64,
         duration: f64,
         output: Option<PathBuf>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("✂️ Clipping...");
         let out_path = output.unwrap_or_else(|| {
             let stem = input.file_stem().unwrap().to_string_lossy();
@@ -195,7 +236,7 @@ impl AgentCore {
             }
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Clipping failed: {}", e));
-                return Err(e);
+                return Err(e.to_string().into());
             }
         }
         self.set_status("⚡ Ready");
@@ -207,7 +248,7 @@ impl AgentCore {
         input: &Path,
         size_mb: f64,
         output: Option<PathBuf>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("📦 Compressing...");
         let out_path = output.unwrap_or_else(|| {
             let stem = input.file_stem().unwrap().to_string_lossy();
@@ -220,14 +261,14 @@ impl AgentCore {
             }
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Compression failed: {}", e));
-                return Err(e);
+                return Err(e.to_string().into());
             }
         }
         self.set_status("⚡ Ready");
         Ok(())
     }
 
-    pub async fn process_brain_request(&self, request: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn process_brain_request(&self, request: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🧠 Thinking...");
         self.log(&format!("[CORE] Brain Request: {}", request));
 
@@ -312,7 +353,7 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn learn_style(&self, input: &Path, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn learn_style(&self, input: &Path, name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status(&format!("🎓 Learning '{}'...", name));
         self.log(&format!("[CORE] Analyzing style '{}' from {:?}", name, input));
 
@@ -331,7 +372,7 @@ impl AgentCore {
         input: &Path,
         output: &Path,
         mode: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🎨 Vectorizing...");
         self.log(&format!("[CORE] Vectorizing {:?}", input));
 
@@ -342,7 +383,7 @@ impl AgentCore {
             Ok(msg) => self.log(&format!("[CORE] ✅ {}", msg)),
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Vectorization failed: {}", e));
-                return Err(e);
+                return Err(e.to_string().into());
             }
         }
 
@@ -355,7 +396,7 @@ impl AgentCore {
         input: &Path,
         scale: f64,
         output: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status(&format!("🔎 Upscaling {:.1}x...", scale));
         self.log(&format!("[CORE] Infinite Upscale (Scale: {:.1}x) on {:?}", scale, input));
 
@@ -363,7 +404,7 @@ impl AgentCore {
             Ok(msg) => self.log(&format!("[CORE] ✅ {}", msg)),
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Upscale failed: {}", e));
-                return Err(e);
+                return Err(e.to_string().into());
             }
         }
 
@@ -374,18 +415,18 @@ impl AgentCore {
     // --- Voice Tools ---
 
     // Ensure voice engine is initialized
-    fn ensure_voice_engine(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn ensure_voice_engine(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut engine = self.voice_engine.lock().unwrap();
         if engine.is_none() {
             match VoiceEngine::new() {
                 Ok(e) => *engine = Some(e),
-                Err(e) => return Err(e),
+                Err(e) => return Err(e.to_string().into()),
             }
         }
         Ok(())
     }
 
-    pub async fn voice_record(&self, output: Option<PathBuf>, duration: u32) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn voice_record(&self, output: Option<PathBuf>, duration: u32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🎙️ Recording...");
         use crate::agent::voice::AudioIO;
         let audio_io = AudioIO::new();
@@ -410,7 +451,7 @@ impl AgentCore {
         &self,
         audio_path: &Path,
         profile_name: Option<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🎭 Cloning Voice...");
         if let Err(e) = self.ensure_voice_engine() {
             self.log(&format!("[CORE] ❌ Engine init failed: {}", e));
@@ -442,7 +483,7 @@ impl AgentCore {
         text: &str,
         profile: Option<String>,
         output: Option<PathBuf>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🗣️ Speaking...");
         if let Err(e) = self.ensure_voice_engine() {
              self.log(&format!("[CORE] ❌ Engine init failed: {}", e));
@@ -474,7 +515,7 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn download_voice_model(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn download_voice_model(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("📥 Downloading Model...");
         if let Err(e) = self.ensure_voice_engine() {
             return Err(e);
@@ -501,7 +542,7 @@ impl AgentCore {
         _gpu: &str,
         intent: Option<String>,
         scale: f64,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🚀 Running Pipeline...");
 
         let parsed_stages = PipelineStage::parse_list(stages_str);
@@ -531,12 +572,11 @@ impl AgentCore {
                 self_clone.log(msg);
             })),
         };
-
         match pipeline.process(input, output, config).await {
             Ok(out_path) => self.log(&format!("[CORE] ✅ Pipeline complete: {:?}", out_path)),
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Pipeline failed: {}", e));
-                return Err(e);
+                return Err(e.to_string().into());
             }
         }
 
@@ -578,5 +618,72 @@ impl AgentCore {
 
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
+    }
+
+    // --- Autonomous Learning Control ---
+
+    pub fn start_autonomous_learning(&self) {
+        self.set_status("🚀 Starting Autonomous Loop...");
+        self.log("[CORE] Initializing Autonomous Learner...");
+
+        let mut learner_guard = self.autonomous_learner.lock().unwrap();
+        if learner_guard.is_none() {
+             // Create new learner sharing the same brain
+             let learner = AutonomousLearner::new(self.brain.clone());
+             *learner_guard = Some(learner);
+        }
+
+        if let Some(learner) = learner_guard.as_ref() {
+            learner.start();
+        }
+    }
+
+    pub fn stop_autonomous_learning(&self) {
+        self.set_status("🛑 Stopping Autonomous Loop...");
+        let learner_guard = self.autonomous_learner.lock().unwrap();
+        if let Some(learner) = learner_guard.as_ref() {
+            learner.stop();
+            self.log("[CORE] Autonomous Loop signal sent: STOP");
+        }
+        self.set_status("⚡ Ready");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sanitize_input() {
+        // Test trimming
+        assert_eq!(AgentCore::sanitize_input("  test  "), "test");
+        
+        // Test surrounding quotes
+        assert_eq!(AgentCore::sanitize_input("\"C:\\Path\""), "C:\\Path");
+        assert_eq!(AgentCore::sanitize_input("'C:\\Path'"), "C:\\Path");
+
+        // Test hidden control characters (LRE \u{202a})
+        let input = "\u{202a}C:\\Users\\xing\\Videos\\test.mp4";
+        assert_eq!(AgentCore::sanitize_input(input), "C:\\Users\\xing\\Videos\\test.mp4");
+
+        // Test combination
+        let complex = "  \u{202a}\"C:\\Path With Spaces\\test.mp4\"  ";
+        assert_eq!(AgentCore::sanitize_input(complex), "C:\\Path With Spaces\\test.mp4");
+    }
+
+    #[test]
+    fn test_is_local_robustness() {
+        // This is a bit tricky because Path::exists() depends on the FS.
+        // But we can test the string-based logic.
+        
+        let drive_path = "C:\\Videos\\test.mp4";
+        assert!(drive_path.len() > 1 && drive_path.chars().nth(1) == Some(':'));
+
+        let unc_path = "\\\\server\\share\\test.mp4";
+        assert!(unc_path.starts_with("\\\\"));
+
+        let url = "https://youtube.com/watch?v=123";
+        assert!(!(url.len() > 1 && url.chars().nth(1) == Some(':')));
+        assert!(!url.starts_with("\\\\"));
     }
 }
