@@ -269,7 +269,10 @@ pub async fn print_gpu_status() {
     println!("── CUDA Accel Config (Neural-Tuned) ──");
     println!("  Batch Size    : {}", accel.batch_size);
     println!("  Streams       : {}", accel.parallel_streams);
-    println!("  Prefetch      : {}", if accel.prefetch_enabled { "ON" } else { "OFF" });
+    println!(
+        "  Prefetch      : {}",
+        if accel.prefetch_enabled { "ON" } else { "OFF" }
+    );
     println!("  FFmpeg Preset : {}", accel.ffmpeg_preset);
 
     if ctx.has_gpu() {

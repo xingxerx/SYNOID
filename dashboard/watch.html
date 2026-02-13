@@ -48,10 +48,16 @@
         const videoPlayer = document.getElementById('video-player');
         const pathDisplay = document.getElementById('file-path');
 
+        const apiKey = localStorage.getItem('synoid_api_key');
+
         if (path) {
             pathDisplay.textContent = `Playing: ${path}`;
             // Use the streaming endpoint
-            videoPlayer.src = `/api/stream?path=${encodeURIComponent(path)}`;
+            let url = `/api/stream?path=${encodeURIComponent(path)}`;
+            if (apiKey) {
+                url += `&api_key=${encodeURIComponent(apiKey)}`;
+            }
+            videoPlayer.src = url;
         } else {
             pathDisplay.textContent = 'Error: No video path provided in URL parameters (?path=...)';
             pathDisplay.classList.add('text-red-400');

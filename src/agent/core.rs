@@ -10,13 +10,13 @@ use tokio::sync::Mutex as AsyncMutex;
 use tracing::info;
 
 use crate::agent::brain::Brain;
-use crate::agent::motor_cortex::MotorCortex;
-use crate::agent::source_tools;
-use crate::agent::production_tools;
-use crate::agent::vector_engine::{self, VectorConfig};
-use crate::agent::unified_pipeline::{UnifiedPipeline, PipelineConfig, PipelineStage};
-use crate::agent::voice::VoiceEngine;
 use crate::agent::defense::{IntegrityGuard, Sentinel};
+use crate::agent::motor_cortex::MotorCortex;
+use crate::agent::production_tools;
+use crate::agent::source_tools;
+use crate::agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipeline};
+use crate::agent::vector_engine::{self, VectorConfig};
+use crate::agent::voice::VoiceEngine;
 use crate::gpu_backend;
 
 /// The shared state of the agent
@@ -44,7 +44,7 @@ impl AgentCore {
             api_url: api_url.to_string(),
             status: Arc::new(Mutex::new("⚡ System Ready".to_string())),
             logs: Arc::new(Mutex::new(vec![
-                "[SYSTEM] SYNOID Core initialized.".to_string(),
+                "[SYSTEM] SYNOID Core initialized.".to_string()
             ])),
             brain: Arc::new(AsyncMutex::new(Brain::new(api_url, "gpt-oss:20b"))),
             cortex: Arc::new(AsyncMutex::new(MotorCortex::new(api_url))),
@@ -87,7 +87,10 @@ impl AgentCore {
     }
 
     pub fn get_status(&self) -> String {
-        self.status.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn get_logs(&self) -> Vec<String> {
@@ -115,7 +118,8 @@ impl AgentCore {
         }
 
         // Extract needed fields immediately so the non-Send Result is dropped before next await
-        let (title, local_path) = match source_tools::download_youtube(url, output_dir, login).await {
+        let (title, local_path) = match source_tools::download_youtube(url, output_dir, login).await
+        {
             Ok(info) => (info.title, info.local_path),
             Err(e) => {
                 let msg = format!("[CORE] ❌ Download failed: {}", e);
@@ -138,15 +142,17 @@ impl AgentCore {
                 self_clone.log(msg);
             });
 
-            match smart_editor::smart_edit(&local_path, intent, &out_path, false, Some(callback)).await {
+            match smart_editor::smart_edit(&local_path, intent, &out_path, false, Some(callback))
+                .await
+            {
                 Ok(res) => self.log(&format!("[CORE] ✅ {}", res)),
                 Err(e) => self.log(&format!("[CORE] ❌ Edit failed: {}", e)),
             }
         } else {
             if let Err(e) = std::fs::copy(&local_path, &out_path) {
-                 self.log(&format!("[CORE] ❌ Copy failed: {}", e));
+                self.log(&format!("[CORE] ❌ Copy failed: {}", e));
             } else {
-                 self.log(&format!("[CORE] ✅ Saved to {:?}", out_path));
+                self.log(&format!("[CORE] ✅ Saved to {:?}", out_path));
             }
         }
 
@@ -154,7 +160,11 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn process_research(&self, topic: &str, limit: usize) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn process_research(
+        &self,
+        topic: &str,
+        limit: usize,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.set_status(&format!("🕵️ Researching: {}", topic));
         self.log(&format!("[CORE] Researching topic: {}", topic));
 
@@ -162,8 +172,16 @@ impl AgentCore {
             Ok(results) => {
                 self.log(&format!("[CORE] === 📚 Results: '{}' ===", topic));
                 for (i, source) in results.iter().enumerate() {
-                    self.log(&format!("{}. {} (Duration: {:.1} min)", i+1, source.title, source.duration / 60.0));
-                    self.log(&format!("   URL: {}", source.original_url.as_deref().unwrap_or("Unknown")));
+                    self.log(&format!(
+                        "{}. {} (Duration: {:.1} min)",
+                        i + 1,
+                        source.title,
+                        source.duration / 60.0
+                    ));
+                    self.log(&format!(
+                        "   URL: {}",
+                        source.original_url.as_deref().unwrap_or("Unknown")
+                    ));
                 }
             }
             Err(e) => {
@@ -191,7 +209,10 @@ impl AgentCore {
 
         match production_tools::trim_video(input, start, duration, &out_path).await {
             Ok(res) => {
-                self.log(&format!("[CORE] ✂️ Clip saved: {:?} ({:.2} MB)", res.output_path, res.size_mb));
+                self.log(&format!(
+                    "[CORE] ✂️ Clip saved: {:?} ({:.2} MB)",
+                    res.output_path, res.size_mb
+                ));
             }
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Clipping failed: {}", e));
@@ -216,7 +237,10 @@ impl AgentCore {
 
         match production_tools::compress_video(input, size_mb, &out_path).await {
             Ok(res) => {
-                self.log(&format!("[CORE] 📦 Compressed saved: {:?} ({:.2} MB)", res.output_path, res.size_mb));
+                self.log(&format!(
+                    "[CORE] 📦 Compressed saved: {:?} ({:.2} MB)",
+                    res.output_path, res.size_mb
+                ));
             }
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Compression failed: {}", e));
@@ -227,7 +251,10 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn process_brain_request(&self, request: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn process_brain_request(
+        &self,
+        request: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.set_status("🧠 Thinking...");
         self.log(&format!("[CORE] Brain Request: {}", request));
 
@@ -250,8 +277,8 @@ impl AgentCore {
         self.set_status("🤖 Embodying...");
         self.log(&format!("[CORE] Embodied Agent Activating for: {}", intent));
 
-        use crate::agent::vision_tools;
         use crate::agent::audio_tools;
+        use crate::agent::vision_tools;
 
         // 1. Scan Context
         self.log("[CORE] Scanning visual context...");
@@ -275,7 +302,10 @@ impl AgentCore {
         // 2. Execute — extract args and drop the cortex lock before awaiting
         let args = {
             let mut cortex = self.cortex.lock().await;
-            match cortex.execute_one_shot_render(intent, input, output, &visual_data, &audio_data).await {
+            match cortex
+                .execute_one_shot_render(intent, input, output, &visual_data, &audio_data)
+                .await
+            {
                 Ok(a) => a,
                 Err(e) => {
                     self.log(&format!("[CORE] ❌ Embodiment failed: {}", e));
@@ -288,18 +318,18 @@ impl AgentCore {
         self.log(&format!("[CORE] 🎬 Generated FFmpeg Command: {}", cmd_str));
 
         if let Some((prog, cmd_args)) = args.split_first() {
-             let mut child = tokio::process::Command::new(prog)
+            let mut child = tokio::process::Command::new(prog)
                 .args(cmd_args)
                 .kill_on_drop(true)
                 .spawn()?;
-             
-             let status = child.wait().await?;
-             if status.success() {
-                 self.log("[CORE] ✅ Render Complete");
-             } else {
-                 self.log("[CORE] ❌ Render Failed");
-                 return Err("FFmpeg execution failed".into());
-             }
+
+            let status = child.wait().await?;
+            if status.success() {
+                self.log("[CORE] ✅ Render Complete");
+            } else {
+                self.log("[CORE] ❌ Render Failed");
+                return Err("FFmpeg execution failed".into());
+            }
         }
 
         // Record success in neuroplasticity so the system speeds up
@@ -312,16 +342,26 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn learn_style(&self, input: &Path, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn learn_style(
+        &self,
+        input: &Path,
+        name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.set_status(&format!("🎓 Learning '{}'...", name));
-        self.log(&format!("[CORE] Analyzing style '{}' from {:?}", name, input));
+        self.log(&format!(
+            "[CORE] Analyzing style '{}' from {:?}",
+            name, input
+        ));
 
         use crate::agent::academy::{StyleLibrary, TechniqueExtractor};
         // Stub implementation from main.rs
         let _lib = StyleLibrary::new();
         let _extractor = TechniqueExtractor {};
 
-        self.log(&format!("[CORE] ✅ Analyzed style '{}'. Saved to library.", name));
+        self.log(&format!(
+            "[CORE] ✅ Analyzed style '{}'. Saved to library.",
+            name
+        ));
         self.set_status("⚡ Ready");
         Ok(())
     }
@@ -357,7 +397,10 @@ impl AgentCore {
         output: &Path,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.set_status(&format!("🔎 Upscaling {:.1}x...", scale));
-        self.log(&format!("[CORE] Infinite Upscale (Scale: {:.1}x) on {:?}", scale, input));
+        self.log(&format!(
+            "[CORE] Infinite Upscale (Scale: {:.1}x) on {:?}",
+            scale, input
+        ));
 
         match vector_engine::upscale_video(input, scale, output).await {
             Ok(msg) => self.log(&format!("[CORE] ✅ {}", msg)),
@@ -385,19 +428,27 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn voice_record(&self, output: Option<PathBuf>, duration: u32) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn voice_record(
+        &self,
+        output: Option<PathBuf>,
+        duration: u32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.set_status("🎙️ Recording...");
         use crate::agent::voice::AudioIO;
         let audio_io = AudioIO::new();
 
         let out_path = output.unwrap_or_else(|| PathBuf::from("voice_sample.wav"));
 
-        match tokio::task::spawn_blocking(move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-            audio_io.record_to_file(&out_path, duration).map_err(|e| {
-                let boxed: Box<dyn std::error::Error + Send + Sync> = e.to_string().into();
-                boxed
-            })
-        }).await? {
+        match tokio::task::spawn_blocking(
+            move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+                audio_io.record_to_file(&out_path, duration).map_err(|e| {
+                    let boxed: Box<dyn std::error::Error + Send + Sync> = e.to_string().into();
+                    boxed
+                })
+            },
+        )
+        .await?
+        {
             Ok(_) => self.log(&format!("[CORE] ✅ Recorded {} seconds", duration)),
             Err(e) => self.log(&format!("[CORE] ❌ Recording failed: {}", e)),
         }
@@ -423,14 +474,21 @@ impl AgentCore {
         if let Some(name) = profile_name {
             self.log(&format!("[CORE] Creating voice profile '{}'...", name));
             match engine.create_profile(&name, audio_path) {
-                Ok(p) => self.log(&format!("[CORE] ✅ Profile '{}' created ({} dims)", p.name, p.embedding.len())),
+                Ok(p) => self.log(&format!(
+                    "[CORE] ✅ Profile '{}' created ({} dims)",
+                    p.name,
+                    p.embedding.len()
+                )),
                 Err(e) => self.log(&format!("[CORE] ❌ Profile creation failed: {}", e)),
             }
         } else {
-             match engine.clone_voice(audio_path) {
-                Ok(embedding) => self.log(&format!("[CORE] ✅ Voice cloned. Embedding: {} dims", embedding.len())),
+            match engine.clone_voice(audio_path) {
+                Ok(embedding) => self.log(&format!(
+                    "[CORE] ✅ Voice cloned. Embedding: {} dims",
+                    embedding.len()
+                )),
                 Err(e) => self.log(&format!("[CORE] ❌ Clone failed: {}", e)),
-             }
+            }
         }
 
         self.set_status("⚡ Ready");
@@ -445,8 +503,8 @@ impl AgentCore {
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.set_status("🗣️ Speaking...");
         if let Err(e) = self.ensure_voice_engine() {
-             self.log(&format!("[CORE] ❌ Engine init failed: {}", e));
-             return Err(e);
+            self.log(&format!("[CORE] ❌ Engine init failed: {}", e));
+            return Err(e);
         }
 
         let out_path = output.unwrap_or_else(|| PathBuf::from("tts_output.wav"));
@@ -506,9 +564,9 @@ impl AgentCore {
 
         let parsed_stages = PipelineStage::parse_list(stages_str);
         if parsed_stages.is_empty() {
-             let msg = "No valid stages specified.";
-             self.log(&format!("[CORE] ❌ {}", msg));
-             return Err(msg.into());
+            let msg = "No valid stages specified.";
+            self.log(&format!("[CORE] ❌ {}", msg));
+            return Err(msg.into());
         }
 
         // Initialize pipeline lazily

@@ -2,8 +2,8 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use serde::Serialize;
 
-use crate::agent::defense::pressure::{PressureLevel, PressureWatcher};
 use crate::agent::core::AgentCore;
+use crate::agent::defense::pressure::{PressureLevel, PressureWatcher};
 
 pub struct KernelState {
     pub task: Mutex<TaskState>,

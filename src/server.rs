@@ -1,6 +1,8 @@
 use axum::{
     extract::{Query, Request, State},
-    response::IntoResponse,
+    http::StatusCode,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -31,15 +33,58 @@ struct StreamParams {
     path: String,
 }
 
-pub async fn start_server(port: u16, state: Arc<KernelState>) {
-    let app = Router::new()
+async fn auth_middleware(req: Request, next: Next) -> Result<Response, StatusCode> {
+    let api_key = std::env::var("SYNOID_API_KEY").map_err(|_| {
+        error!("SYNOID_API_KEY not set");
+        StatusCode::UNAUTHORIZED
+    })?;
+
+    let auth_header = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "));
+
+    let x_api_key = req.headers().get("X-API-Key").and_then(|h| h.to_str().ok());
+
+    let query_api_key = req.uri().query().and_then(|q| {
+        url::form_urlencoded::parse(q.as_bytes())
+            .find(|(key, _)| key == "api_key")
+            .map(|(_, value)| value.into_owned())
+    });
+
+    if let Some(key) = auth_header.or(x_api_key).or(query_api_key.as_deref()) {
+        if key == api_key {
+            return Ok(next.run(req).await);
+        }
+    }
+
+    error!("Unauthorized access attempt to API");
+    Err(StatusCode::UNAUTHORIZED)
+}
+
+pub fn create_router(state: Arc<KernelState>) -> Router {
+    let api_routes = Router::new()
+        .route("/status", get(get_status))
+        .route("/tasks", get(get_tasks))
+        .route("/chat", post(handle_chat))
+        .route("/stream", get(stream_video))
+        .layer(middleware::from_fn(auth_middleware));
+
+    Router::new()
         .nest_service("/", ServeDir::new("dashboard"))
-        .route("/api/status", get(get_status))
-        .route("/api/tasks", get(get_tasks))
-        .route("/api/chat", post(handle_chat))
-        .route("/api/stream", get(stream_video))
+        .nest("/api", api_routes)
         .with_state(state)
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+}
+
+pub async fn start_server(port: u16, state: Arc<KernelState>) {
+    if std::env::var("SYNOID_API_KEY").is_err() {
+        error!("🚨 SECURITY ALERT: SYNOID_API_KEY is not set!");
+        error!("API endpoints are LOCKED. Set the SYNOID_API_KEY environment variable to allow access.");
+    }
+
+    let app = create_router(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let display_addr = if addr.ip().is_unspecified() {

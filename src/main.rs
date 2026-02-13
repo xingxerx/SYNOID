@@ -316,14 +316,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }));
 
     info!("--- SYNOID AGENTIC KERNEL v0.1.1 ---");
-    let api_url = std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
+    let api_url =
+        std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
 
     // Initialize the Ghost (Agent Core)
     let core = Arc::new(AgentCore::new(&api_url));
 
     // Connect Brain → GPU/CUDA backend (neuroplasticity-tuned acceleration)
     core.connect_gpu_to_brain().await;
-    info!("🧠⚡ Neural-GPU bridge active: {}", core.acceleration_status().await);
+    info!(
+        "🧠⚡ Neural-GPU bridge active: {}",
+        core.acceleration_status().await
+    );
 
     let args = Cli::parse();
 
@@ -365,7 +369,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             chunk_minutes: _,
             login,
         } => {
-            core.process_youtube_intent(&url, &intent, output, login.as_deref()).await.map_err(|e| -> Box<dyn std::error::Error> { e })?;
+            core.process_youtube_intent(&url, &intent, output, login.as_deref())
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e })?;
         }
         Commands::Research { topic, limit } => {
             core.process_research(&topic, limit).await?;
@@ -516,7 +522,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             scale,
             funny: _,
         } => {
-            core.run_unified_pipeline(&input, &output, &stages, &gpu, intent, scale).await?;
+            core.run_unified_pipeline(&input, &output, &stages, &gpu, intent, scale)
+                .await?;
         }
         Commands::Autonomous => {
             use agent::autonomous_learner::AutonomousLearner;
