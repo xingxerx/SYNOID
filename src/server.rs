@@ -118,6 +118,12 @@ async fn stream_video(
     req: Request,
 ) -> impl axum::response::IntoResponse {
     let path = std::path::PathBuf::from(params.path);
+
+    // Security Check: Prevent Path Traversal
+    if !is_safe_path(&path) {
+        return axum::http::StatusCode::FORBIDDEN.into_response();
+    }
+
     if !path.exists() {
         return axum::http::StatusCode::NOT_FOUND.into_response();
     }
@@ -130,4 +136,17 @@ async fn stream_video(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+/// Validates that a path is safe to serve (no absolute paths, no parent directory traversal)
+fn is_safe_path(p: &std::path::Path) -> bool {
+    if p.is_absolute() {
+        return false;
+    }
+    for component in p.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return false;
+        }
+    }
+    true
 }
