@@ -16,3 +16,11 @@ Crucially, **`ffmpeg` and `ffprobe` do NOT support the standard `--` delimiter**
 **Learning:** Returning a raw command string from a helper function forces the caller to re-parse it, which is error-prone. Spaces in arguments are significant and must be preserved. `split_whitespace()` is destructive for shell commands that rely on quoting or escaping.
 
 **Prevention:** Helper functions that generate commands should return `Vec<String>` (a list of arguments) or a `Command` builder object, never a raw `String` intended for shell execution (unless using `sh -c`). This preserves the integrity of individual arguments, regardless of spaces or special characters.
+
+## 2026-10-25 - Path Traversal in Axum File Serving
+
+**Vulnerability:** The `stream_video` endpoint in `src/server.rs` accepted a file path directly from a query parameter and passed it to `tower_http::services::ServeFile`. This allowed arbitrary file read access (e.g., `/etc/passwd`) via path traversal (`../` or absolute paths).
+
+**Learning:** `tower_http::services::ServeFile` does not automatically sandbox requests to a specific root directory when initialized with a single file path. It simply serves the file at that path. When combined with user input, this is dangerous. Even `ServeDir` requires careful configuration to prevent traversal if the underlying filesystem allows it (though `ServeDir` usually handles `..` safely by default *within* the served directory).
+
+**Prevention:** Always validate user-supplied file paths before using them in file serving logic. Ensure paths are relative and do not contain `ParentDir` components. Explicitly check for absolute paths and reject them unless they are within a known safe directory.
