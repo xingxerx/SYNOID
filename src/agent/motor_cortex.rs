@@ -2,8 +2,9 @@ use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
 use crate::agent::vision_tools::VisualScene;
 use crate::agent::voice::transcription::TranscriptSegment;
+use crate::agent::smart_editor;
 use std::path::Path;
-use tracing::info;
+use tracing::{info, warn};
 
 #[allow(dead_code)]
 pub struct MotorCortex {
@@ -123,72 +124,74 @@ impl MotorCortex {
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         info!("[CORTEX] 🧠 Planning Smart Render based on Visual Analysis & Sovereign Ear...");
 
-        // 1. Analyze Scenes
-        // If we have high motion scenes, we use aggressive transitions.
-        // If we have low motion, we use fades.
-
-        let mut transition_plan = Vec::new();
-
-        // Simple logic: Iterating scenes and deciding transition
-        for (i, scene) in visual_data.iter().enumerate() {
-            if i == 0 {
-                continue;
-            } // Skip start
-
-            // Check if this scene change happens during speech
-            let mut is_during_speech = false;
-            for seg in transcript {
-                if scene.timestamp >= seg.start && scene.timestamp <= seg.end {
-                    is_during_speech = true;
-                    break;
-                }
-            }
-
-            let transition = if is_during_speech {
-                // If cutting during speech, prefer seamless cut or very quick mix
-                TransitionType::Cut
-            } else if scene.motion_score > 0.6 {
-                TransitionType::WipeLeft
-            } else if scene.motion_score > 0.3 {
-                TransitionType::Mix
+        // 1. Convert VisualScene to SmartEditor::Scene
+        // We need to estimate end times for each visual scene based on the next timestamp
+        let mut editor_scenes = Vec::new();
+        
+        // We don't have total duration here easily, but we can assume the last scene 
+        // ends at a reasonable point or just let the smart editor's detect_scenes (if we fall back) handle it.
+        // But since we have visual_data, we should use it.
+        
+        for i in 0..visual_data.len() {
+            let start = visual_data[i].timestamp;
+            let end = if i + 1 < visual_data.len() {
+                visual_data[i+1].timestamp
             } else {
-                TransitionType::ZoomPan // Use zoom for low motion/static to add interest
+                // Approximate last scene duration or let it be handled
+                start + 5.0 // Placeholder for last shot (SmartEditor will refine it anyway)
             };
-
-            transition_plan.push((scene.timestamp, transition));
+            
+            if end > start {
+                editor_scenes.push(smart_editor::Scene {
+                    start_time: start,
+                    end_time: end,
+                    duration: end - start,
+                    score: 0.5,
+                });
+            }
         }
 
         info!(
-            "[CORTEX] Generated Plan: {} transitions found.",
-            transition_plan.len()
+            "[CORTEX] 🛠️ Integrating {} visual scenes into Smart Editor pipeline.",
+            editor_scenes.len()
         );
-        for (ts, t) in &transition_plan {
-            info!("  -> At {:.2}s: {:?}", ts, t);
+
+        // 2. Transmit planning to the Smart Editor for higher-order execution (cutting)
+        // We pass the pre-scanned data to avoid redundant FFmpeg passes.
+        let callback: Box<dyn Fn(&str) + Send + Sync> = Box::new(|msg: &str| {
+            info!("{}", msg);
+        });
+
+        // We assume 'funny_mode' is false unless the intent carries specific markers
+        let funny_mode = intent.to_lowercase().contains("funny") || intent.to_lowercase().contains("comedy");
+
+        let transcript_opt = if transcript.is_empty() {
+            None
+        } else {
+            Some(transcript.to_vec())
+        };
+
+        match smart_editor::smart_edit(
+            input,
+            intent,
+            output,
+            funny_mode,
+            Some(callback),
+            Some(editor_scenes),
+            transcript_opt,
+        ).await {
+            Ok(summary) => {
+                info!("[CORTEX] ✅ Smart Edit completed via high-order logic.");
+                Ok(summary)
+            }
+            Err(e) => {
+                warn!("[CORTEX] ⚠️ Smart Edit pipeline failed: {}. Falling back to one-shot filter.", e);
+                // Fallback to the old filter-only method if the complex edit fails
+                self.execute_one_shot_render(intent, input, output, visual_data, _audio_data)
+                    .await
+                    .map(|args| args.join(" "))
+            }
         }
-
-        // For now, we fall back to One Shot Render but log the plan.
-        // Implementing full xfade concatenation requires splitting the video which is complex for a single function.
-        // We will call execute_one_shot_render but with the knowledge that we *would* use these transitions.
-
-        // However, the user wants "Implement Transition Agent".
-        // I should return a string that represents the "filter_complex" if I were to execute it.
-        // But since I can't easily implement the full split-and-merge pipeline here without 'ffmpeg split' logic,
-        // I will stick to logging and calling the standard render for now, or maybe implementing a single transition demo?
-
-        // The Prompt says: "The Motor Cortex generates the xfade string: [v0][v1]xfade=..."
-        // I will generate that string and log it.
-
-        if !transition_plan.is_empty() {
-            let t = SmartTransition {
-                transition_type: transition_plan[0].1.clone(),
-            };
-            let filter = t.generate_filter(0, 1, 1.0, transition_plan[0].0 as f32);
-            info!("[CORTEX] Example Generated Filter: {}", filter);
-        }
-
-        self.execute_one_shot_render(intent, input, output, visual_data, _audio_data)
-            .await
-            .map(|args| args.join(" "))
     }
 
     pub async fn execute_one_shot_render(

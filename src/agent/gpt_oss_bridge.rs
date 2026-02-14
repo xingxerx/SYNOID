@@ -5,7 +5,7 @@
 use crate::agent::multi_agent::NativeTimelineEngine;
 use serde_json::json;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{info, warn};
 
 pub struct SynoidAgent {
     client: reqwest::Client,
@@ -58,7 +58,7 @@ impl SynoidAgent {
                 }
             }
             Err(e) => {
-                error!("LLM Connection Failed: {}", e);
+                warn!("[AGENT] 📡 LLM Connection Failed ({}), falling back to Offline Mode.", e);
                 // Fallback for offline testing
                 Ok(format!("(Offline Mode) Mock response for: {}", request))
             }

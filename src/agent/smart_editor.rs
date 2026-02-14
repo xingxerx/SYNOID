@@ -64,6 +64,7 @@ pub struct EditIntent {
     pub keep_action: bool,
     pub remove_silence: bool,
     pub keep_speech: bool,
+    pub ruthless: bool,
     pub custom_keywords: Vec<String>,
 }
 
@@ -93,6 +94,10 @@ impl EditIntent {
                 || lower.contains("voice")
                 || lower.contains("transcript")
                 || lower.contains("engaging"),
+            ruthless: lower.contains("ruthless")
+                || lower.contains("aggressive")
+                || lower.contains("fast-paced")
+                || lower.contains("no filler"),
             custom_keywords: vec![],
         }
     }
@@ -100,7 +105,7 @@ impl EditIntent {
     /// Check if any editing intent was detected
     #[allow(dead_code)]
     pub fn has_intent(&self) -> bool {
-        self.remove_boring || self.keep_action || self.remove_silence || self.keep_speech
+        self.remove_boring || self.keep_action || self.remove_silence || self.keep_speech || self.ruthless
     }
 }
 
@@ -117,7 +122,7 @@ pub struct Scene {
 pub async fn detect_scenes(
     input: &Path,
     threshold: f64,
-) -> Result<Vec<Scene>, Box<dyn std::error::Error>> {
+) -> Result<Vec<Scene>, Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "[SMART] Detecting scenes in {:?} (threshold: {})",
         input, threshold
@@ -412,12 +417,25 @@ pub fn score_scenes(
             }
         }
 
+        if intent.ruthless {
+            // "Ruthless" mode: Everything is slightly penalized unless it's action or speech
+            // Reduced penalty from -0.2 to -0.1 to avoid filtering everything out
+            score -= 0.1;
+
+            // Prefer even shorter segments
+            if scene.duration < 1.5 {
+                score += 0.2;
+            }
+        }
+
         scene.score = score.clamp(0.0, 1.0);
     }
 
     // 2. Post-Scoring: Integrity Pass
-    // Always apply continuity protection unless we specifically find a reason to skip it
+    // ENHANCEMENT: Always apply continuity protection, even in RUTHLESS mode,
+    // to ensure words aren't cut in half.
     if let Some(segments) = transcript {
+        info!("[SMART] Applying speech continuity protection to prevent mid-word cuts.");
         ensure_speech_continuity(scenes, segments, config);
     }
 }
@@ -429,7 +447,9 @@ pub async fn smart_edit(
     output: &Path,
     funny_mode: bool,
     progress_callback: Option<Box<dyn Fn(&str) + Send + Sync>>,
-) -> Result<String, Box<dyn std::error::Error>> {
+    pre_scanned_scenes: Option<Vec<Scene>>,
+    pre_scanned_transcript: Option<Vec<TranscriptSegment>>,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let log = move |msg: &str| {
         info!("{}", msg);
         if let Some(ref cb) = progress_callback {
@@ -481,7 +501,10 @@ pub async fn smart_edit(
 
     // Transcribe
     log("[SMART] 📝 Transcribing audio for semantic understanding...");
-    let transcript = if use_enhanced_audio {
+    let transcript = if let Some(t) = pre_scanned_transcript {
+        log(&format!("[SMART] Using pre-scanned transcript ({} segments)", t.len()));
+        Some(t)
+    } else if use_enhanced_audio {
         let engine = TranscriptionEngine::new().map_err(|e| e.to_string())?;
         match engine.transcribe(&enhanced_audio_path).await {
             Ok(t) => {
@@ -510,13 +533,18 @@ pub async fn smart_edit(
     // User intent (e.g. "ruthless") should now override transcript protection if desired.
 
     log(&format!(
-        "[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}",
-        intent.remove_boring, intent.keep_action, intent.keep_speech
+        "[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}, ruthless={}",
+        intent.remove_boring, intent.keep_action, intent.keep_speech, intent.ruthless
     ));
 
     // 2. Detect scenes
     log("[SMART] 🔍 Analyzing video scenes...");
-    let mut scenes = detect_scenes(input, config.scene_threshold).await?;
+    let mut scenes = if let Some(s) = pre_scanned_scenes {
+        log(&format!("[SMART] Using pre-scanned scenes ({} scenes)", s.len()));
+        s
+    } else {
+        detect_scenes(input, config.scene_threshold).await?
+    };
 
     // 2.5 Refine scenes with transcript (Split by silences)
     if let Some(t) = &transcript {
@@ -531,10 +559,24 @@ pub async fn smart_edit(
     // 4. Filter scenes to keep (score > threshold)
     let keep_threshold = config.min_scene_score;
     let total_before_filtering = scenes.len();
-    let scenes_to_keep: Vec<Scene> = scenes.into_iter().filter(|s| s.score > keep_threshold).collect();
+    let mut scenes_to_keep: Vec<Scene> = scenes.clone().into_iter().filter(|s| s.score > keep_threshold).collect();
 
-    let total_kept = scenes_to_keep.len();
+    let mut total_kept = scenes_to_keep.len();
     let removed = total_before_filtering - total_kept;
+
+    if scenes_to_keep.is_empty() {
+        log("[SMART] ⚠️ All scenes were filtered out! Triggering Best-of Fallback...");
+        // Sort all scenes by score descending and take the top 3 (or all if < 3)
+        let mut all_scenes = scenes.clone();
+        all_scenes.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        
+        scenes_to_keep = all_scenes.into_iter().take(3).collect();
+        // Sort back by time
+        scenes_to_keep.sort_by(|a, b| a.start_time.partial_cmp(&b.start_time).unwrap_or(std::cmp::Ordering::Equal));
+        
+        total_kept = scenes_to_keep.len();
+        log(&format!("[SMART] 🎯 Fallback: Selected top {} highest-scoring segments.", total_kept));
+    }
 
     log(&format!(
         "[SMART] Keeping {}/{} segments after refinement. Final duration: {:.2}s",
@@ -544,7 +586,7 @@ pub async fn smart_edit(
     ));
 
     if scenes_to_keep.is_empty() {
-        return Err("All scenes were filtered out! Try a less aggressive intent.".into());
+        return Err("Fatal: Could not produce any segments even with fallback.".into());
     }
 
     // 5. Generate concat file or transition Inputs

@@ -37,7 +37,7 @@ pub async fn check_ytdlp() -> bool {
 fn build_ytdlp_info_args(
     url: &str,
     auth_browser: Option<&str>,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut args = vec![
         "-m".to_string(),
         "yt_dlp".to_string(),
@@ -70,7 +70,7 @@ fn build_ytdlp_download_args(
     url: &str,
     output_path: &Path,
     auth_browser: Option<&str>,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut args = vec![
         "-m".to_string(),
         "yt_dlp".to_string(),
@@ -99,7 +99,7 @@ pub async fn download_youtube(
     url: &str,
     output_dir: &Path,
     auth_browser: Option<&str>,
-) -> Result<SourceInfo, Box<dyn std::error::Error>> {
+) -> Result<SourceInfo, Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "[SOURCE] Downloading from YouTube: {} (Auth: {:?})",
         url, auth_browser
@@ -169,7 +169,7 @@ pub async fn download_youtube(
 pub async fn search_youtube(
     query: &str,
     limit: usize,
-) -> Result<Vec<SourceInfo>, Box<dyn std::error::Error>> {
+) -> Result<Vec<SourceInfo>, Box<dyn std::error::Error + Send + Sync>> {
     let search_query = format!("ytsearch{}:{}", limit, query);
     info!("[SOURCE] Searching YouTube: {}", search_query);
 
@@ -221,7 +221,7 @@ pub async fn search_youtube(
 }
 
 /// Get video duration using ffprobe
-pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
+pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
     let safe_path = safe_arg_path(path);
 
     let output = Command::new("ffprobe")

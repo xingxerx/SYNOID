@@ -123,6 +123,7 @@ impl AgentCore {
         intent: &str,
         output: Option<PathBuf>,
         login: Option<&str>,
+        funny_mode: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("📥 Downloading...");
         let sanitized_url = Self::sanitize_input(url);
@@ -142,10 +143,43 @@ impl AgentCore {
                  self.log(&msg);
                  return Err(msg.into());
             }
-            self.log(&format!("[CORE] 📁 Using local file: {}", sanitized_url));
-            (
-                path_obj.file_name().unwrap_or_default().to_string_lossy().to_string(),
+            
+            let final_path = if path_obj.is_dir() {
+                self.log(&format!("[CORE] 📂 Input is a directory. Scanning for video files in {:?}", path_obj));
+                let mut video_file = None;
+                if let Ok(entries) = std::fs::read_dir(path_obj) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            if let Some(ext) = path.extension() {
+                                let ext_str = ext.to_string_lossy().to_lowercase();
+                                if ["mp4", "mkv", "avi", "mov", "webm"].contains(&ext_str.as_str()) {
+                                    // Prefer files that contain "copy" or match part of the intent if possible?
+                                    // For now, let's just pick the first one we find.
+                                    video_file = Some(path);
+                                    break; 
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if let Some(found) = video_file {
+                    self.log(&format!("[CORE] 🎯 Automatically selected video: {:?}", found.file_name().unwrap()));
+                    found
+                } else {
+                    let msg = format!("[CORE] ❌ No video files found in directory: {:?}", path_obj);
+                    self.log(&msg);
+                    return Err(msg.into());
+                }
+            } else {
                 path_obj.to_path_buf()
+            };
+
+            self.log(&format!("[CORE] 📁 Using local file: {:?}", final_path));
+            (
+                final_path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                final_path
             )
         } else {
             if !source_tools::check_ytdlp().await {
@@ -179,7 +213,7 @@ impl AgentCore {
                 self_clone.log(msg);
             });
 
-            match smart_editor::smart_edit(&local_path, intent, &out_path, false, Some(callback)).await {
+            match smart_editor::smart_edit(&local_path, intent, &out_path, funny_mode, Some(callback), None, None).await {
                 Ok(res) => self.log(&format!("[CORE] ✅ {}", res)),
                 Err(e) => self.log(&format!("[CORE] ❌ Edit failed: {}", e)),
             }
@@ -313,34 +347,22 @@ impl AgentCore {
             }
         };
 
-        // 2. Execute — extract args and drop the cortex lock before awaiting
-        let args = {
+        // 2. Execute — Route through Smart Render for deep editing/cutting
+        self.set_status("🧠 Planning & Rendering...");
+        let result = {
             let mut cortex = self.cortex.lock().await;
-            match cortex.execute_one_shot_render(intent, input, output, &visual_data, &audio_data).await {
-                Ok(a) => a,
-                Err(e) => {
-                    self.log(&format!("[CORE] ❌ Embodiment failed: {}", e));
-                    return Err(e.to_string().into());
-                }
+            // execute_smart_render now calls smart_edit which handles transcription and cutting
+            cortex.execute_smart_render(intent, input, output, &visual_data, &[], &audio_data).await
+        };
+
+        match result {
+            Ok(summary) => {
+                self.log(&format!("[CORE] ✅ {}", summary));
             }
-        }; // cortex lock is dropped here
-
-        let cmd_str = args.join(" ");
-        self.log(&format!("[CORE] 🎬 Generated FFmpeg Command: {}", cmd_str));
-
-        if let Some((prog, cmd_args)) = args.split_first() {
-             let mut child = tokio::process::Command::new(prog)
-                .args(cmd_args)
-                .kill_on_drop(true)
-                .spawn()?;
-             
-             let status = child.wait().await?;
-             if status.success() {
-                 self.log("[CORE] ✅ Render Complete");
-             } else {
-                 self.log("[CORE] ❌ Render Failed");
-                 return Err("FFmpeg execution failed".into());
-             }
+            Err(e) => {
+                self.log(&format!("[CORE] ❌ Embodiment failed: {}", e));
+                return Err(e.into());
+            }
         }
 
         // Record success in neuroplasticity so the system speeds up
@@ -410,6 +432,10 @@ impl AgentCore {
 
         self.set_status("⚡ Ready");
         Ok(())
+    }
+
+    pub async fn get_audio_tracks(&self, input: &Path) -> Result<Vec<crate::agent::audio_tools::AudioTrack>, Box<dyn std::error::Error + Send + Sync>> {
+        crate::agent::audio_tools::get_audio_tracks(input).await
     }
 
     // --- Voice Tools ---

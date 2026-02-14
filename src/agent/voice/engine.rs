@@ -25,7 +25,7 @@ pub struct VoiceEngine {
 }
 
 impl VoiceEngine {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let device = Device::Cpu;
 
         let base_dir = dirs::cache_dir()
@@ -47,7 +47,7 @@ impl VoiceEngine {
     }
 
     /// Download TTS model from HuggingFace
-    pub fn download_model(&self, model_id: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    pub fn download_model(&self, model_id: &str) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         info!("[VOICE] Downloading model: {}", model_id);
 
         let api = Api::new()?;
@@ -61,7 +61,7 @@ impl VoiceEngine {
     }
 
     /// Validate profile name to prevent path traversal
-    fn validate_profile_name(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn validate_profile_name(name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if name.is_empty() {
             return Err("Profile name cannot be empty".into());
         }
@@ -82,7 +82,7 @@ impl VoiceEngine {
         &self,
         name: &str,
         audio_path: &Path,
-    ) -> Result<SpeakerProfile, Box<dyn std::error::Error>> {
+    ) -> Result<SpeakerProfile, Box<dyn std::error::Error + Send + Sync>> {
         Self::validate_profile_name(name)?;
         info!("[VOICE] Creating profile '{}' from {:?}", name, audio_path);
 
@@ -108,7 +108,7 @@ impl VoiceEngine {
     }
 
     /// Load existing speaker profile
-    pub fn load_profile(&self, name: &str) -> Result<SpeakerProfile, Box<dyn std::error::Error>> {
+    pub fn load_profile(&self, name: &str) -> Result<SpeakerProfile, Box<dyn std::error::Error + Send + Sync>> {
         Self::validate_profile_name(name)?;
         let profile_path = self.profiles_dir.join(format!("{}.json", name));
         let json = fs::read_to_string(&profile_path)?;
@@ -121,7 +121,7 @@ impl VoiceEngine {
     fn extract_voice_features(
         &self,
         audio_path: &Path,
-    ) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<f32>, Box<dyn std::error::Error + Send + Sync>> {
         // Read WAV file
         let mut reader = hound::WavReader::open(audio_path)?;
         let spec = reader.spec();
@@ -166,7 +166,7 @@ impl VoiceEngine {
     }
 
     /// Generate speech from text (TTS)
-    pub fn speak(&self, text: &str, _output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn speak(&self, text: &str, _output_path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!(
             "[VOICE] (Simulation) Synthesizing to {:?}: \"{}\"",
             _output_path, text
@@ -176,7 +176,7 @@ impl VoiceEngine {
     }
 
     /// Clone voice from audio (legacy method)
-    pub fn clone_voice(&self, audio_path: &Path) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+    pub fn clone_voice(&self, audio_path: &Path) -> Result<Vec<f32>, Box<dyn std::error::Error + Send + Sync>> {
         self.extract_voice_features(audio_path)
     }
 
@@ -186,7 +186,7 @@ impl VoiceEngine {
         text: &str,
         profile_name: &str,
         _output_path: &Path,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // let profile = self.load_profile(profile_name)?;
         info!(
             "[VOICE] (Simulation) Synthesizing as '{}': \"{}\"",

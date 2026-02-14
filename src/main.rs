@@ -365,7 +365,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             chunk_minutes: _,
             login,
         } => {
-            core.process_youtube_intent(&url, &intent, output, login.as_deref()).await?;
+            core.process_youtube_intent(&url, &intent, output, login.as_deref(), false).await?;
         }
         Commands::Research { topic, limit } => {
             core.process_research(&topic, limit).await?;

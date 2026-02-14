@@ -1,7 +1,7 @@
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use std::collections::HashMap;
 use sysinfo::{CpuExt, ProcessExt, System, SystemExt};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 /// The Sentinel monitors system state for anomalies
 pub struct Sentinel {
@@ -106,8 +106,17 @@ impl Sentinel {
         );
 
         match self.agent.reason(&prompt).await {
-            Ok(analysis) => analysis,
-            Err(e) => format!("Analysis failed: {}", e),
+            Ok(analysis) => {
+                if analysis.contains("(Offline Mode)") {
+                    warn!("[SENTINEL] 🛡️ LLM is in Offline Mode. Manual review recommended for: {}", alert);
+                }
+                analysis
+            },
+            Err(e) => {
+                let msg = format!("Analysis failed: {}. Critical alert: {}", e, alert);
+                error!("[SENTINEL] ❌ {}", msg);
+                msg
+            }
         }
     }
 }
