@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::path::{Component, PathBuf};
 use std::sync::Arc;
 use tower::ServiceExt; // For oneshot
 use tower_http::cors::CorsLayer;
@@ -31,15 +32,19 @@ struct StreamParams {
     path: String,
 }
 
-pub async fn start_server(port: u16, state: Arc<KernelState>) {
-    let app = Router::new()
+pub fn create_router(state: Arc<KernelState>) -> Router {
+    Router::new()
         .nest_service("/", ServeDir::new("dashboard"))
         .route("/api/status", get(get_status))
         .route("/api/tasks", get(get_tasks))
         .route("/api/chat", post(handle_chat))
         .route("/api/stream", get(stream_video))
         .with_state(state)
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+}
+
+pub async fn start_server(port: u16, state: Arc<KernelState>) {
+    let app = create_router(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let display_addr = if addr.ip().is_unspecified() {
@@ -113,11 +118,45 @@ async fn handle_chat(
     }
 }
 
+fn validate_stream_path(path_str: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(path_str);
+
+    // 1. Check for ParentDir ('..')
+    for component in path.components() {
+        if let Component::ParentDir = component {
+            return Err("Path traversal detected".to_string());
+        }
+    }
+
+    // 2. Check for Allowed Extensions
+    // Expanded list based on common video/audio formats
+    let allowed_exts = [
+        "mp4", "mkv", "avi", "mov", "webm", "mp3", "wav", "flac", "ogg", "m4a",
+    ];
+    if let Some(ext) = path.extension() {
+        let ext_str = ext.to_string_lossy().to_lowercase();
+        if !allowed_exts.contains(&ext_str.as_str()) {
+            return Err(format!("Invalid file extension: .{}", ext_str));
+        }
+    } else {
+        return Err("No file extension".to_string());
+    }
+
+    Ok(path)
+}
+
 async fn stream_video(
     Query(params): Query<StreamParams>,
     req: Request,
 ) -> impl axum::response::IntoResponse {
-    let path = std::path::PathBuf::from(params.path);
+    let path = match validate_stream_path(&params.path) {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Stream validation failed: {} (Path: {})", e, params.path);
+            return (axum::http::StatusCode::BAD_REQUEST, e).into_response();
+        }
+    };
+
     if !path.exists() {
         return axum::http::StatusCode::NOT_FOUND.into_response();
     }

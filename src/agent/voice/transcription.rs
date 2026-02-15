@@ -1,13 +1,13 @@
 // SYNOID Sovereign Ear
 // Native Rust implementation of Whisper for local, private transcription.
 
+use crate::gpu_backend::get_gpu_context;
 use anyhow::{Context, Result};
 use hf_hub::api::sync::Api;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::info;
-use crate::gpu_backend::get_gpu_context;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

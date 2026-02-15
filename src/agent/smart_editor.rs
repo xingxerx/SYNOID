@@ -105,7 +105,11 @@ impl EditIntent {
     /// Check if any editing intent was detected
     #[allow(dead_code)]
     pub fn has_intent(&self) -> bool {
-        self.remove_boring || self.keep_action || self.remove_silence || self.keep_speech || self.ruthless
+        self.remove_boring
+            || self.keep_action
+            || self.remove_silence
+            || self.keep_speech
+            || self.ruthless
     }
 }
 
@@ -502,7 +506,10 @@ pub async fn smart_edit(
     // Transcribe
     log("[SMART] 📝 Transcribing audio for semantic understanding...");
     let transcript = if let Some(t) = pre_scanned_transcript {
-        log(&format!("[SMART] Using pre-scanned transcript ({} segments)", t.len()));
+        log(&format!(
+            "[SMART] Using pre-scanned transcript ({} segments)",
+            t.len()
+        ));
         Some(t)
     } else if use_enhanced_audio {
         let engine = TranscriptionEngine::new().map_err(|e| e.to_string())?;
@@ -540,7 +547,10 @@ pub async fn smart_edit(
     // 2. Detect scenes
     log("[SMART] 🔍 Analyzing video scenes...");
     let mut scenes = if let Some(s) = pre_scanned_scenes {
-        log(&format!("[SMART] Using pre-scanned scenes ({} scenes)", s.len()));
+        log(&format!(
+            "[SMART] Using pre-scanned scenes ({} scenes)",
+            s.len()
+        ));
         s
     } else {
         detect_scenes(input, config.scene_threshold).await?
@@ -559,7 +569,11 @@ pub async fn smart_edit(
     // 4. Filter scenes to keep (score > threshold)
     let keep_threshold = config.min_scene_score;
     let total_before_filtering = scenes.len();
-    let mut scenes_to_keep: Vec<Scene> = scenes.clone().into_iter().filter(|s| s.score > keep_threshold).collect();
+    let mut scenes_to_keep: Vec<Scene> = scenes
+        .clone()
+        .into_iter()
+        .filter(|s| s.score > keep_threshold)
+        .collect();
 
     let mut total_kept = scenes_to_keep.len();
     let removed = total_before_filtering - total_kept;
@@ -568,14 +582,25 @@ pub async fn smart_edit(
         log("[SMART] ⚠️ All scenes were filtered out! Triggering Best-of Fallback...");
         // Sort all scenes by score descending and take the top 3 (or all if < 3)
         let mut all_scenes = scenes.clone();
-        all_scenes.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        
+        all_scenes.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         scenes_to_keep = all_scenes.into_iter().take(3).collect();
         // Sort back by time
-        scenes_to_keep.sort_by(|a, b| a.start_time.partial_cmp(&b.start_time).unwrap_or(std::cmp::Ordering::Equal));
-        
+        scenes_to_keep.sort_by(|a, b| {
+            a.start_time
+                .partial_cmp(&b.start_time)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         total_kept = scenes_to_keep.len();
-        log(&format!("[SMART] 🎯 Fallback: Selected top {} highest-scoring segments.", total_kept));
+        log(&format!(
+            "[SMART] 🎯 Fallback: Selected top {} highest-scoring segments.",
+            total_kept
+        ));
     }
 
     log(&format!(
@@ -866,14 +891,14 @@ mod tests {
         ];
 
         let refined = refine_scenes_with_transcript(scenes, &transcript);
-        
+
         // Expected:
         // 0-1: Silence (score: 0.0)
         // 1-3: Speech (score: 0.5 initially)
         // 3-7: Silence (score: 0.0)
         // 7-9: Speech
         // 9-10: Silence
-        
+
         assert_eq!(refined.len(), 5);
         assert_eq!(refined[0].score, 0.0);
         assert_eq!(refined[1].score, 0.5);
@@ -882,20 +907,18 @@ mod tests {
 
     #[test]
     fn test_scoring_logic() {
-        let mut scenes = vec![
-            Scene {
-                start_time: 0.0,
-                end_time: 5.0,
-                duration: 5.0,
-                score: 0.5,
-            },
-        ];
+        let mut scenes = vec![Scene {
+            start_time: 0.0,
+            end_time: 5.0,
+            duration: 5.0,
+            score: 0.5,
+        }];
 
         let intent = EditIntent::from_text("remove boring");
         let config = EditingStrategy::default();
-        
+
         score_scenes(&mut scenes, &intent, None, &config);
-        
+
         // No transcript provided, neutral score should remain around 0.3-0.5
         assert!(scenes[0].score >= 0.3);
     }

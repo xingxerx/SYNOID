@@ -47,7 +47,10 @@ impl VoiceEngine {
     }
 
     /// Download TTS model from HuggingFace
-    pub fn download_model(&self, model_id: &str) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn download_model(
+        &self,
+        model_id: &str,
+    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         info!("[VOICE] Downloading model: {}", model_id);
 
         let api = Api::new()?;
@@ -108,7 +111,10 @@ impl VoiceEngine {
     }
 
     /// Load existing speaker profile
-    pub fn load_profile(&self, name: &str) -> Result<SpeakerProfile, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn load_profile(
+        &self,
+        name: &str,
+    ) -> Result<SpeakerProfile, Box<dyn std::error::Error + Send + Sync>> {
         Self::validate_profile_name(name)?;
         let profile_path = self.profiles_dir.join(format!("{}.json", name));
         let json = fs::read_to_string(&profile_path)?;
@@ -166,7 +172,11 @@ impl VoiceEngine {
     }
 
     /// Generate speech from text (TTS)
-    pub fn speak(&self, text: &str, _output_path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub fn speak(
+        &self,
+        text: &str,
+        _output_path: &Path,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!(
             "[VOICE] (Simulation) Synthesizing to {:?}: \"{}\"",
             _output_path, text
@@ -176,7 +186,10 @@ impl VoiceEngine {
     }
 
     /// Clone voice from audio (legacy method)
-    pub fn clone_voice(&self, audio_path: &Path) -> Result<Vec<f32>, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn clone_voice(
+        &self,
+        audio_path: &Path,
+    ) -> Result<Vec<f32>, Box<dyn std::error::Error + Send + Sync>> {
         self.extract_voice_features(audio_path)
     }
 

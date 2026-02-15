@@ -20,7 +20,9 @@ pub struct AudioTrack {
 }
 
 /// Scan audio for beats and stats
-pub async fn scan_audio(path: &Path) -> Result<AudioAnalysis, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn scan_audio(
+    path: &Path,
+) -> Result<AudioAnalysis, Box<dyn std::error::Error + Send + Sync>> {
     info!("[EARS] Performing deep transient analysis: {:?}", path);
 
     // TODO: Integrate FFmpeg 'ebur128' or 'showwavespic' to extract real waveform data
@@ -39,15 +41,21 @@ pub async fn scan_audio(path: &Path) -> Result<AudioAnalysis, Box<dyn std::error
 }
 
 /// Get all audio tracks from a file using ffprobe
-pub async fn get_audio_tracks(path: &Path) -> Result<Vec<AudioTrack>, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn get_audio_tracks(
+    path: &Path,
+) -> Result<Vec<AudioTrack>, Box<dyn std::error::Error + Send + Sync>> {
     let safe_path = crate::agent::production_tools::safe_arg_path(path);
 
     let output = tokio::process::Command::new("ffprobe")
         .args([
-            "-v", "error",
-            "-select_streams", "a",
-            "-show_entries", "stream=index:stream_tags=title,language",
-            "-of", "json",
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=index:stream_tags=title,language",
+            "-of",
+            "json",
         ])
         .arg(&safe_path)
         .output()
@@ -61,8 +69,15 @@ pub async fn get_audio_tracks(path: &Path) -> Result<Vec<AudioTrack>, Box<dyn st
         for stream in streams {
             let index = stream.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
             let tags = stream.get("tags");
-            let title = tags.and_then(|t| t.get("title")).and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-            let language = tags.and_then(|t| t.get("language")).and_then(|v| v.as_str()).map(|s| s.to_string());
+            let title = tags
+                .and_then(|t| t.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            let language = tags
+                .and_then(|t| t.get("language"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             tracks.push(AudioTrack {
                 index,

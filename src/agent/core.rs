@@ -9,15 +9,15 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::info;
 
-use crate::agent::brain::Brain;
-use crate::agent::motor_cortex::MotorCortex;
-use crate::agent::source_tools;
-use crate::agent::production_tools;
-use crate::agent::vector_engine::{self, VectorConfig};
-use crate::agent::unified_pipeline::{UnifiedPipeline, PipelineConfig, PipelineStage};
-use crate::agent::voice::VoiceEngine;
-use crate::agent::defense::{IntegrityGuard, Sentinel};
 use crate::agent::autonomous_learner::AutonomousLearner;
+use crate::agent::brain::Brain;
+use crate::agent::defense::{IntegrityGuard, Sentinel};
+use crate::agent::motor_cortex::MotorCortex;
+use crate::agent::production_tools;
+use crate::agent::source_tools;
+use crate::agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipeline};
+use crate::agent::vector_engine::{self, VectorConfig};
+use crate::agent::voice::VoiceEngine;
 use crate::gpu_backend;
 
 /// The shared state of the agent
@@ -48,7 +48,7 @@ impl AgentCore {
             api_url: api_url.to_string(),
             status: Arc::new(Mutex::new("⚡ System Ready".to_string())),
             logs: Arc::new(Mutex::new(vec![
-                "[SYSTEM] SYNOID Core initialized.".to_string(),
+                "[SYSTEM] SYNOID Core initialized.".to_string()
             ])),
             brain: Arc::new(AsyncMutex::new(Brain::new(api_url, "gpt-oss:20b"))),
             cortex: Arc::new(AsyncMutex::new(MotorCortex::new(api_url))),
@@ -92,7 +92,10 @@ impl AgentCore {
     }
 
     pub fn get_status(&self) -> String {
-        self.status.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn get_logs(&self) -> Vec<String> {
@@ -103,7 +106,7 @@ impl AgentCore {
 
     fn sanitize_input(input: &str) -> String {
         let mut s = input.trim().to_string();
-        
+
         // Remove surrounding quotes if they exist
         if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
             s.remove(0);
@@ -133,19 +136,25 @@ impl AgentCore {
         let path_obj = Path::new(&sanitized_url);
 
         // Check if input is a local file string or has a drive letter
-        let is_local = path_obj.exists() 
+        let is_local = path_obj.exists()
             || (sanitized_url.len() > 1 && sanitized_url.chars().nth(1) == Some(':'))
             || sanitized_url.starts_with("\\\\"); // UNC Path Support
 
         let (title, local_path) = if is_local {
             if !path_obj.exists() {
-                 let msg = format!("[CORE] ❌ Local file check failed: '{}' not found.", sanitized_url);
-                 self.log(&msg);
-                 return Err(msg.into());
+                let msg = format!(
+                    "[CORE] ❌ Local file check failed: '{}' not found.",
+                    sanitized_url
+                );
+                self.log(&msg);
+                return Err(msg.into());
             }
-            
+
             let final_path = if path_obj.is_dir() {
-                self.log(&format!("[CORE] 📂 Input is a directory. Scanning for video files in {:?}", path_obj));
+                self.log(&format!(
+                    "[CORE] 📂 Input is a directory. Scanning for video files in {:?}",
+                    path_obj
+                ));
                 let mut video_file = None;
                 if let Ok(entries) = std::fs::read_dir(path_obj) {
                     for entry in entries.flatten() {
@@ -153,22 +162,29 @@ impl AgentCore {
                         if path.is_file() {
                             if let Some(ext) = path.extension() {
                                 let ext_str = ext.to_string_lossy().to_lowercase();
-                                if ["mp4", "mkv", "avi", "mov", "webm"].contains(&ext_str.as_str()) {
+                                if ["mp4", "mkv", "avi", "mov", "webm"].contains(&ext_str.as_str())
+                                {
                                     // Prefer files that contain "copy" or match part of the intent if possible?
                                     // For now, let's just pick the first one we find.
                                     video_file = Some(path);
-                                    break; 
+                                    break;
                                 }
                             }
                         }
                     }
                 }
-                
+
                 if let Some(found) = video_file {
-                    self.log(&format!("[CORE] 🎯 Automatically selected video: {:?}", found.file_name().unwrap()));
+                    self.log(&format!(
+                        "[CORE] 🎯 Automatically selected video: {:?}",
+                        found.file_name().unwrap()
+                    ));
                     found
                 } else {
-                    let msg = format!("[CORE] ❌ No video files found in directory: {:?}", path_obj);
+                    let msg = format!(
+                        "[CORE] ❌ No video files found in directory: {:?}",
+                        path_obj
+                    );
                     self.log(&msg);
                     return Err(msg.into());
                 }
@@ -178,8 +194,12 @@ impl AgentCore {
 
             self.log(&format!("[CORE] 📁 Using local file: {:?}", final_path));
             (
-                final_path.file_name().unwrap_or_default().to_string_lossy().to_string(),
                 final_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                final_path,
             )
         } else {
             if !source_tools::check_ytdlp().await {
@@ -213,15 +233,25 @@ impl AgentCore {
                 self_clone.log(msg);
             });
 
-            match smart_editor::smart_edit(&local_path, intent, &out_path, funny_mode, Some(callback), None, None).await {
+            match smart_editor::smart_edit(
+                &local_path,
+                intent,
+                &out_path,
+                funny_mode,
+                Some(callback),
+                None,
+                None,
+            )
+            .await
+            {
                 Ok(res) => self.log(&format!("[CORE] ✅ {}", res)),
                 Err(e) => self.log(&format!("[CORE] ❌ Edit failed: {}", e)),
             }
         } else {
             if let Err(e) = std::fs::copy(&local_path, &out_path) {
-                 self.log(&format!("[CORE] ❌ Copy failed: {}", e));
+                self.log(&format!("[CORE] ❌ Copy failed: {}", e));
             } else {
-                 self.log(&format!("[CORE] ✅ Saved to {:?}", out_path));
+                self.log(&format!("[CORE] ✅ Saved to {:?}", out_path));
             }
         }
 
@@ -229,7 +259,11 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn process_research(&self, topic: &str, limit: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn process_research(
+        &self,
+        topic: &str,
+        limit: usize,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status(&format!("🕵️ Researching: {}", topic));
         self.log(&format!("[CORE] Researching topic: {}", topic));
 
@@ -237,8 +271,16 @@ impl AgentCore {
             Ok(results) => {
                 self.log(&format!("[CORE] === 📚 Results: '{}' ===", topic));
                 for (i, source) in results.iter().enumerate() {
-                    self.log(&format!("{}. {} (Duration: {:.1} min)", i+1, source.title, source.duration / 60.0));
-                    self.log(&format!("   URL: {}", source.original_url.as_deref().unwrap_or("Unknown")));
+                    self.log(&format!(
+                        "{}. {} (Duration: {:.1} min)",
+                        i + 1,
+                        source.title,
+                        source.duration / 60.0
+                    ));
+                    self.log(&format!(
+                        "   URL: {}",
+                        source.original_url.as_deref().unwrap_or("Unknown")
+                    ));
                 }
             }
             Err(e) => {
@@ -266,7 +308,10 @@ impl AgentCore {
 
         match production_tools::trim_video(input, start, duration, &out_path).await {
             Ok(res) => {
-                self.log(&format!("[CORE] ✂️ Clip saved: {:?} ({:.2} MB)", res.output_path, res.size_mb));
+                self.log(&format!(
+                    "[CORE] ✂️ Clip saved: {:?} ({:.2} MB)",
+                    res.output_path, res.size_mb
+                ));
             }
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Clipping failed: {}", e));
@@ -291,7 +336,10 @@ impl AgentCore {
 
         match production_tools::compress_video(input, size_mb, &out_path).await {
             Ok(res) => {
-                self.log(&format!("[CORE] 📦 Compressed saved: {:?} ({:.2} MB)", res.output_path, res.size_mb));
+                self.log(&format!(
+                    "[CORE] 📦 Compressed saved: {:?} ({:.2} MB)",
+                    res.output_path, res.size_mb
+                ));
             }
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Compression failed: {}", e));
@@ -302,7 +350,10 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn process_brain_request(&self, request: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn process_brain_request(
+        &self,
+        request: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🧠 Thinking...");
         self.log(&format!("[CORE] Brain Request: {}", request));
 
@@ -325,8 +376,8 @@ impl AgentCore {
         self.set_status("🤖 Embodying...");
         self.log(&format!("[CORE] Embodied Agent Activating for: {}", intent));
 
-        use crate::agent::vision_tools;
         use crate::agent::audio_tools;
+        use crate::agent::vision_tools;
 
         // 1. Scan Context
         self.log("[CORE] Scanning visual context...");
@@ -352,7 +403,9 @@ impl AgentCore {
         let result = {
             let mut cortex = self.cortex.lock().await;
             // execute_smart_render now calls smart_edit which handles transcription and cutting
-            cortex.execute_smart_render(intent, input, output, &visual_data, &[], &audio_data).await
+            cortex
+                .execute_smart_render(intent, input, output, &visual_data, &[], &audio_data)
+                .await
         };
 
         match result {
@@ -375,16 +428,26 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn learn_style(&self, input: &Path, name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn learn_style(
+        &self,
+        input: &Path,
+        name: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status(&format!("🎓 Learning '{}'...", name));
-        self.log(&format!("[CORE] Analyzing style '{}' from {:?}", name, input));
+        self.log(&format!(
+            "[CORE] Analyzing style '{}' from {:?}",
+            name, input
+        ));
 
         use crate::agent::academy::{StyleLibrary, TechniqueExtractor};
         // Stub implementation from main.rs
         let _lib = StyleLibrary::new();
         let _extractor = TechniqueExtractor {};
 
-        self.log(&format!("[CORE] ✅ Analyzed style '{}'. Saved to library.", name));
+        self.log(&format!(
+            "[CORE] ✅ Analyzed style '{}'. Saved to library.",
+            name
+        ));
         self.set_status("⚡ Ready");
         Ok(())
     }
@@ -420,7 +483,10 @@ impl AgentCore {
         output: &Path,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status(&format!("🔎 Upscaling {:.1}x...", scale));
-        self.log(&format!("[CORE] Infinite Upscale (Scale: {:.1}x) on {:?}", scale, input));
+        self.log(&format!(
+            "[CORE] Infinite Upscale (Scale: {:.1}x) on {:?}",
+            scale, input
+        ));
 
         match vector_engine::upscale_video(input, scale, output).await {
             Ok(msg) => self.log(&format!("[CORE] ✅ {}", msg)),
@@ -434,7 +500,11 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn get_audio_tracks(&self, input: &Path) -> Result<Vec<crate::agent::audio_tools::AudioTrack>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_audio_tracks(
+        &self,
+        input: &Path,
+    ) -> Result<Vec<crate::agent::audio_tools::AudioTrack>, Box<dyn std::error::Error + Send + Sync>>
+    {
         crate::agent::audio_tools::get_audio_tracks(input).await
     }
 
@@ -452,19 +522,27 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn voice_record(&self, output: Option<PathBuf>, duration: u32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn voice_record(
+        &self,
+        output: Option<PathBuf>,
+        duration: u32,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🎙️ Recording...");
         use crate::agent::voice::AudioIO;
         let audio_io = AudioIO::new();
 
         let out_path = output.unwrap_or_else(|| PathBuf::from("voice_sample.wav"));
 
-        match tokio::task::spawn_blocking(move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-            audio_io.record_to_file(&out_path, duration).map_err(|e| {
-                let boxed: Box<dyn std::error::Error + Send + Sync> = e.to_string().into();
-                boxed
-            })
-        }).await? {
+        match tokio::task::spawn_blocking(
+            move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+                audio_io.record_to_file(&out_path, duration).map_err(|e| {
+                    let boxed: Box<dyn std::error::Error + Send + Sync> = e.to_string().into();
+                    boxed
+                })
+            },
+        )
+        .await?
+        {
             Ok(_) => self.log(&format!("[CORE] ✅ Recorded {} seconds", duration)),
             Err(e) => self.log(&format!("[CORE] ❌ Recording failed: {}", e)),
         }
@@ -490,14 +568,21 @@ impl AgentCore {
         if let Some(name) = profile_name {
             self.log(&format!("[CORE] Creating voice profile '{}'...", name));
             match engine.create_profile(&name, audio_path) {
-                Ok(p) => self.log(&format!("[CORE] ✅ Profile '{}' created ({} dims)", p.name, p.embedding.len())),
+                Ok(p) => self.log(&format!(
+                    "[CORE] ✅ Profile '{}' created ({} dims)",
+                    p.name,
+                    p.embedding.len()
+                )),
                 Err(e) => self.log(&format!("[CORE] ❌ Profile creation failed: {}", e)),
             }
         } else {
-             match engine.clone_voice(audio_path) {
-                Ok(embedding) => self.log(&format!("[CORE] ✅ Voice cloned. Embedding: {} dims", embedding.len())),
+            match engine.clone_voice(audio_path) {
+                Ok(embedding) => self.log(&format!(
+                    "[CORE] ✅ Voice cloned. Embedding: {} dims",
+                    embedding.len()
+                )),
                 Err(e) => self.log(&format!("[CORE] ❌ Clone failed: {}", e)),
-             }
+            }
         }
 
         self.set_status("⚡ Ready");
@@ -512,8 +597,8 @@ impl AgentCore {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🗣️ Speaking...");
         if let Err(e) = self.ensure_voice_engine() {
-             self.log(&format!("[CORE] ❌ Engine init failed: {}", e));
-             return Err(e);
+            self.log(&format!("[CORE] ❌ Engine init failed: {}", e));
+            return Err(e);
         }
 
         let out_path = output.unwrap_or_else(|| PathBuf::from("tts_output.wav"));
@@ -541,7 +626,9 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn download_voice_model(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn download_voice_model(
+        &self,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("📥 Downloading Model...");
         if let Err(e) = self.ensure_voice_engine() {
             return Err(e);
@@ -573,9 +660,9 @@ impl AgentCore {
 
         let parsed_stages = PipelineStage::parse_list(stages_str);
         if parsed_stages.is_empty() {
-             let msg = "No valid stages specified.";
-             self.log(&format!("[CORE] ❌ {}", msg));
-             return Err(msg.into());
+            let msg = "No valid stages specified.";
+            self.log(&format!("[CORE] ❌ {}", msg));
+            return Err(msg.into());
         }
 
         // Initialize pipeline lazily
@@ -654,9 +741,9 @@ impl AgentCore {
 
         let mut learner_guard = self.autonomous_learner.lock().unwrap();
         if learner_guard.is_none() {
-             // Create new learner sharing the same brain
-             let learner = AutonomousLearner::new(self.brain.clone());
-             *learner_guard = Some(learner);
+            // Create new learner sharing the same brain
+            let learner = AutonomousLearner::new(self.brain.clone());
+            *learner_guard = Some(learner);
         }
 
         if let Some(learner) = learner_guard.as_ref() {
@@ -683,25 +770,31 @@ mod tests {
     fn test_sanitize_input() {
         // Test trimming
         assert_eq!(AgentCore::sanitize_input("  test  "), "test");
-        
+
         // Test surrounding quotes
         assert_eq!(AgentCore::sanitize_input("\"C:\\Path\""), "C:\\Path");
         assert_eq!(AgentCore::sanitize_input("'C:\\Path'"), "C:\\Path");
 
         // Test hidden control characters (LRE \u{202a})
         let input = "\u{202a}C:\\Users\\xing\\Videos\\test.mp4";
-        assert_eq!(AgentCore::sanitize_input(input), "C:\\Users\\xing\\Videos\\test.mp4");
+        assert_eq!(
+            AgentCore::sanitize_input(input),
+            "C:\\Users\\xing\\Videos\\test.mp4"
+        );
 
         // Test combination
         let complex = "  \u{202a}\"C:\\Path With Spaces\\test.mp4\"  ";
-        assert_eq!(AgentCore::sanitize_input(complex), "C:\\Path With Spaces\\test.mp4");
+        assert_eq!(
+            AgentCore::sanitize_input(complex),
+            "C:\\Path With Spaces\\test.mp4"
+        );
     }
 
     #[test]
     fn test_is_local_robustness() {
         // This is a bit tricky because Path::exists() depends on the FS.
         // But we can test the string-based logic.
-        
+
         let drive_path = "C:\\Videos\\test.mp4";
         assert!(drive_path.len() > 1 && drive_path.chars().nth(1) == Some(':'));
 

@@ -50,4 +50,3 @@ impl StyleLibrary {
 pub struct TechniqueExtractor {}
 pub mod code_scanner;
 pub mod url_reader;
-

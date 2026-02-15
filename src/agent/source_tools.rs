@@ -221,7 +221,9 @@ pub async fn search_youtube(
 }
 
 /// Get video duration using ffprobe
-pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn get_video_duration(
+    path: &Path,
+) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
     let safe_path = safe_arg_path(path);
 
     let output = Command::new("ffprobe")

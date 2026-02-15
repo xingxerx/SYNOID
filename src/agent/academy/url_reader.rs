@@ -28,7 +28,10 @@ impl UrlReader {
     }
 
     /// Ingest a URL and return a learned editing pattern
-    pub async fn ingest(&self, url: &str) -> Result<LearnedPattern, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn ingest(
+        &self,
+        url: &str,
+    ) -> Result<LearnedPattern, Box<dyn std::error::Error + Send + Sync>> {
         info!("[SENSES] Ingesting URL: {}", url);
 
         let parsed_url = Url::parse(url)?;
@@ -49,7 +52,10 @@ impl UrlReader {
     }
 
     /// Learn from a video URL (Visual Analysis)
-    async fn ingest_video(&self, url: &str) -> Result<LearnedPattern, Box<dyn std::error::Error + Send + Sync>> {
+    async fn ingest_video(
+        &self,
+        url: &str,
+    ) -> Result<LearnedPattern, Box<dyn std::error::Error + Send + Sync>> {
         info!("[SENSES] Detected Video URL. Initiating Visual Analysis...");
 
         // 1. Download metadata via yt-dlp (requires local install)

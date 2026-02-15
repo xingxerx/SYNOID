@@ -108,10 +108,13 @@ impl Sentinel {
         match self.agent.reason(&prompt).await {
             Ok(analysis) => {
                 if analysis.contains("(Offline Mode)") {
-                    warn!("[SENTINEL] 🛡️ LLM is in Offline Mode. Manual review recommended for: {}", alert);
+                    warn!(
+                        "[SENTINEL] 🛡️ LLM is in Offline Mode. Manual review recommended for: {}",
+                        alert
+                    );
                 }
                 analysis
-            },
+            }
             Err(e) => {
                 let msg = format!("Analysis failed: {}. Critical alert: {}", e, alert);
                 error!("[SENTINEL] ❌ {}", msg);

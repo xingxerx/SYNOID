@@ -16,3 +16,11 @@ Crucially, **`ffmpeg` and `ffprobe` do NOT support the standard `--` delimiter**
 **Learning:** Returning a raw command string from a helper function forces the caller to re-parse it, which is error-prone. Spaces in arguments are significant and must be preserved. `split_whitespace()` is destructive for shell commands that rely on quoting or escaping.
 
 **Prevention:** Helper functions that generate commands should return `Vec<String>` (a list of arguments) or a `Command` builder object, never a raw `String` intended for shell execution (unless using `sh -c`). This preserves the integrity of individual arguments, regardless of spaces or special characters.
+
+## 2026-10-26 - Arbitrary File Read (Path Traversal) in API
+
+**Vulnerability:** The `/api/stream` endpoint in `src/server.rs` served files using `tower_http::services::ServeFile` with paths provided directly by user query parameters. This allowed traversal (`..`) to arbitrary files on the system (e.g., `/etc/passwd`), exposing sensitive data to any client, including malicious websites via CORS.
+
+**Learning:** `tower_http::services::ServeFile` does NOT automatically sandbox file access to the current directory or a specific root unless used with `ServeDir`. When constructing `ServeFile` from a user-provided path, manual validation is mandatory to prevent traversal and enforce expected file types.
+
+**Prevention:** Always validate user-provided paths before passing them to file serving utilities. Reject paths containing `ParentDir` (`..`) components and enforce a whitelist of allowed file extensions (e.g., `.mp4`, `.mkv`) to restrict access to intended media only.
