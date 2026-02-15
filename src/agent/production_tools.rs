@@ -175,7 +175,10 @@ pub async fn compress_video(
 }
 
 /// Enhance audio using vocal processing chain (EQ -> Compression -> Normalization)
-pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn enhance_audio(
+    input: &Path,
+    output: &Path,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("[PROD] Enhancing audio: {:?}", input);
 
     // Filter Chain:

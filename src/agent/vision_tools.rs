@@ -16,17 +16,15 @@ pub struct VisualScene {
 /// Scan video for visual scenes using FFmpeg/FFprobe
 /// In a real implementation this might call Cuda kernels, but here we perform a simulated scan
 /// or use ffprobe's scene detection filter.
-pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn scan_visual(
+    path: &Path,
+) -> Result<Vec<VisualScene>, Box<dyn std::error::Error + Send + Sync>> {
     info!("[EYES] Scanning visual content: {:?}", path);
 
     // Using ffmpeg to detect scene changes (>0.3 difference)
     // metadata=print:file=- outputs metadata to stdout
     let output = Command::new("ffmpeg")
-        .args([
-            "-v",
-            "error",
-            "-i",
-        ])
+        .args(["-v", "error", "-i"])
         .arg(path)
         .args([
             "-vf",
@@ -62,7 +60,7 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
         // FFmpeg metadata output looks like:
         // frame:0    pts:21      pts_time:0.021029
         // lavfi.scene_score=0.450000
-        
+
         if line.contains("pts_time:") {
             if let Some(ts_str) = line.split("pts_time:").last() {
                 if let Ok(ts) = ts_str.trim().parse::<f64>() {

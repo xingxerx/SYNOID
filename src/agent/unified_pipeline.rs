@@ -217,7 +217,16 @@ impl UnifiedPipeline {
         let callback: Option<Box<dyn Fn(&str) + Send + Sync>> = progress_cb
             .map(|cb| Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send + Sync>);
 
-        smart_editor::smart_edit(input, intent, output, config.funny_mode, callback, None, None).await?;
+        smart_editor::smart_edit(
+            input,
+            intent,
+            output,
+            config.funny_mode,
+            callback,
+            None,
+            None,
+        )
+        .await?;
 
         Ok(output.to_path_buf())
     }

@@ -1,8 +1,8 @@
 use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
+use crate::agent::smart_editor;
 use crate::agent::vision_tools::VisualScene;
 use crate::agent::voice::transcription::TranscriptSegment;
-use crate::agent::smart_editor;
 use std::path::Path;
 use tracing::{info, warn};
 
@@ -127,20 +127,20 @@ impl MotorCortex {
         // 1. Convert VisualScene to SmartEditor::Scene
         // We need to estimate end times for each visual scene based on the next timestamp
         let mut editor_scenes = Vec::new();
-        
-        // We don't have total duration here easily, but we can assume the last scene 
+
+        // We don't have total duration here easily, but we can assume the last scene
         // ends at a reasonable point or just let the smart editor's detect_scenes (if we fall back) handle it.
         // But since we have visual_data, we should use it.
-        
+
         for i in 0..visual_data.len() {
             let start = visual_data[i].timestamp;
             let end = if i + 1 < visual_data.len() {
-                visual_data[i+1].timestamp
+                visual_data[i + 1].timestamp
             } else {
                 // Approximate last scene duration or let it be handled
                 start + 5.0 // Placeholder for last shot (SmartEditor will refine it anyway)
             };
-            
+
             if end > start {
                 editor_scenes.push(smart_editor::Scene {
                     start_time: start,
@@ -163,7 +163,8 @@ impl MotorCortex {
         });
 
         // We assume 'funny_mode' is false unless the intent carries specific markers
-        let funny_mode = intent.to_lowercase().contains("funny") || intent.to_lowercase().contains("comedy");
+        let funny_mode =
+            intent.to_lowercase().contains("funny") || intent.to_lowercase().contains("comedy");
 
         let transcript_opt = if transcript.is_empty() {
             None
@@ -179,13 +180,18 @@ impl MotorCortex {
             Some(callback),
             Some(editor_scenes),
             transcript_opt,
-        ).await {
+        )
+        .await
+        {
             Ok(summary) => {
                 info!("[CORTEX] ✅ Smart Edit completed via high-order logic.");
                 Ok(summary)
             }
             Err(e) => {
-                warn!("[CORTEX] ⚠️ Smart Edit pipeline failed: {}. Falling back to one-shot filter.", e);
+                warn!(
+                    "[CORTEX] ⚠️ Smart Edit pipeline failed: {}. Falling back to one-shot filter.",
+                    e
+                );
                 // Fallback to the old filter-only method if the complex edit fails
                 self.execute_one_shot_render(intent, input, output, visual_data, _audio_data)
                     .await

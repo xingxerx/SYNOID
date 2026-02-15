@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use crate::agent::brain::{Brain, Intent};
-use crate::agent::{source_tools, academy::code_scanner::CodeScanner};
+use crate::agent::{academy::code_scanner::CodeScanner, source_tools};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -181,41 +181,45 @@ impl AutonomousLearner {
                     Err(e) => error!("[LEARNER] Search failed for topic '{}': {}", topic, e),
                 }
 
-
-
                 // 2. Interleaved Code Analysis (Stealthy)
                 // Random chance or round-robin to scan a repo file
                 if topic_index % 3 == 0 {
-                   let repo_url = &repos[topic_index % repos.len()];
-                   info!("[LEARNER] 🕵️ Switching mode: Stealth Analysis on {}", repo_url);
-                   
-                   match scanner.scan_remote_code(repo_url).await {
-                       Ok(concept) => {
-                             info!("[LEARNER] 💡 Discovered Logic: '{}' ({})", concept.logic_summary, concept.file_type);
-                             
-                             // Memorize the abstract concept
-                             let mut brain_lock = brain.lock().await;
-                             // We map this to a "Conceptual" pattern
-                             let pattern = crate::agent::learning::EditingPattern {
+                    let repo_url = &repos[topic_index % repos.len()];
+                    info!(
+                        "[LEARNER] 🕵️ Switching mode: Stealth Analysis on {}",
+                        repo_url
+                    );
+
+                    match scanner.scan_remote_code(repo_url).await {
+                        Ok(concept) => {
+                            info!(
+                                "[LEARNER] 💡 Discovered Logic: '{}' ({})",
+                                concept.logic_summary, concept.file_type
+                            );
+
+                            // Memorize the abstract concept
+                            let mut brain_lock = brain.lock().await;
+                            // We map this to a "Conceptual" pattern
+                            let pattern = crate::agent::learning::EditingPattern {
                                 intent_tag: format!("algo_{}", concept.file_type),
                                 avg_scene_duration: 0.0, // N/A
                                 transition_speed: 1.0,
                                 music_sync_strictness: 0.0,
                                 color_grade_style: "algorithmic".to_string(),
                                 success_rating: 5,
-                             };
-                             brain_lock.learning_kernel.memorize(&format!("algo_{}", concept.file_type), pattern);
-                             brain_lock.neuroplasticity.record_success();
-                             // We don't save the code, just the "success" of learning
-                             info!("[LEARNER] 🧠 Integrated concept into neuroplasticity network.");
-                       }
-                       Err(e) => {
-                           warn!("[LEARNER] Analysis skipped (Stealth Mode): {}", e);
-                       }
-                   }
+                            };
+                            brain_lock
+                                .learning_kernel
+                                .memorize(&format!("algo_{}", concept.file_type), pattern);
+                            brain_lock.neuroplasticity.record_success();
+                            // We don't save the code, just the "success" of learning
+                            info!("[LEARNER] 🧠 Integrated concept into neuroplasticity network.");
+                        }
+                        Err(e) => {
+                            warn!("[LEARNER] Analysis skipped (Stealth Mode): {}", e);
+                        }
+                    }
                 }
-
-
 
                 // 3. Interleaved Theory Learning (Wikipedia)
                 if topic_index % 3 == 1 {
@@ -246,7 +250,9 @@ impl AutonomousLearner {
                                         color_grade_style: "theoretical".to_string(),
                                         success_rating: 5,
                                     };
-                                    brain_lock.learning_kernel.memorize(&format!("theory_{}", title), mem_pattern);
+                                    brain_lock
+                                        .learning_kernel
+                                        .memorize(&format!("theory_{}", title), mem_pattern);
                                     brain_lock.neuroplasticity.record_success();
                                     info!("[LEARNER] 🎓 Absorbed theory on '{}'", title);
                                 }
@@ -259,8 +265,11 @@ impl AutonomousLearner {
                 }
 
                 topic_index += 1;
-                
-                info!("[LEARNER] ✅ Cycle #{} Summary: Topic '{}' processed. Next cycle in 30s.", cycle_count, topic);
+
+                info!(
+                    "[LEARNER] ✅ Cycle #{} Summary: Topic '{}' processed. Next cycle in 30s.",
+                    cycle_count, topic
+                );
 
                 // Sleep between topic cycles - also adaptive? For now fixed 30s base
                 tokio::time::sleep(Duration::from_secs(30)).await;

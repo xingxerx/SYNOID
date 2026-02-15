@@ -58,7 +58,10 @@ impl SynoidAgent {
                 }
             }
             Err(e) => {
-                warn!("[AGENT] 📡 LLM Connection Failed ({}), falling back to Offline Mode.", e);
+                warn!(
+                    "[AGENT] 📡 LLM Connection Failed ({}), falling back to Offline Mode.",
+                    e
+                );
                 // Fallback for offline testing
                 Ok(format!("(Offline Mode) Mock response for: {}", request))
             }
