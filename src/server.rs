@@ -11,6 +11,7 @@ use tower::ServiceExt; // For oneshot
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing::{error, info};
+use std::path::{Path, PathBuf, Component};
 
 use crate::state::{DashboardStatus, DashboardTask, KernelState, TasksStatus};
 
@@ -113,11 +114,45 @@ async fn handle_chat(
     }
 }
 
+fn validate_stream_path(raw_path: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(raw_path);
+
+    // 1. Prevent Directory Traversal
+    for component in path.components() {
+        if let Component::ParentDir = component {
+            return Err("Access denied: Path traversal detected".to_string());
+        }
+    }
+
+    // 2. Validate Extension
+    let allowed_extensions = [
+        "mp4", "mkv", "avi", "mov", "webm", // Video
+        "mp3", "wav", "flac", "ogg", "m4a"  // Audio
+    ];
+
+    let ext = path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+
+    match ext {
+        Some(e) if allowed_extensions.contains(&e.as_str()) => Ok(path),
+        Some(e) => Err(format!("Access denied: Invalid file extension '.{}'", e)),
+        None => Err("Access denied: No file extension provided".to_string()),
+    }
+}
+
 async fn stream_video(
     Query(params): Query<StreamParams>,
     req: Request,
 ) -> impl axum::response::IntoResponse {
-    let path = std::path::PathBuf::from(params.path);
+    let path = match validate_stream_path(&params.path) {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Stream access denied: {}", e);
+            return (axum::http::StatusCode::FORBIDDEN, e).into_response();
+        }
+    };
+
     if !path.exists() {
         return axum::http::StatusCode::NOT_FOUND.into_response();
     }
@@ -129,5 +164,28 @@ async fn stream_video(
             error!("ServeFile error: {}", err);
             axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_stream_path() {
+        // Valid cases
+        assert!(validate_stream_path("video.mp4").is_ok());
+        assert!(validate_stream_path("movie.mkv").is_ok());
+        assert!(validate_stream_path("/abs/path/to/video.mp4").is_ok());
+        assert!(validate_stream_path("nested/folder/song.mp3").is_ok());
+
+        // Invalid cases
+        assert!(validate_stream_path("../secret.txt").is_err());
+        assert!(validate_stream_path("../../etc/passwd").is_err());
+        assert!(validate_stream_path("/etc/passwd").is_err()); // No extension
+        assert!(validate_stream_path("script.sh").is_err()); // Invalid extension
+        assert!(validate_stream_path("image.png").is_err()); // Invalid extension
+        assert!(validate_stream_path("..").is_err());
+        assert!(validate_stream_path("").is_err());
     }
 }
