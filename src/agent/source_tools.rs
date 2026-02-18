@@ -224,18 +224,25 @@ pub async fn search_youtube(
 pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
     let safe_path = safe_arg_path(path);
 
-    let output = Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-        ])
-        .arg(&safe_path)
-        .output()
-        .await?;
+    // Execute ffprobe with a timeout to prevent hanging
+    // Getting duration from header is usually instant.
+    let output = tokio::time::timeout(
+        tokio::time::Duration::from_secs(10),
+        Command::new("ffprobe")
+            .kill_on_drop(true) // Ensure process is killed if timeout occurs
+            .args([
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+            ])
+            .arg(&safe_path)
+            .output(),
+    )
+    .await
+    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "ffprobe duration check timed out"))??;
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let duration: f64 = output_str.trim().parse().map_err(|_| {
