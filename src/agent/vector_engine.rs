@@ -12,14 +12,16 @@ use tokio::fs;
 use tokio::process::Command;
 use tracing::{error, info};
 
-/// Upscale video by converting to Vector and re-rendering at higher resolution
+/// Upscale video by converting to Vector and re-rendering at higher resolution.
+/// Note: This performs Vector Stylization / Artistic Upscaling, creating a "painted" look.
+/// It does NOT perform photorealistic super-resolution.
 pub async fn upscale_video(
     input: &Path,
     scale_factor: f64,
     output: &Path,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     info!(
-        "[UPSCALE] Starting Infinite Zoom (Scale: {}x) on {:?}",
+        "[UPSCALE] Starting Vector Stylization & Upscale (Scale: {}x) on {:?}",
         scale_factor, input
     );
 

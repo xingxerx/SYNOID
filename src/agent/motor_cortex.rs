@@ -3,8 +3,36 @@ use crate::agent::audio_tools::AudioAnalysis;
 use crate::agent::vision_tools::VisualScene;
 use crate::agent::voice::transcription::TranscriptSegment;
 use crate::agent::smart_editor;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::{info, warn};
+
+/// Structured plan for LLM-directed editing (Intermediate Representation)
+#[derive(Debug, Deserialize, Serialize)]
+pub struct EditPlan {
+    pub trim_silence: bool,
+    pub silence_threshold_db: f32,
+    pub normalize_audio: bool,
+    pub target_duration_secs: Option<f64>,
+    pub transitions: Vec<TransitionSpec>,
+    pub funny_moments: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TransitionSpec {
+    pub time: f64,
+    pub r#type: String, // "wipe", "fade", "cut"
+    pub duration: f32,
+}
+
+impl EditPlan {
+    /// Validates and parses the JSON response from an LLM
+    pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
+        let plan: Self = serde_json::from_str(json_str)?;
+        // Add additional validation here if needed
+        Ok(plan)
+    }
+}
 
 #[allow(dead_code)]
 pub struct MotorCortex {
