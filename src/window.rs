@@ -562,7 +562,7 @@ impl SynoidApp {
                 let intent = state.intent.clone();
 
                 tokio::spawn(async move {
-                    let _ = core.embody_intent(&input, &intent, &output).await;
+                    let _ = core.embody_intent(&input, &intent, &output, false).await;
                 });
             }
 
@@ -582,7 +582,7 @@ impl SynoidApp {
                 let funny = state.is_funny_bits_enabled;
 
                 tokio::spawn(async move {
-                    let _ = core.process_youtube_intent(&input, &intent, output, None, funny).await;
+                    let _ = core.process_youtube_intent(&input, &intent, output, None, funny, 0).await;
                 });
             }
         });

@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::{info, warn};
 
-pub struct MotorCortex;
 /// Structured plan for LLM-directed editing (Intermediate Representation)
 #[derive(Debug, Deserialize, Serialize)]
 pub struct EditPlan {
@@ -137,8 +136,8 @@ impl TransitionAgent for SmartTransition {
 }
 
 impl MotorCortex {
-    pub fn new(_api_url: &str) -> Self {
-        Self {}
+    pub fn new(api_url: &str) -> Self {
+        Self { api_url: api_url.to_string() }
     }
 
     pub async fn execute_smart_render(
