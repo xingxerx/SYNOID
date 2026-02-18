@@ -330,10 +330,7 @@ impl Brain {
         let intent = self.fast_classify(request);
 
         // Log combined acceleration status before dispatching
-        info!(
-            "[BRAIN] Acceleration: {}",
-            self.acceleration_status()
-        );
+        info!("[BRAIN] Acceleration: {}", self.acceleration_status());
 
         match intent {
             Intent::DownloadYoutube { url } => {

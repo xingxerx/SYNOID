@@ -295,9 +295,32 @@
         // SYNOID Project Dashboard API Connection
         const API_BASE = '/api';
 
-        async function fetchData(endpoint) {
+        function getApiKey() {
+            return localStorage.getItem('synoid_api_key');
+        }
+
+        function setApiKey(key) {
+            localStorage.setItem('synoid_api_key', key);
+        }
+
+        async function fetchData(endpoint, options = {}) {
+            const apiKey = getApiKey();
+            if (apiKey) {
+                options.headers = {
+                    ...options.headers,
+                    'Authorization': `Bearer ${apiKey}`
+                };
+            }
+
             try {
-                const response = await fetch(`${API_BASE}${endpoint}`);
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                if (response.status === 401) {
+                    const newKey = prompt('SYNOID API Key required:');
+                    if (newKey) {
+                        setApiKey(newKey);
+                        return fetchData(endpoint, options);
+                    }
+                }
                 return await response.json();
             } catch (e) {
                 console.error(`Failed to fetch ${endpoint}:`, e);
@@ -346,13 +369,14 @@
             responseBox.textContent = 'SYNOID is thinking...';
 
             try {
-                const response = await fetch(`${API_BASE}/chat`, {
+                const data = await fetchData('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: text })
                 });
-                const data = await response.json();
-                responseBox.textContent = data.response;
+                if (data) {
+                    responseBox.textContent = data.response;
+                }
             } catch (e) {
                 responseBox.textContent = 'Connection Error.';
             } finally {

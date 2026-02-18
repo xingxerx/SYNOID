@@ -342,12 +342,22 @@ impl SynoidApp {
         self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("✂️ Trim Video").size(16.0)).fill(COLOR_ACCENT_BLUE)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("✂️ Trim Video").size(16.0))
+                    .fill(COLOR_ACCENT_BLUE),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let input = PathBuf::from(&state.input_path);
             let start: f64 = state.clip_start.parse().unwrap_or(0.0);
             let duration: f64 = state.clip_duration.parse().unwrap_or(10.0);
-            let output = if !state.output_path.is_empty() { Some(PathBuf::from(&state.output_path)) } else { None };
+            let output = if !state.output_path.is_empty() {
+                Some(PathBuf::from(&state.output_path))
+            } else {
+                None
+            };
 
             tokio::spawn(async move {
                 let _ = core.clip_video(&input, start, duration, output).await;
@@ -372,11 +382,21 @@ impl SynoidApp {
         self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("📦 Compress").size(16.0)).fill(COLOR_ACCENT_GREEN)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("📦 Compress").size(16.0))
+                    .fill(COLOR_ACCENT_GREEN),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let input = PathBuf::from(&state.input_path);
             let size: f64 = state.compress_size.parse().unwrap_or(25.0);
-            let output = if !state.output_path.is_empty() { Some(PathBuf::from(&state.output_path)) } else { None };
+            let output = if !state.output_path.is_empty() {
+                Some(PathBuf::from(&state.output_path))
+            } else {
+                None
+            };
 
             tokio::spawn(async move {
                 let _ = core.compress_video(&input, size, output).await;
@@ -405,7 +425,13 @@ impl SynoidApp {
         });
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("🎨 Convert to SVG").size(16.0)).fill(COLOR_ACCENT_PURPLE)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🎨 Convert to SVG").size(16.0))
+                    .fill(COLOR_ACCENT_PURPLE),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let input = PathBuf::from(&state.input_path);
             let output = PathBuf::from(&state.output_path);
@@ -434,7 +460,13 @@ impl SynoidApp {
         self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("🔎 Upscale Video").size(16.0)).fill(COLOR_ACCENT_ORANGE)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🔎 Upscale Video").size(16.0))
+                    .fill(COLOR_ACCENT_ORANGE),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let input = PathBuf::from(&state.input_path);
             let output = PathBuf::from(&state.output_path);
@@ -459,7 +491,13 @@ impl SynoidApp {
         );
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("🧠 Process Request").size(16.0)).fill(COLOR_ACCENT_BLUE)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🧠 Process Request").size(16.0))
+                    .fill(COLOR_ACCENT_BLUE),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let request = state.intent.clone();
 
@@ -578,7 +616,13 @@ impl SynoidApp {
         ui.text_edit_singleline(&mut state.voice_profile);
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("🎓 Analyze & Learn").size(16.0)).fill(COLOR_ACCENT_GREEN)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🎓 Analyze & Learn").size(16.0))
+                    .fill(COLOR_ACCENT_GREEN),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let input = PathBuf::from(&state.input_path);
             let name = state.voice_profile.clone();
@@ -597,8 +641,15 @@ impl SynoidApp {
         self.render_input_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("💡 Analyze Video").size(16.0)).fill(COLOR_ACCENT_BLUE)).clicked() {
-             self.core.log("Suggest feature pending core implementation.");
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("💡 Analyze Video").size(16.0))
+                    .fill(COLOR_ACCENT_BLUE),
+            )
+            .clicked()
+        {
+            self.core
+                .log("Suggest feature pending core implementation.");
         }
     }
 
@@ -614,10 +665,20 @@ impl SynoidApp {
         self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("🎙️ Start Recording").size(16.0)).fill(COLOR_ACCENT_RED)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🎙️ Start Recording").size(16.0))
+                    .fill(COLOR_ACCENT_RED),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let duration: u32 = state.clip_duration.parse().unwrap_or(5);
-            let output = if !state.output_path.is_empty() { Some(PathBuf::from(&state.output_path)) } else { None };
+            let output = if !state.output_path.is_empty() {
+                Some(PathBuf::from(&state.output_path))
+            } else {
+                None
+            };
 
             tokio::spawn(async move {
                 let _ = core.voice_record(output, duration).await;
@@ -648,10 +709,20 @@ impl SynoidApp {
         ui.text_edit_singleline(&mut state.voice_profile);
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("🎭 Create Voice Profile").size(16.0)).fill(COLOR_ACCENT_PURPLE)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🎭 Create Voice Profile").size(16.0))
+                    .fill(COLOR_ACCENT_PURPLE),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let input = PathBuf::from(&state.input_path);
-            let name = if !state.voice_profile.is_empty() { Some(state.voice_profile.clone()) } else { None };
+            let name = if !state.voice_profile.is_empty() {
+                Some(state.voice_profile.clone())
+            } else {
+                None
+            };
 
             tokio::spawn(async move {
                 let _ = core.voice_clone(&input, name).await;
@@ -679,11 +750,25 @@ impl SynoidApp {
         self.render_output_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("🗣️ Generate Speech").size(16.0)).fill(COLOR_ACCENT_ORANGE)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🗣️ Generate Speech").size(16.0))
+                    .fill(COLOR_ACCENT_ORANGE),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let text = state.voice_text.clone();
-            let profile = if !state.voice_profile.is_empty() { Some(state.voice_profile.clone()) } else { None };
-            let output = if !state.output_path.is_empty() { Some(PathBuf::from(&state.output_path)) } else { None };
+            let profile = if !state.voice_profile.is_empty() {
+                Some(state.voice_profile.clone())
+            } else {
+                None
+            };
+            let output = if !state.output_path.is_empty() {
+                Some(PathBuf::from(&state.output_path))
+            } else {
+                None
+            };
 
             tokio::spawn(async move {
                 let _ = core.voice_speak(&text, profile, output).await;
@@ -717,10 +802,20 @@ impl SynoidApp {
         });
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("🛡️ Activate Sentinel").size(16.0)).fill(COLOR_ACCENT_RED)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🛡️ Activate Sentinel").size(16.0))
+                    .fill(COLOR_ACCENT_RED),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let mode = state.guard_mode.clone();
-            let watch = if !state.guard_watch_path.is_empty() { Some(PathBuf::from(&state.guard_watch_path)) } else { None };
+            let watch = if !state.guard_watch_path.is_empty() {
+                Some(PathBuf::from(&state.guard_watch_path))
+            } else {
+                None
+            };
 
             tokio::spawn(async move {
                 core.activate_sentinel(&mode, watch).await;
@@ -739,7 +834,13 @@ impl SynoidApp {
         ui.text_edit_singleline(&mut state.research_topic);
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("🔍 Search").size(16.0)).fill(COLOR_ACCENT_BLUE)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🔍 Search").size(16.0))
+                    .fill(COLOR_ACCENT_BLUE),
+            )
+            .clicked()
+        {
             let core = self.core.clone();
             let topic = state.research_topic.clone();
 

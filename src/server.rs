@@ -1,6 +1,8 @@
 use axum::{
     extract::{Query, Request, State},
-    response::IntoResponse,
+    http::StatusCode,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -48,12 +50,18 @@ fn is_safe_media_path(path: &std::path::Path) -> bool {
 pub async fn start_server(port: u16, state: Arc<KernelState>) {
     let app = Router::new()
         .nest_service("/", ServeDir::new("dashboard"))
-        .route("/api/status", get(get_status))
-        .route("/api/tasks", get(get_tasks))
-        .route("/api/chat", post(handle_chat))
-        .route("/api/stream", get(stream_video))
+        .nest("/api", api_routes)
         .with_state(state)
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+}
+
+pub async fn start_server(port: u16, state: Arc<KernelState>) {
+    if std::env::var("SYNOID_API_KEY").is_err() {
+        error!("🚨 SECURITY ALERT: SYNOID_API_KEY is not set!");
+        error!("API endpoints are LOCKED. Set the SYNOID_API_KEY environment variable to allow access.");
+    }
+
+    let app = create_router(state);
 
     // Bind to localhost for security (prevent external access by default)
     let addr = SocketAddr::from(([127, 0, 0, 1], port));

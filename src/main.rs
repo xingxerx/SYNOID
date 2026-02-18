@@ -330,7 +330,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Connect Brain → GPU/CUDA backend (neuroplasticity-tuned acceleration)
     core.connect_gpu_to_brain().await;
-    info!("🧠⚡ Neural-GPU bridge active: {}", core.acceleration_status().await);
+    info!(
+        "🧠⚡ Neural-GPU bridge active: {}",
+        core.acceleration_status().await
+    );
 
     let args = Cli::parse();
 

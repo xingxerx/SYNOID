@@ -11,11 +11,12 @@ use tokio::sync::Mutex as AsyncMutex;
 use tracing::info;
 
 use crate::agent::brain::Brain;
+use crate::agent::defense::{IntegrityGuard, Sentinel};
 use crate::agent::motor_cortex::MotorCortex;
-use crate::agent::source_tools;
 use crate::agent::production_tools;
+use crate::agent::source_tools;
+use crate::agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipeline};
 use crate::agent::vector_engine::{self, VectorConfig};
-use crate::agent::unified_pipeline::{UnifiedPipeline, PipelineConfig, PipelineStage};
 use crate::agent::voice::VoiceEngine;
 use crate::agent::defense::{IntegrityGuard, Sentinel};
 use crate::agent::autonomous_learner::AutonomousLearner;
@@ -50,7 +51,7 @@ impl AgentCore {
             api_url: api_url.to_string(),
             status: Arc::new(Mutex::new("⚡ System Ready".to_string())),
             logs: Arc::new(Mutex::new(vec![
-                "[SYSTEM] SYNOID Core initialized.".to_string(),
+                "[SYSTEM] SYNOID Core initialized.".to_string()
             ])),
             sentinel_active: Arc::new(AtomicBool::new(false)),
             brain: Arc::new(AsyncMutex::new(Brain::new(api_url, "gpt-oss:20b"))),
@@ -95,7 +96,10 @@ impl AgentCore {
     }
 
     pub fn get_status(&self) -> String {
-        self.status.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn get_logs(&self) -> Vec<String> {
@@ -228,9 +232,9 @@ impl AgentCore {
             }
         } else {
             if let Err(e) = std::fs::copy(&local_path, &out_path) {
-                 self.log(&format!("[CORE] ❌ Copy failed: {}", e));
+                self.log(&format!("[CORE] ❌ Copy failed: {}", e));
             } else {
-                 self.log(&format!("[CORE] ✅ Saved to {:?}", out_path));
+                self.log(&format!("[CORE] ✅ Saved to {:?}", out_path));
             }
         }
 
@@ -246,8 +250,16 @@ impl AgentCore {
             Ok(results) => {
                 self.log(&format!("[CORE] === 📚 Results: '{}' ===", topic));
                 for (i, source) in results.iter().enumerate() {
-                    self.log(&format!("{}. {} (Duration: {:.1} min)", i+1, source.title, source.duration / 60.0));
-                    self.log(&format!("   URL: {}", source.original_url.as_deref().unwrap_or("Unknown")));
+                    self.log(&format!(
+                        "{}. {} (Duration: {:.1} min)",
+                        i + 1,
+                        source.title,
+                        source.duration / 60.0
+                    ));
+                    self.log(&format!(
+                        "   URL: {}",
+                        source.original_url.as_deref().unwrap_or("Unknown")
+                    ));
                 }
             }
             Err(e) => {
@@ -275,7 +287,10 @@ impl AgentCore {
 
         match production_tools::trim_video(input, start, duration, &out_path).await {
             Ok(res) => {
-                self.log(&format!("[CORE] ✂️ Clip saved: {:?} ({:.2} MB)", res.output_path, res.size_mb));
+                self.log(&format!(
+                    "[CORE] ✂️ Clip saved: {:?} ({:.2} MB)",
+                    res.output_path, res.size_mb
+                ));
             }
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Clipping failed: {}", e));
@@ -300,7 +315,10 @@ impl AgentCore {
 
         match production_tools::compress_video(input, size_mb, &out_path).await {
             Ok(res) => {
-                self.log(&format!("[CORE] 📦 Compressed saved: {:?} ({:.2} MB)", res.output_path, res.size_mb));
+                self.log(&format!(
+                    "[CORE] 📦 Compressed saved: {:?} ({:.2} MB)",
+                    res.output_path, res.size_mb
+                ));
             }
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Compression failed: {}", e));
@@ -335,8 +353,8 @@ impl AgentCore {
         self.set_status("🤖 Embodying...");
         self.log(&format!("[CORE] Embodied Agent Activating for: {}", intent));
 
-        use crate::agent::vision_tools;
         use crate::agent::audio_tools;
+        use crate::agent::vision_tools;
 
         // 1. Scan Context
         self.log("[CORE] Scanning visual context...");
@@ -434,7 +452,10 @@ impl AgentCore {
         output: &Path,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status(&format!("🔎 Upscaling {:.1}x...", scale));
-        self.log(&format!("[CORE] Infinite Upscale (Scale: {:.1}x) on {:?}", scale, input));
+        self.log(&format!(
+            "[CORE] Infinite Upscale (Scale: {:.1}x) on {:?}",
+            scale, input
+        ));
 
         match vector_engine::upscale_video(input, scale, output).await {
             Ok(msg) => self.log(&format!("[CORE] ✅ {}", msg)),
@@ -473,12 +494,16 @@ impl AgentCore {
 
         let out_path = output.unwrap_or_else(|| PathBuf::from("voice_sample.wav"));
 
-        match tokio::task::spawn_blocking(move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-            audio_io.record_to_file(&out_path, duration).map_err(|e| {
-                let boxed: Box<dyn std::error::Error + Send + Sync> = e.to_string().into();
-                boxed
-            })
-        }).await? {
+        match tokio::task::spawn_blocking(
+            move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+                audio_io.record_to_file(&out_path, duration).map_err(|e| {
+                    let boxed: Box<dyn std::error::Error + Send + Sync> = e.to_string().into();
+                    boxed
+                })
+            },
+        )
+        .await?
+        {
             Ok(_) => self.log(&format!("[CORE] ✅ Recorded {} seconds", duration)),
             Err(e) => self.log(&format!("[CORE] ❌ Recording failed: {}", e)),
         }
@@ -504,14 +529,21 @@ impl AgentCore {
         if let Some(name) = profile_name {
             self.log(&format!("[CORE] Creating voice profile '{}'...", name));
             match engine.create_profile(&name, audio_path) {
-                Ok(p) => self.log(&format!("[CORE] ✅ Profile '{}' created ({} dims)", p.name, p.embedding.len())),
+                Ok(p) => self.log(&format!(
+                    "[CORE] ✅ Profile '{}' created ({} dims)",
+                    p.name,
+                    p.embedding.len()
+                )),
                 Err(e) => self.log(&format!("[CORE] ❌ Profile creation failed: {}", e)),
             }
         } else {
-             match engine.clone_voice(audio_path) {
-                Ok(embedding) => self.log(&format!("[CORE] ✅ Voice cloned. Embedding: {} dims", embedding.len())),
+            match engine.clone_voice(audio_path) {
+                Ok(embedding) => self.log(&format!(
+                    "[CORE] ✅ Voice cloned. Embedding: {} dims",
+                    embedding.len()
+                )),
                 Err(e) => self.log(&format!("[CORE] ❌ Clone failed: {}", e)),
-             }
+            }
         }
 
         self.set_status("⚡ Ready");
@@ -526,8 +558,8 @@ impl AgentCore {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🗣️ Speaking...");
         if let Err(e) = self.ensure_voice_engine() {
-             self.log(&format!("[CORE] ❌ Engine init failed: {}", e));
-             return Err(e);
+            self.log(&format!("[CORE] ❌ Engine init failed: {}", e));
+            return Err(e);
         }
 
         let out_path = output.unwrap_or_else(|| PathBuf::from("tts_output.wav"));
@@ -588,9 +620,9 @@ impl AgentCore {
 
         let parsed_stages = PipelineStage::parse_list(stages_str);
         if parsed_stages.is_empty() {
-             let msg = "No valid stages specified.";
-             self.log(&format!("[CORE] ❌ {}", msg));
-             return Err(msg.into());
+            let msg = "No valid stages specified.";
+            self.log(&format!("[CORE] ❌ {}", msg));
+            return Err(msg.into());
         }
 
         // Initialize pipeline lazily
