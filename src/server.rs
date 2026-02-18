@@ -1,8 +1,6 @@
 use axum::{
     extract::{Query, Request, State},
-    http::StatusCode,
-    middleware::{self, Next},
-    response::{IntoResponse, Response},
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -13,7 +11,7 @@ use tower::ServiceExt; // For oneshot
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing::{error, info};
-use std::path::{Path, PathBuf, Component};
+use std::path::{PathBuf, Component};
 
 use crate::state::{DashboardStatus, DashboardTask, KernelState, TasksStatus};
 
