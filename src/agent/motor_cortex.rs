@@ -1,12 +1,45 @@
 use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
+use crate::agent::production_tools;
 use crate::agent::vision_tools::VisualScene;
 use crate::agent::voice::transcription::TranscriptSegment;
 use crate::agent::smart_editor;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::{info, warn};
 
 pub struct MotorCortex;
+/// Structured plan for LLM-directed editing (Intermediate Representation)
+#[derive(Debug, Deserialize, Serialize)]
+pub struct EditPlan {
+    pub trim_silence: bool,
+    pub silence_threshold_db: f32,
+    pub normalize_audio: bool,
+    pub target_duration_secs: Option<f64>,
+    pub transitions: Vec<TransitionSpec>,
+    pub funny_moments: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TransitionSpec {
+    pub time: f64,
+    pub r#type: String, // "wipe", "fade", "cut"
+    pub duration: f32,
+}
+
+impl EditPlan {
+    /// Validates and parses the JSON response from an LLM
+    pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
+        let plan: Self = serde_json::from_str(json_str)?;
+        // Add additional validation here if needed
+        Ok(plan)
+    }
+}
+
+#[allow(dead_code)]
+pub struct MotorCortex {
+    api_url: String,
+}
 
 #[allow(dead_code)]
 pub struct EditGraph {
@@ -267,7 +300,7 @@ impl MotorCortex {
         args.push("ffmpeg".to_string());
         args.push("-y".to_string());
         args.push("-i".to_string());
-        args.push(input.to_string_lossy().to_string());
+        args.push(production_tools::safe_arg_path(input).to_string_lossy().to_string());
 
         if !filters.is_empty() {
             args.push("-vf".to_string());
@@ -295,7 +328,7 @@ impl MotorCortex {
         args.push("-pix_fmt".to_string());
         args.push("yuv420p".to_string());
 
-        args.push(output.to_string_lossy().to_string());
+        args.push(production_tools::safe_arg_path(output).to_string_lossy().to_string());
 
         // EXECUTE THE COMMAND
         if dry_run {
