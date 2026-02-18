@@ -6025,7 +6025,7 @@ dependencies = [
  "sha2",
  "symphonia",
  "sysinfo",
- "tiny-skia 0.8.4",
+ "tiny-skia 0.11.4",
  "tokenizers",
  "tokio",
  "tower 0.4.13",
@@ -6270,6 +6270,7 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "log",
+ "png 0.17.16",
  "tiny-skia-path 0.11.4",
 ]
 
