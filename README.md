@@ -4,7 +4,7 @@
 
 **Agentic Video Production Kernel**
 
-*Autonomous AI-powered video editing, voice cloning, and infinite resolution upscaling*
+*Autonomous AI-powered video editing, voice cloning, and vector stylization*
 
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-Proprietary-blue?style=flat-square)]()
@@ -18,11 +18,12 @@
 
 **SYNOID** is an advanced **Agentic Video Production Kernel** designed to revolutionize content creation through autonomous AI. Unlike traditional tools that require manual frame-by-frame manipulation, SYNOID understands **creative intent**, allowing users to direct complex video production workflows using natural language.
 
-Built on a high-performance **Rust** foundation, SYNOID integrates a suite of cutting-edge technologies into a single, cohesive workstation:
+Built on a high-performance **Rust** foundation, SYNOID integrates a suite of cutting-edge technologies into a single, cohesive **Command Center**:
 - **Semantic Understanding**: Deconstructs video content to identify "boring" vs "action" segments based on your directives.
-- **Infinite Resolution**: Converts raster footage into resolution-independent vector graphics for limitless upscaling.
-- **Neural Synthesis**: Clones voices and generates neural speech for dynamic audio production.
-- **Active Defense**: Protects your workspace with a background sentinel that monitors for unauthorized system activity.
+- **Vector Stylization / Artistic Upscaling**: Converts raster footage into resolution-independent vector graphics for unique artistic upscaling (best for animation/graphics).
+- **Neural Synthesis (Experimental)**: Interfaces with external tools to clone voices and generate neural speech.
+- **Active Defense (Optional)**: Can monitor your workspace with a background sentinel for unauthorized system activity (experimental).
+- **Neuroplasticity**: The system learns from your edits and rendering successes to optimize future performance.
 
 Whether you are repurposing long-form content, restoring legacy footage, or building automated media pipelines, SYNOID provides the intelligent infrastructure to execute with precision and speed.
 
@@ -30,32 +31,39 @@ Whether you are repurposing long-form content, restoring legacy footage, or buil
 
 ## ✨ Features
 
-### 🎬 Smart Video Editing
-- **Content Injection** — Automatically find and insert funny snippets/memes based on context
-- **Smart Clipping** — Extract segments with precise timestamps
-- **Compression** — Target-size compression without quality loss
-- **Embodied Editing** — AI understands your intent and generates FFmpeg commands
+### 🎬 Command Center GUI
+The heart of SYNOID is the **Command Center**, a premium dark-mode interface organizing all capabilities into a streamlined workflow:
 
-### 🔎 Infinite Resolution Engine
-- **Vector Upscaling** — Convert raster video to SVG, scale infinitely, re-render at any resolution
-- **Vectorization** — Export video frames as resolution-independent SVGs
-- **16K Safety Limit** — Automatic safeguards for extreme upscales
+- **Media**: Upload videos (YouTube/Local), clip segments, and strictly compress files without quality loss.
+- **Visual**: Vectorize footage to SVG for artistic effects.
+- **AI Core**: Direct the "Brain" with natural language, run embodied agents, and learn editing styles.
+- **Voice Studio**: Unified interface to record samples and generate speech (Simulated/Experimental).
+- **Security**: Monitor system integrity and active processes with the Cyberdefense Sentinel (Experimental).
+- **Research**: AI-powered topic research and video sourcing.
 
-### 🗣️ Voice Cloning & Neural TTS
-- **Voice Recording** — Capture voice samples directly
-- **Voice Profiles** — Create reusable speaker embeddings
-- **Neural TTS** — Generate speech with cloned or default voices
-- **HuggingFace Integration** — Download state-of-the-art TTS models
+### ⚡ Viral Video Transformation
+Transform raw footage into high-retention content automatically:
+- **Ruthless Editing**: Automatically detects and trims dead air, hesitation, and silence (-40dB threshold).
+- **Audio Enhancement**: Applies studio-quality EQ, compression, and normalization to voice tracks.
+- **Engagement Consolidator**: Intelligently structures video for maximum viewer retention.
 
-### 🛡️ Cyberdefense Sentinel
-- **Process Monitoring** — Detect suspicious system activity
-- **File Integrity** — Watch directories for unauthorized changes
-- **Continuous Guard** — Real-time system protection
+### 🎭 Funny Mode & Smart Transitions
+- **Funny Mode**: Injects AI commentary and detects humorous moments. *Requires local Ollama setup and external Python scripts.*
+- **Smart Transitions**: Analyzes scene motion to select the perfect transition:
+    - *High Motion* → **Wipe/Slide**
+    - *Medium Motion* → **Mix/Crossfade**
+    - *Speech/Dialogue* → **Seamless Cut**
+    - *Static/Low Motion* → **ZoomPan**
 
-### 🧠 AI Brain
-- **Intent Processing** — Natural language command understanding
-- **Style Learning** — Analyze and replicate editing styles
-- **Edit Suggestions** — AI-powered video improvement recommendations
+### 🔎 Vector Stylization Engine
+- **Vector Upscaling**: Convert raster video to SVG, scale infinitely, re-render at any resolution. *Note: This produces a "vector art" style, not photorealistic super-resolution.*
+- **Vectorization**: Export video frames as resolution-independent SVGs.
+- **16K Safety Limit**: Automatic safeguards for extreme upscales.
+
+### 🛡️ Cyberdefense Sentinel (Experimental)
+- **Process Monitoring**: Detect suspicious system activity and unauthorized processes.
+- **File Integrity**: Watch directories for unauthorized changes to critical assets.
+- **Continuous Guard**: Real-time system protection running in the background. *Disabled by default.*
 
 ---
 
@@ -65,6 +73,8 @@ Whether you are repurposing long-form content, restoring legacy footage, or buil
 - **Rust** 1.70+
 - **FFmpeg** (in PATH)
 - **yt-dlp** (for YouTube features)
+- **Python 3** (for Voice/TTS features)
+- **Ollama** (running `gpt-oss:20b` or similar)
 
 ### Build
 ```bash
@@ -80,55 +90,43 @@ cargo run --release -- gui
 
 ## 📖 Usage
 
-Launch the GUI Command Center to access all features:
+Launch the **Command Center**:
 
 ```bash
 cargo run --release -- gui
 ```
 
-The graphical interface provides access to all kernel capabilities:
-- **Video Production**: Upload, clip, and compress videos.
-- **Vector Engine**: Vectorize and upscale footage.
-- **Voice Engine**: Record, clone, and synthesize speech.
-- **AI Brain**: Execute complex intents and embodied editing.
-- **Cyberdefense**: Monitor system integrity and processes.
-### ⚡ Advanced Creative Intent Example
+### 🧠 Creative Intent Examples
 
-Use this prompt to maximize engagement and production quality:
+**Viral Clip Generation:**
+> Take this raw footage and apply ruthless editing to remove all silence. Enhance the audio for podcast quality and make it punchy. Ensure the final cut maintains a rhythm suitable for a 40-50 minute duration. This operation falls under the Video Production module, specifically utilizing the Smart Editor for semantic intent processing and Production Tools for audio enhancement.
 
-> "Act as an elite video editor and audio engineer. Your mission is to transform this raw footage into a viral-ready, high-retention masterpiece.
->
-> **1. Audio Enhancement (Priority #1):**
-> - **Isolate & Remaster:** Extract the user's voice track. Apply professional EQ, compression, and noise reduction to achieve studio-quality clarity.
-> - **Upscale:** Use AI audio super-resolution to restore high frequencies and presence. Ensure the voice cuts through the mix clearly.
-> - **Transcript:** Generate a precise, time-synced transcript of all dialogue.
->
-> **2. Content Distillation:**
-> - **Ruthless Editing:** Aggressively trim all dead air, hesitation, and low-energy segments. Keep only the most engaging, action-packed moments.
-> - **Pacing:** Maintain a fast, dynamic rhythm to maximize viewer retention.
->
-> **3. Engagement Boost:**
-> - **Visual Interest:** Detect context and autonomously inject relevant, entertaining B-roll, memes, or sub-videos to visualize key points and keep the viewer hooked."
+**Legacy Restoration:**
+> "Upscale this old 480p clip by 4x using the vector engine. Clean up the audio noise and stabilize the frame. This operation falls under the Video Production module, specifically utilizing the Vector Engine for upscaling and Production Tools for audio enhancement."
+
+**Automated Journalism:**
+> "Research 'Quantum Computing breakthroughs 2024', find top 5 relevant videos, and generate a summary script."
+
 ---
-The final video should be 40-50 minutes long, and 1080p, 60fps, 16:9, 24mbps, stereo audio, 192kbps, 48khz.
+
 ## 🏗️ Architecture
+
+SYNOID is built on a modular "Brain-Cortex" architecture:
 
 ```
 src/
-├── main.rs              # CLI entry point
-├── window.rs            # eframe GUI
+├── main.rs              # CLI Entry Point
+├── window.rs            # Command Center GUI (eframe/egui)
 └── agent/
-    ├── brain.rs         # AI intent processor
-    ├── motor_cortex.rs  # Execution engine
-    ├── vector_engine.rs # SVG vectorization & upscaling
-    ├── vector_video.rs  # Animated SVG video engine
-    ├── voice/           # Voice cloning & TTS
-    ├── defense/         # Cyberdefense sentinel
-    ├── production_tools.rs
-    ├── source_tools.rs
-    ├── vision_tools.rs
-    ├── audio_tools.rs
-    └── content_injector.rs # Funny snippet/meme injection
+    ├── core.rs          # AgentCore: The central state manager ("The Ghost")
+    ├── brain.rs         # AI Brain: Intent processing & Neuroplasticity
+    ├── motor_cortex.rs  # MotorCortex: Execution engine & FFmpeg generation
+    ├── unified_pipeline.rs # Pipeline: Orchestrates multi-stage workflows
+    ├── vector_engine.rs # Vector Engine: SVG conversion & upscaling
+    ├── voice/           # Voice Engine: Cloning, TTS, Transcription
+    ├── defense/         # Sentinel: Cyberdefense & Integrity monitoring
+    ├── academy/         # Style Library & Learning
+    └── tools/           # Vision, Audio, Source, Production tools
 ```
 
 ---
@@ -149,10 +147,11 @@ SYNOID_API_URL=http://localhost:11434/v1
 | `vtracer` | Raster to vector conversion |
 | `resvg` | SVG rendering engine |
 | `rayon` | Parallel frame processing |
-| `candle-*` | Neural network inference |
+| `candle-*` | Neural network inference (Voice/LLM) |
 | `rodio/cpal` | Audio I/O |
-| `eframe` | Native GUI |
-| `clap` | CLI argument parsing |
+| `eframe` | Native GUI (Command Center) |
+| `symphonia` | Audio decoding/analysis |
+| `axum` | Web Server & Dashboard API |
 
 ---
 
@@ -169,4 +168,3 @@ All rights reserved. Unauthorized copying, modification, or distribution is proh
 **Built with 🦀 Rust for maximum performance**
 
 </div>
-

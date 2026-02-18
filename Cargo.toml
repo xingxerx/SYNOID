@@ -1,6 +1,6 @@
 [package]
 name = "synoid-core"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -37,7 +37,7 @@ candle-core = "0.8"
 candle-nn = "0.8"
 candle-transformers = "0.8"
 tokenizers = "0.15"
-whisper-rs = "0.11.1" # Native Whisper implementation
+whisper-rs = { version = "0.11.1", features = ["cuda"] } # Native Whisper implementation
 hf-hub = "0.3"    # HuggingFace model downloads
 rodio = "0.17"    # Audio playback
 cpal = "0.15"     # Audio recording  

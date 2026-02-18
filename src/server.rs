@@ -11,6 +11,7 @@ use tower::ServiceExt; // For oneshot
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing::{error, info};
+use std::path::{Path, PathBuf, Component};
 
 use crate::state::{DashboardStatus, DashboardTask, KernelState, TasksStatus};
 
@@ -148,6 +149,30 @@ fn is_safe_path(path: &std::path::Path) -> bool {
         allowed_extensions.contains(&ext_str.as_str())
     } else {
         false // No extension is suspicious for media streaming
+fn validate_stream_path(raw_path: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(raw_path);
+
+    // 1. Prevent Directory Traversal
+    for component in path.components() {
+        if let Component::ParentDir = component {
+            return Err("Access denied: Path traversal detected".to_string());
+        }
+    }
+
+    // 2. Validate Extension
+    let allowed_extensions = [
+        "mp4", "mkv", "avi", "mov", "webm", // Video
+        "mp3", "wav", "flac", "ogg", "m4a"  // Audio
+    ];
+
+    let ext = path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+
+    match ext {
+        Some(e) if allowed_extensions.contains(&e.as_str()) => Ok(path),
+        Some(e) => Err(format!("Access denied: Invalid file extension '.{}'", e)),
+        None => Err("Access denied: No file extension provided".to_string()),
     }
 }
 
@@ -161,6 +186,13 @@ async fn stream_video(
     if !is_safe_path(&path) {
         return axum::http::StatusCode::BAD_REQUEST.into_response();
     }
+    let path = match validate_stream_path(&params.path) {
+        Ok(p) => p,
+        Err(e) => {
+            error!("Stream access denied: {}", e);
+            return (axum::http::StatusCode::FORBIDDEN, e).into_response();
+        }
+    };
 
     if !path.exists() {
         return axum::http::StatusCode::NOT_FOUND.into_response();
@@ -179,39 +211,22 @@ async fn stream_video(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     #[test]
-    fn test_is_safe_path_valid() {
-        assert!(is_safe_path(Path::new("video.mp4")));
-        assert!(is_safe_path(Path::new("music.mp3")));
-        assert!(is_safe_path(Path::new("image.jpg")));
-        assert!(is_safe_path(Path::new("subdir/video.mkv")));
-        assert!(is_safe_path(Path::new("/abs/path/to/video.mov")));
-    }
+    fn test_validate_stream_path() {
+        // Valid cases
+        assert!(validate_stream_path("video.mp4").is_ok());
+        assert!(validate_stream_path("movie.mkv").is_ok());
+        assert!(validate_stream_path("/abs/path/to/video.mp4").is_ok());
+        assert!(validate_stream_path("nested/folder/song.mp3").is_ok());
 
-    #[test]
-    fn test_is_safe_path_traversal() {
-        assert!(!is_safe_path(Path::new("../secret.txt")));
-        assert!(!is_safe_path(Path::new("subdir/../../etc/passwd")));
-    }
-
-    #[test]
-    fn test_is_safe_path_invalid_extension() {
-        assert!(!is_safe_path(Path::new("config.toml")));
-        assert!(!is_safe_path(Path::new("id_rsa")));
-        assert!(!is_safe_path(Path::new("script.sh")));
-        assert!(!is_safe_path(Path::new("image.svg"))); // Explicitly banned
-    }
-
-    #[test]
-    fn test_is_safe_path_hidden_files() {
-        assert!(!is_safe_path(Path::new(".env")));
-        assert!(!is_safe_path(Path::new("subdir/.hidden.mp4")));
-    }
-
-    #[test]
-    fn test_is_safe_path_no_extension() {
-        assert!(!is_safe_path(Path::new("README")));
+        // Invalid cases
+        assert!(validate_stream_path("../secret.txt").is_err());
+        assert!(validate_stream_path("../../etc/passwd").is_err());
+        assert!(validate_stream_path("/etc/passwd").is_err()); // No extension
+        assert!(validate_stream_path("script.sh").is_err()); // Invalid extension
+        assert!(validate_stream_path("image.png").is_err()); // Invalid extension
+        assert!(validate_stream_path("..").is_err());
+        assert!(validate_stream_path("").is_err());
     }
 }

@@ -1,7 +1,7 @@
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use std::collections::HashMap;
 use sysinfo::{CpuExt, ProcessExt, System, SystemExt};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 /// The Sentinel monitors system state for anomalies
 pub struct Sentinel {
@@ -10,6 +10,7 @@ pub struct Sentinel {
     known_processes: HashMap<String, bool>,
     agent: SynoidAgent,
     last_refresh: std::time::Instant,
+    enabled: bool,
 }
 
 impl Sentinel {
@@ -21,16 +22,30 @@ impl Sentinel {
         let api_url =
             std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
 
+        // Explicit opt-in required for Sentinel
+        let enabled = std::env::var("SYNOID_ENABLE_SENTINEL")
+            .map(|v| v.to_lowercase() == "true" || v == "1")
+            .unwrap_or(false);
+
+        if !enabled {
+            warn!("[SENTINEL] ⚠️ Sentinel initialized but DISABLED. Set SYNOID_ENABLE_SENTINEL=true to activate.");
+        }
+
         Self {
             system,
             known_processes: HashMap::new(),
             agent: SynoidAgent::new(&api_url, "deepseek-r1"),
             last_refresh: std::time::Instant::now() - std::time::Duration::from_secs(60),
+            enabled,
         }
     }
 
     /// Perform a scan of current system processes
     pub fn scan_processes(&mut self) -> Vec<String> {
+        if !self.enabled {
+            return Vec::new();
+        }
+
         // Throttle refresh to at most once per second to get stable CPU readings
         if self.last_refresh.elapsed().as_millis() < 800 {
             return Vec::new(); // Too soon for a reliable diff
@@ -106,8 +121,17 @@ impl Sentinel {
         );
 
         match self.agent.reason(&prompt).await {
-            Ok(analysis) => analysis,
-            Err(e) => format!("Analysis failed: {}", e),
+            Ok(analysis) => {
+                if analysis.contains("(Offline Mode)") {
+                    warn!("[SENTINEL] 🛡️ LLM is in Offline Mode. Manual review recommended for: {}", alert);
+                }
+                analysis
+            },
+            Err(e) => {
+                let msg = format!("Analysis failed: {}. Critical alert: {}", e, alert);
+                error!("[SENTINEL] ❌ {}", msg);
+                msg
+            }
         }
     }
 }

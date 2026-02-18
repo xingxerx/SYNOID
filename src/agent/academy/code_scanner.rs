@@ -3,7 +3,7 @@
 
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, warn};
 use url::Url;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -39,9 +39,13 @@ impl CodeScanner {
             url.to_string()
         };
 
-        let resp = reqwest::get(&raw_url).await?;
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()?;
+
+        let resp = client.get(&raw_url).send().await?;
         if !resp.status().is_success() {
-            return Err(format!("Failed to fetch code: {}", resp.status()).into());
+            return Err(format!("Failed to fetch code from {}: Status {}", raw_url, resp.status()).into());
         }
 
         let code_content = resp.text().await?;
@@ -72,7 +76,10 @@ impl CodeScanner {
             url, snippet
         );
 
-        let logic = self.agent.reason(&prompt).await.unwrap_or_else(|_| "Analysis failed".to_string());
+        let logic = self.agent.reason(&prompt).await.map_err(|e| {
+            warn!("[SCANNER] ⚠️ Reasoning failed: {}. Falling back to default concept.", e);
+            e
+        }).unwrap_or_else(|_| "Algorithmic logic distilled from source code.".to_string());
 
         let file_ext = Url::parse(url)?
             .path_segments()

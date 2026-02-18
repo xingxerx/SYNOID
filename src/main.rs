@@ -294,7 +294,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
 
@@ -316,6 +316,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }));
 
     info!("--- SYNOID AGENTIC KERNEL v0.1.1 ---");
+
+    // Check external dependencies
+    let missing_deps = synoid_core::agent::health::check_dependencies();
+    if !missing_deps.is_empty() {
+        tracing::warn!("⚠️ Missing dependencies: {:?}. Some features may not work.", missing_deps);
+    }
+
     let api_url = std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
 
     // Initialize the Ghost (Agent Core)
@@ -365,7 +372,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             chunk_minutes: _,
             login,
         } => {
-            core.process_youtube_intent(&url, &intent, output, login.as_deref()).await.map_err(|e| -> Box<dyn std::error::Error> { e })?;
+            core.process_youtube_intent(&url, &intent, output, login.as_deref(), false).await?;
         }
         Commands::Research { topic, limit } => {
             core.process_research(&topic, limit).await?;
@@ -413,8 +420,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             dry_run: _,
         } => {
             core.embody_intent(&input, &intent, &output)
-                .await
-                .map_err(|e| e as Box<dyn std::error::Error>)?;
+                .await?;
         }
         Commands::Learn { input, name } => {
             core.learn_style(&input, &name).await?;
