@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::info;
 
@@ -27,6 +28,7 @@ pub struct AgentCore {
     // Observability State (Thread-safe, Sync for GUI)
     pub status: Arc<Mutex<String>>,
     pub logs: Arc<Mutex<Vec<String>>>,
+    pub sentinel_active: Arc<AtomicBool>,
 
     // Sub-systems (Async Mutex for heavy async tasks)
     pub brain: Arc<AsyncMutex<Brain>>,
@@ -50,6 +52,7 @@ impl AgentCore {
             logs: Arc::new(Mutex::new(vec![
                 "[SYSTEM] SYNOID Core initialized.".to_string(),
             ])),
+            sentinel_active: Arc::new(AtomicBool::new(false)),
             brain: Arc::new(AsyncMutex::new(Brain::new(api_url, "gpt-oss:20b"))),
             cortex: Arc::new(AsyncMutex::new(MotorCortex::new(api_url))),
             voice_engine: Arc::new(Mutex::new(None)),
@@ -124,7 +127,13 @@ impl AgentCore {
         output: Option<PathBuf>,
         login: Option<&str>,
         funny_mode: bool,
+        chunk_minutes: u32,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if chunk_minutes > 0 && chunk_minutes < 600 {
+             // Just logging for now as chunking logic is complex and requires ffmpeg splitting
+             self.log(&format!("[CORE] ℹ️ Note: Long video chunking ({} mins) requested but experimental. Proceeding with full video.", chunk_minutes));
+        }
+
         self.set_status("📥 Downloading...");
         let sanitized_url = Self::sanitize_input(url);
         self.log(&format!("[CORE] Processing YouTube: {}", sanitized_url));
@@ -321,6 +330,7 @@ impl AgentCore {
         input: &Path,
         intent: &str,
         output: &Path,
+        dry_run: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🤖 Embodying...");
         self.log(&format!("[CORE] Embodied Agent Activating for: {}", intent));
@@ -352,7 +362,7 @@ impl AgentCore {
         let result = {
             let mut cortex = self.cortex.lock().await;
             // execute_smart_render now calls smart_edit which handles transcription and cutting
-            cortex.execute_smart_render(intent, input, output, &visual_data, &[], &audio_data).await
+            cortex.execute_smart_render(intent, input, output, &visual_data, &[], &audio_data, dry_run).await
         };
 
         match result {
@@ -377,14 +387,18 @@ impl AgentCore {
 
     pub async fn learn_style(&self, input: &Path, name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status(&format!("🎓 Learning '{}'...", name));
-        self.log(&format!("[CORE] Analyzing style '{}' from {:?}", name, input));
 
-        use crate::agent::academy::{StyleLibrary, TechniqueExtractor};
-        // Stub implementation from main.rs
-        let _lib = StyleLibrary::new();
-        let _extractor = TechniqueExtractor {};
+        // Use Brain's learning logic directly
+        let request = format!("learn style '{}' from '{}'", name, input.display());
+        let mut brain = self.brain.lock().await;
+        match brain.process(&request).await {
+            Ok(msg) => self.log(&format!("[CORE] ✅ {}", msg)),
+            Err(e) => {
+                self.log(&format!("[CORE] ❌ Learning failed: {}", e));
+                return Err(e.into());
+            }
+        }
 
-        self.log(&format!("[CORE] ✅ Analyzed style '{}'. Saved to library.", name));
         self.set_status("⚡ Ready");
         Ok(())
     }
@@ -568,6 +582,7 @@ impl AgentCore {
         _gpu: &str,
         intent: Option<String>,
         scale: f64,
+        funny_mode: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🚀 Running Pipeline...");
 
@@ -593,7 +608,7 @@ impl AgentCore {
             intent,
             scale_factor: scale,
             target_size_mb: 0.0,
-            funny_mode: false,
+            funny_mode,
             progress_callback: Some(Arc::new(move |msg: &str| {
                 self_clone.log(msg);
             })),
@@ -611,9 +626,15 @@ impl AgentCore {
     }
 
     // --- Sentinel ---
+    pub fn stop_sentinel(&self) {
+        self.sentinel_active.store(false, Ordering::Relaxed);
+        self.log("[CORE] 🛡️ Sentinel Deactivation Signal Sent.");
+    }
+
     pub async fn activate_sentinel(&self, mode: &str, watch: Option<PathBuf>) {
         self.set_status(&format!("🛡️ Sentinel Active ({})", mode));
         self.log("[CORE] 🛡️ ACTIVATING SENTINEL Cyberdefense System...");
+        self.sentinel_active.store(true, Ordering::Relaxed);
 
         let mut integrity = IntegrityGuard::new();
         if let Some(path) = watch {
@@ -625,7 +646,7 @@ impl AgentCore {
         let mut sentinel = Sentinel::new();
         self.log("[CORE] ✅ Sentinel Online. Monitoring system...");
 
-        loop {
+        while self.sentinel_active.load(Ordering::Relaxed) {
             // Check System Health
             if mode == "all" || mode == "sys" {
                 let alerts = sentinel.scan_processes();
@@ -644,6 +665,8 @@ impl AgentCore {
 
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
+        self.log("[CORE] 🛡️ Sentinel Deactivated.");
+        self.set_status("⚡ Ready");
     }
 
     // --- Autonomous Learning Control ---

@@ -20,7 +20,7 @@ rfd = "0.13"
 image = "0.24"
 scraper = "0.19"
 resvg = "0.29"   # SVG rendering engine
-tiny-skia = "0.8" # 2D Graphics library for resvg
+tiny-skia = "0.11" # 2D Graphics library for resvg (Matches resvg 0.29 req)
 sysinfo = "0.29" # System monitoring (Processes/RAM)
 sha2 = "0.10"    # File integrity hashing
 walkdir = "2.3"  # Efficient directory traversal
@@ -37,7 +37,7 @@ candle-core = "0.8"
 candle-nn = "0.8"
 candle-transformers = "0.8"
 tokenizers = "0.15"
-whisper-rs = { version = "0.11.1", features = ["cuda"] } # Native Whisper implementation
+whisper-rs = { version = "0.11.1" } # Native Whisper implementation (CPU mode for compatibility)
 hf-hub = "0.3"    # HuggingFace model downloads
 rodio = "0.17"    # Audio playback
 cpal = "0.15"     # Audio recording  

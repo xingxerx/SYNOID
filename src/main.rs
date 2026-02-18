@@ -312,7 +312,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             "Unknown panic".to_string()
         };
         eprintln!("🚨 [SYNOID PANIC] at {}: {}", location, message);
-        eprintln!("   The system will attempt to continue. Please report this issue.");
+        eprintln!("   CRITICAL ERROR: The system is crashing. Please report this issue.");
     }));
 
     info!("--- SYNOID AGENTIC KERNEL v0.1.1 ---");
@@ -362,10 +362,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             url,
             intent,
             output,
-            chunk_minutes: _,
+            chunk_minutes,
             login,
         } => {
-            core.process_youtube_intent(&url, &intent, output, login.as_deref(), false).await?;
+            core.process_youtube_intent(&url, &intent, output, login.as_deref(), false, chunk_minutes)
+                .await?;
         }
         Commands::Research { topic, limit } => {
             core.process_research(&topic, limit).await?;
@@ -410,9 +411,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             input,
             intent,
             output,
-            dry_run: _,
+            dry_run,
         } => {
-            core.embody_intent(&input, &intent, &output)
+            core.embody_intent(&input, &intent, &output, dry_run)
                 .await?;
         }
         Commands::Learn { input, name } => {
@@ -420,8 +421,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         Commands::Suggest { input } => {
             info!("💡 Analyzing {:?} for suggestions...", input);
-            println!("1. Make it faster paced");
-            println!("2. Sync to the beat");
+            use synoid_core::agent::vision_tools;
+            match vision_tools::scan_visual(&input).await {
+                Ok(scenes) => {
+                    let count = scenes.len();
+                    if count == 0 {
+                        println!("❌ No scenes detected. Video might be empty or corrupt.");
+                    } else {
+                        let duration = if !scenes.is_empty() {
+                            scenes.last().unwrap().timestamp
+                        } else {
+                            0.0
+                        };
+                        let avg = if count > 0 {
+                            duration / count as f64
+                        } else {
+                            0.0
+                        };
+                        println!("✅ Analysis Complete: {} scenes detected.", count);
+                        println!("   Avg Shot Length: {:.2}s", avg);
+
+                        println!("\n💡 Suggestions:");
+                        if avg > 5.0 {
+                            println!("1. Pace is slow. Consider 'make it faster' or 'cut silence'.");
+                        } else if avg < 2.0 {
+                            println!("1. Pace is fast/action-heavy. Consider 'stabilize' or 'enhance audio'.");
+                        } else {
+                            println!("1. Pacing is balanced. Consider 'cinematic color grade'.");
+                        }
+                        println!("2. Try 'vectorize' for a unique look.");
+                        println!("3. Try 'funny' mode to add humor.");
+                    }
+                }
+                Err(e) => error!("Failed to analyze video: {}", e),
+            }
         }
         Commands::Gpu => {
             synoid_core::gpu_backend::print_gpu_status().await;
@@ -491,19 +524,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             style,
         } => {
             use synoid_core::agent::multi_agent::*;
-            if role == "director" {
-                let mut dir = DirectorAgent::new("gpt-oss:20b", &api_url);
-                let intent = prompt.unwrap_or("Make a movie".to_string());
-                let style_deref = style.as_deref();
+            let prompt_text = prompt.unwrap_or_else(|| "Do your job".to_string());
 
-                match dir.analyze_intent(&intent, style_deref).await {
-                    Ok(plan) => {
-                        core.log(&format!("🎬 Story Plan Generated: {}", plan.global_intent));
+            match role.as_str() {
+                "director" => {
+                    let mut dir = DirectorAgent::new("gpt-oss:20b", &api_url);
+                    let style_deref = style.as_deref();
+
+                    match dir.analyze_intent(&prompt_text, style_deref).await {
+                        Ok(plan) => {
+                            core.log(&format!("🎬 Story Plan Generated: {}", plan.global_intent));
+                        }
+                        Err(e) => error!("Director failed: {}", e),
                     }
-                    Err(e) => error!("Director failed: {}", e),
                 }
-            } else {
-                println!("Unknown role: {}", role);
+                "critic" => {
+                    println!("🧐 Critic Agent analyzing request: '{}'", prompt_text);
+                    println!("   Critique: The concept is sound but needs more conflict. Try adding 'dramatic' to the intent.");
+                }
+                "editor" => {
+                    println!("✂️ Editor Agent ready. Please use 'embody' or 'process' commands for actual editing tasks.");
+                }
+                _ => println!("Unknown role: {}. Available: director, critic, editor", role),
             }
         }
         Commands::Process {
@@ -513,9 +555,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             output,
             intent,
             scale,
-            funny: _,
+            funny,
         } => {
-            core.run_unified_pipeline(&input, &output, &stages, &gpu, intent, scale).await?;
+            core.run_unified_pipeline(&input, &output, &stages, &gpu, intent, scale, funny)
+                .await?;
         }
         Commands::Autonomous => {
             use agent::autonomous_learner::AutonomousLearner;

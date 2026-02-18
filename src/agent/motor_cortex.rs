@@ -6,10 +6,7 @@ use crate::agent::smart_editor;
 use std::path::Path;
 use tracing::{info, warn};
 
-#[allow(dead_code)]
-pub struct MotorCortex {
-    api_url: String,
-}
+pub struct MotorCortex;
 
 #[allow(dead_code)]
 pub struct EditGraph {
@@ -87,16 +84,16 @@ impl TransitionAgent for SmartTransition {
                 input_idx_a, input_idx_b, duration, offset
             ),
             TransitionType::ZoomPan => {
-                // Custom zoompan is not xfade, but we can simulate it or return a complex string?
-                // For now, mapping to circleopen as placeholder for "zoom" transition
+                // Limitation: Complex ZoomPan requires multiple filter chains (zoompan + xfade).
+                // Using 'circleopen' as a temporary stylistic approximation for transitions.
                 format!(
                     "[{0}][{1}]xfade=transition=circleopen:duration={2}:offset={3}[v{1}]",
                     input_idx_a, input_idx_b, duration, offset
                 )
             }
             TransitionType::Glitch => {
-                // Glitch is complex. Mapping to 'pixelize' or 'hblur' if available in xfade?
-                // xfade has 'pixelize'.
+                // Limitation: True datamosh/glitch requires specialized filters.
+                // Using 'pixelize' xfade as a stylistic approximation.
                 format!(
                     "[{0}][{1}]xfade=transition=pixelize:duration={2}:offset={3}[v{1}]",
                     input_idx_a, input_idx_b, duration, offset
@@ -107,10 +104,8 @@ impl TransitionAgent for SmartTransition {
 }
 
 impl MotorCortex {
-    pub fn new(api_url: &str) -> Self {
-        Self {
-            api_url: api_url.to_string(),
-        }
+    pub fn new(_api_url: &str) -> Self {
+        Self {}
     }
 
     pub async fn execute_smart_render(
@@ -121,26 +116,24 @@ impl MotorCortex {
         visual_data: &[VisualScene],
         transcript: &[TranscriptSegment],
         _audio_data: &AudioAnalysis,
+        dry_run: bool,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         info!("[CORTEX] 🧠 Planning Smart Render based on Visual Analysis & Sovereign Ear...");
 
         // 1. Convert VisualScene to SmartEditor::Scene
         // We need to estimate end times for each visual scene based on the next timestamp
         let mut editor_scenes = Vec::new();
-        
-        // We don't have total duration here easily, but we can assume the last scene 
-        // ends at a reasonable point or just let the smart editor's detect_scenes (if we fall back) handle it.
-        // But since we have visual_data, we should use it.
-        
+
         for i in 0..visual_data.len() {
             let start = visual_data[i].timestamp;
             let end = if i + 1 < visual_data.len() {
                 visual_data[i+1].timestamp
             } else {
-                // Approximate last scene duration or let it be handled
-                start + 5.0 // Placeholder for last shot (SmartEditor will refine it anyway)
+                // Estimate last scene: default to 10s if we can't probe total duration easily here.
+                // In a full implementation, we would probe the file duration.
+                start + 10.0
             };
-            
+
             if end > start {
                 editor_scenes.push(smart_editor::Scene {
                     start_time: start,
@@ -171,6 +164,14 @@ impl MotorCortex {
             Some(transcript.to_vec())
         };
 
+        if dry_run {
+            info!("[CORTEX] 🧪 Dry Run: Skipping smart_edit execution.");
+            // Fallback to one-shot render in dry-run mode to generate command
+            return self.execute_one_shot_render(intent, input, output, visual_data, _audio_data, true)
+                .await
+                .map(|args| format!("(Dry Run) Command: {}", args.join(" ")));
+        }
+
         match smart_editor::smart_edit(
             input,
             intent,
@@ -187,7 +188,7 @@ impl MotorCortex {
             Err(e) => {
                 warn!("[CORTEX] ⚠️ Smart Edit pipeline failed: {}. Falling back to one-shot filter.", e);
                 // Fallback to the old filter-only method if the complex edit fails
-                self.execute_one_shot_render(intent, input, output, visual_data, _audio_data)
+                self.execute_one_shot_render(intent, input, output, visual_data, _audio_data, false)
                     .await
                     .map(|args| args.join(" "))
             }
@@ -201,6 +202,7 @@ impl MotorCortex {
         output: &Path,
         _visual_data: &[VisualScene],
         _audio_data: &AudioAnalysis,
+        dry_run: bool,
     ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
         let library = StyleLibrary::new();
         let profile = library.get_profile(intent);
@@ -294,6 +296,25 @@ impl MotorCortex {
         args.push("yuv420p".to_string());
 
         args.push(output.to_string_lossy().to_string());
+
+        // EXECUTE THE COMMAND
+        if dry_run {
+            info!("[CORTEX] 🧪 Dry Run: Command would be:");
+            info!("{:?}", args.join(" "));
+            return Ok(args);
+        }
+
+        info!("[CORTEX] 🎬 Executing One-Shot Render...");
+        info!("Command: {:?}", args.join(" "));
+
+        let status = std::process::Command::new(&args[0])
+            .args(&args[1..])
+            .status()
+            .map_err(|e| format!("Failed to execute ffmpeg: {}", e))?;
+
+        if !status.success() {
+            return Err(format!("FFmpeg failed with status: {}", status).into());
+        }
 
         Ok(args)
     }
