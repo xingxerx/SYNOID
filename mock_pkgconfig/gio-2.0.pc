@@ -1,0 +1,11 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: GIO
+Description: GLib Input/Output Library
+Version: 2.56.0
+Requires: glib-2.0 gobject-2.0
+Libs: -L${libdir} -lgio-2.0
+Cflags: -I${includedir}

@@ -137,7 +137,7 @@ pub async fn detect_scenes(
             "format=duration",
             "-of",
             "default=noprint_wrappers=1:nokey=1",
-            input.to_str().unwrap(),
+            input.to_str().ok_or("Invalid input path")?,
         ])
         .output()
         .await?;
@@ -157,7 +157,7 @@ pub async fn detect_scenes(
     let output = Command::new("ffmpeg")
         .args([
             "-i",
-            input.to_str().unwrap(),
+            input.to_str().ok_or("Invalid input path")?,
             "-vf",
             &format!("select='gt(scene,{})',showinfo", threshold),
             "-f",
@@ -186,7 +186,7 @@ pub async fn detect_scenes(
     }
 
     timestamps.push(total_duration); // End at total duration
-    timestamps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    timestamps.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     timestamps.dedup();
 
     // Convert timestamps to scenes
@@ -380,12 +380,12 @@ pub fn score_scenes(
                 if seg_end > seg_start {
                     speech_duration += seg_end - seg_start;
                     if !intent.custom_keywords.is_empty() {
-                        let text_lower = seg.text.to_lowercase();
-                        for keyword in &intent.custom_keywords {
-                            if text_lower.contains(&keyword.to_lowercase()) {
-                                has_keyword = true;
-                            }
-                        }
+                         let text_lower = seg.text.to_lowercase();
+                         for keyword in &intent.custom_keywords {
+                             if text_lower.contains(&keyword.to_lowercase()) {
+                                 has_keyword = true;
+                             }
+                         }
                     }
                 }
             }
@@ -481,7 +481,7 @@ pub async fn smart_edit(
 
     // 0. Pre-process: Enhance Audio & Transcribe
     // This creates a clean audio spine for the edit
-    let work_dir = input.parent().unwrap_or(Path::new("."));
+    let work_dir = input.parent().ok_or("Input path has no parent")?;
     let enhanced_audio_path = work_dir.join("synoid_audio_enhanced.wav");
 
     log("[SMART] 🎙️ Enhancing audio (High-Pass + Compression + Normalization)...");
@@ -779,7 +779,7 @@ pub async fn smart_edit(
     {
         let mut file = fs::File::create(&concat_file)?;
         for seg in &segment_files {
-            writeln!(file, "file '{}'", seg.to_str().unwrap())?;
+            writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
         }
     }
 
