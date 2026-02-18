@@ -1,4 +1,5 @@
 pub mod analyzer;
+pub mod commentator;
 pub mod injector;
 
 use anyhow::Result;

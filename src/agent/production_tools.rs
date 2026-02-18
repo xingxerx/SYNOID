@@ -31,7 +31,7 @@ pub async fn trim_video(
     start_time: f64,
     duration: f64,
     output: &Path,
-) -> Result<ProductionResult, Box<dyn std::error::Error>> {
+) -> Result<ProductionResult, Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "[PROD] Trimming video: {:?} ({:.2}s + {:.2}s)",
         input, start_time, duration
@@ -83,7 +83,7 @@ pub async fn trim_video(
 pub async fn apply_anamorphic_mask(
     input: &Path,
     output: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("[PROD] Applying 2.39:1 Cinematic Mask");
     let safe_input = safe_arg_path(input);
     let safe_output = safe_arg_path(output);
@@ -108,7 +108,7 @@ pub async fn compress_video(
     input: &Path,
     target_size_mb: f64,
     output: &Path,
-) -> Result<ProductionResult, Box<dyn std::error::Error>> {
+) -> Result<ProductionResult, Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "[PROD] Compressing video: {:?} -> {:.2} MB",
         input, target_size_mb
@@ -175,7 +175,7 @@ pub async fn compress_video(
 }
 
 /// Enhance audio using vocal processing chain (EQ -> Compression -> Normalization)
-pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("[PROD] Enhancing audio: {:?}", input);
 
     // Filter Chain:
@@ -220,7 +220,7 @@ pub async fn combine_av(
     video_path: &Path,
     audio_path: &Path,
     output_path: &Path,
-) -> Result<ProductionResult, Box<dyn std::error::Error>> {
+) -> Result<ProductionResult, Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "[PROD] Combining Video: {:?} + Audio: {:?}",
         video_path, audio_path
@@ -271,4 +271,74 @@ pub async fn combine_av(
         output_path: output_path.to_path_buf(),
         size_mb,
     })
+}
+
+/// Build a complex filtergraph for transitions
+pub fn build_transition_filter(
+    inputs: usize,
+    transition_duration: f64,
+    video_durations: &[f64],
+) -> String {
+    let mut filter = String::new();
+    let mut offset = 0.0;
+
+    // We need at least 2 inputs to transition
+    if inputs < 2 {
+        return "".to_string();
+    }
+
+    for i in 0..inputs - 1 {
+        let seg_duration = video_durations[i];
+        offset += seg_duration - transition_duration;
+
+        let prev_label = if i == 0 {
+            "0:v".to_string()
+        } else {
+            format!("v{}", i)
+        };
+        let next_label = format!("{}:v", i + 1);
+        let out_label = format!("v{}", i + 1);
+
+        // Select random transition effect
+        let transitions = [
+            "fade",
+            "wipeleft",
+            "wiperight",
+            "slideleft",
+            "slideright",
+            "circlecrop",
+            "rectcrop",
+        ];
+        let effect = transitions[i % transitions.len()];
+
+        filter.push_str(&format!(
+            "[{}{}][{}]xfade=transition={}:duration={}:offset={}[{}];",
+            if i == 0 { "" } else { "" }, // Empty prefix hack
+            prev_label,
+            next_label,
+            effect,
+            transition_duration,
+            offset,
+            out_label
+        ));
+    }
+
+    // Audio crossfade (acrossfade)
+
+    for i in 0..inputs - 1 {
+        let prev_label = if i == 0 {
+            "0:a".to_string()
+        } else {
+            format!("a{}", i)
+        };
+        let next_label = format!("{}:a", i + 1);
+        let out_label = format!("a{}", i + 1);
+
+        filter.push_str(&format!(
+            "[{}][{}]acrossfade=d={}[{}];",
+            prev_label, next_label, transition_duration, out_label
+        ));
+    }
+
+    filter
 }

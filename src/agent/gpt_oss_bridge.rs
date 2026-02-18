@@ -5,27 +5,29 @@
 use crate::agent::multi_agent::NativeTimelineEngine;
 use serde_json::json;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{info, warn};
 
 pub struct SynoidAgent {
     client: reqwest::Client,
     api_url: String,
+    model: String,
 }
 
 impl SynoidAgent {
-    pub fn new(api_url: &str) -> Self {
+    pub fn new(api_url: &str, model: &str) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_url: api_url.to_string(),
+            model: model.to_string(),
         }
     }
 
     pub async fn reason(&self, request: &str) -> Result<String, String> {
-        info!("[AGENT] Reasoning about: {}", request);
+        info!("[AGENT] Reasoning with {}: {}", self.model, request);
 
         // Construct standard OpenAI-compatible Chat Completion request
         let payload = json!({
-            "model": "gpt-3.5-turbo", // Ignored by most local LLMs (Ollama uses loaded model)
+            "model": self.model,
             "messages": [
                 {
                     "role": "system",
@@ -56,7 +58,7 @@ impl SynoidAgent {
                 }
             }
             Err(e) => {
-                error!("LLM Connection Failed: {}", e);
+                warn!("[AGENT] 📡 LLM Connection Failed ({}), falling back to Offline Mode.", e);
                 // Fallback for offline testing
                 Ok(format!("(Offline Mode) Mock response for: {}", request))
             }

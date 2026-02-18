@@ -37,7 +37,7 @@ pub async fn check_ytdlp() -> bool {
 fn build_ytdlp_info_args(
     url: &str,
     auth_browser: Option<&str>,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut args = vec![
         "-m".to_string(),
         "yt_dlp".to_string(),
@@ -70,7 +70,7 @@ fn build_ytdlp_download_args(
     url: &str,
     output_path: &Path,
     auth_browser: Option<&str>,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut args = vec![
         "-m".to_string(),
         "yt_dlp".to_string(),
@@ -99,7 +99,7 @@ pub async fn download_youtube(
     url: &str,
     output_dir: &Path,
     auth_browser: Option<&str>,
-) -> Result<SourceInfo, Box<dyn std::error::Error>> {
+) -> Result<SourceInfo, Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "[SOURCE] Downloading from YouTube: {} (Auth: {:?})",
         url, auth_browser
@@ -169,7 +169,7 @@ pub async fn download_youtube(
 pub async fn search_youtube(
     query: &str,
     limit: usize,
-) -> Result<Vec<SourceInfo>, Box<dyn std::error::Error>> {
+) -> Result<Vec<SourceInfo>, Box<dyn std::error::Error + Send + Sync>> {
     let search_query = format!("ytsearch{}:{}", limit, query);
     info!("[SOURCE] Searching YouTube: {}", search_query);
 
@@ -221,21 +221,28 @@ pub async fn search_youtube(
 }
 
 /// Get video duration using ffprobe
-pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
+pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
     let safe_path = safe_arg_path(path);
 
-    let output = Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-        ])
-        .arg(&safe_path)
-        .output()
-        .await?;
+    // Execute ffprobe with a timeout to prevent hanging
+    // Getting duration from header is usually instant.
+    let output = tokio::time::timeout(
+        tokio::time::Duration::from_secs(10),
+        Command::new("ffprobe")
+            .kill_on_drop(true) // Ensure process is killed if timeout occurs
+            .args([
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+            ])
+            .arg(&safe_path)
+            .output(),
+    )
+    .await
+    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "ffprobe duration check timed out"))??;
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let duration: f64 = output_str.trim().parse().map_err(|_| {
@@ -318,7 +325,11 @@ mod tests {
         assert_eq!(args.last(), Some(&"https://youtube.com".to_string()));
         // check sanitized path is present (either "out.mp4" if absolute or "./out.mp4" if relative)
         // safe_arg_path prepends ./ for relative paths
-        assert!(args.contains(&"./out.mp4".to_string()) || args.contains(&"out.mp4".to_string()));
+        assert!(
+            args.contains(&"./out.mp4".to_string())
+                || args.contains(&".\\out.mp4".to_string())
+                || args.contains(&"out.mp4".to_string())
+        );
     }
 
     #[test]
@@ -327,7 +338,9 @@ mod tests {
         let args = build_ytdlp_download_args("https://youtube.com", path, None).unwrap();
         // Should be sanitized to ./ -out.mp4 or similar to prevent flag interpretation
         // safe_arg_path turns "-out.mp4" into "./-out.mp4"
-        assert!(args.contains(&"./-out.mp4".to_string()));
+        assert!(
+            args.contains(&"./-out.mp4".to_string()) || args.contains(&".\\-out.mp4".to_string())
+        );
         // Should NOT contain raw "-out.mp4" as an isolated argument (it's part of -o value)
         // Actually, it is passed as value to -o.
         // The check is that it starts with ./

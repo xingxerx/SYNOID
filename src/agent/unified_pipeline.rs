@@ -66,6 +66,8 @@ pub struct PipelineConfig {
     pub scale_factor: f64,
     /// Target size in MB for compression (0 = no compression)
     pub target_size_mb: f64,
+    /// Enable Funny Mode (commentary + transitions)
+    pub funny_mode: bool,
     /// Progress callback
     pub progress_callback: Option<Arc<dyn Fn(&str) + Send + Sync>>,
 }
@@ -77,6 +79,7 @@ impl Default for PipelineConfig {
             intent: None,
             scale_factor: 2.0,
             target_size_mb: 0.0,
+            funny_mode: false,
             progress_callback: None,
         }
     }
@@ -101,7 +104,7 @@ impl UnifiedPipeline {
         input: &Path,
         output: &Path,
         config: PipelineConfig,
-    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         let mut current_input = input.to_path_buf();
         let work_dir = input
             .parent()
@@ -186,7 +189,7 @@ impl UnifiedPipeline {
         &self,
         input: &Path,
         config: &PipelineConfig,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         use crate::agent::voice::transcription::TranscriptionEngine;
 
         self.report_progress(config, "Transcribing audio...");
@@ -204,16 +207,17 @@ impl UnifiedPipeline {
         output: &Path,
         intent: &str,
         config: &PipelineConfig,
-    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         use crate::agent::smart_editor;
 
         self.report_progress(config, &format!("Smart editing: {}", intent));
 
         let progress_cb = config.progress_callback.clone();
-        let callback: Option<Box<dyn Fn(&str) + Send>> =
-            progress_cb.map(|cb| Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send>);
+        // Explicitly cast to the type expected by smart_edit (Send + Sync)
+        let callback: Option<Box<dyn Fn(&str) + Send + Sync>> = progress_cb
+            .map(|cb| Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send + Sync>);
 
-        smart_editor::smart_edit(input, intent, output, callback).await?;
+        smart_editor::smart_edit(input, intent, output, config.funny_mode, callback, None, None).await?;
 
         Ok(output.to_path_buf())
     }
@@ -223,7 +227,7 @@ impl UnifiedPipeline {
         input: &Path,
         output: &Path,
         config: &PipelineConfig,
-    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         use crate::agent::vector_engine::{vectorize_video, VectorConfig};
 
         self.report_progress(config, "Vectorizing frames...");
@@ -244,7 +248,7 @@ impl UnifiedPipeline {
         output: &Path,
         scale_factor: f64,
         config: &PipelineConfig,
-    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         use crate::agent::vector_engine::upscale_video;
 
         self.report_progress(config, &format!("Upscaling {}x...", scale_factor));
@@ -259,7 +263,7 @@ impl UnifiedPipeline {
         input: &Path,
         output: &Path,
         config: &PipelineConfig,
-    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         use crate::agent::production_tools::enhance_audio;
 
         self.report_progress(config, "Enhancing audio...");
@@ -304,7 +308,7 @@ impl UnifiedPipeline {
         input: &Path,
         output: &Path,
         config: &PipelineConfig,
-    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         self.report_progress(
             config,
             &format!("Encoding with {}...", self.gpu.ffmpeg_encoder()),

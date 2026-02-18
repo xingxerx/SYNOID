@@ -42,7 +42,7 @@ async fn test_brain_learning_loop() {
     );
 
     // 3. Initialize Brain
-    let mut brain = Brain::new("http://localhost");
+    let mut brain = Brain::new("http://localhost", "mock-model");
 
     // 4. Send Learn Command
     // "Learn style from [path] name fast_paced"

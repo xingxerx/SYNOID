@@ -103,3 +103,42 @@ Addresses needs for Personalization and Voice-based Interaction.
 *   **Identity-Aware Proxy (IAP):** Control access to generation endpoints.
 *   **Cloud Run:** Host generative application in isolated environment.
 
+## 8. Antifragile Production Kernel
+
+### 8.1 Antifragile Supervisor (`supervisor.rs`)
+The kernel uses a Supervisor-Worker pattern that isolates high-risk tasks:
+*   **Panic Isolation:** Wraps execution in `catch_unwind` to prevent sub-module crashes from killing the GUI or Sentinel.
+*   **Exponential Backoff:** Retries failed tasks with 2s, 4s, 8s delays (max 3 attempts).
+*   **Error Healer:** Pattern-matches FFmpeg `stderr` for OOM, NVENC, and pixel format errors and mutates the argument vector toward a safer fallback (e.g., GPU → CPU encoding with libx264).
+
+### 8.2 PressureWatcher — Hardware Nervous System (`defense/pressure.rs`)
+A predictive resource monitor that polls CPU/RAM via `sysinfo`:
+*   **Green:** Full parallelism, high-fidelity models.
+*   **Yellow (>75% RAM):** Throttle non-essential tasks, flush `cortex_cache`.
+*   **Red (>90% RAM):** Trigger **Atomic Stop** — immediate state dump and process suspension.
+*   The GUI sidebar displays a real-time health bar reflecting the current pressure level.
+
+### 8.3 Shadow Writing & Atomic Mover (`io_shield.rs`)
+*   **Shadow Writing:** All renders write to `.synoid_tmp` sidecar files. The final output is only committed once verification passes.
+*   **Atomic Mover:** Uses `fs::rename` for zero-copy commits on the same drive. Falls back to copy-then-delete for cross-drive projects.
+
+### 8.4 Validation Gate (`validation_gate.rs`)
+Performs "Null Decode" testing via `ffmpeg -v error -i <file> -f null -`. Any bitstream error surfaces on stderr and triggers a re-render of only the affected chunk.
+
+### 8.5 Chunked Rendering & Video Stitcher (`video_stitcher.rs`)
+Long-form renders (>5 minutes or vectorization tasks) are split into segments. On completion, the VideoStitcher generates an FFmpeg concat manifest and joins verified chunks with `-c copy` (zero quality loss, near-zero CPU cost).
+
+### 8.6 Signal Sentinel — Graceful Shutdown (`defense/signals.rs`)
+Uses `tokio::signal::ctrl_c()` to intercept Ctrl-C on both Windows and Unix. On signal, the handler triggers an emergency save callback (writing the recovery manifest) before exiting.
+
+### 8.7 Recovery Manifest (`recovery.rs`)
+A JSON "Black Box" stored at `.synoid/cortex_cache/recovery_manifest.json`:
+*   Records: project name, last frame, last intent, hardware state, timestamp, completed chunk paths.
+*   On startup, SYNOID checks for the manifest and offers to resume from the last verified chunk.
+
+### 8.8 Trade-offs
+| Factor | Trade-off | Benefit |
+|--------|-----------|---------|
+| Validation Overhead | ~5-10% added render time | Guarantees every frame is playable |
+| Shadow Writing | 2x temporary disk usage | Prevents corrupted output files |
+| CPU Fallback | Slower than GPU encoding | Renders complete overnight instead of crashing |

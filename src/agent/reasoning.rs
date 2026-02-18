@@ -1,5 +1,5 @@
 // SYNOID™ Reasoning Manager
-// Logic: Switch gpt-oss-20b effort levels based on task priority
+// Logic: Switch gpt-oss:20b effort levels based on task priority
 
 use tracing::info;
 

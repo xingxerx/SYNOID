@@ -16,36 +16,31 @@ pub struct VisualScene {
 /// Scan video for visual scenes using FFmpeg/FFprobe
 /// In a real implementation this might call Cuda kernels, but here we perform a simulated scan
 /// or use ffprobe's scene detection filter.
-pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::error::Error>> {
+pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::error::Error + Send + Sync>> {
     info!("[EYES] Scanning visual content: {:?}", path);
 
-    // Using ffprobe to detect scene changes (>0.3 difference)
-    // We request only the pkt_pts_time (timestamp) of frames that pass the scene change filter
-    // Using default=noprint_wrappers=1:nokey=1 to get clean timestamp output
-    let output = Command::new("ffprobe")
+    // Using ffmpeg to detect scene changes (>0.3 difference)
+    // metadata=print:file=- outputs metadata to stdout
+    let output = Command::new("ffmpeg")
         .args([
             "-v",
             "error",
-            "-show_entries",
-            "frame=pkt_pts_time",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            "-f",
-            "lavfi",
+            "-i",
         ])
-        .arg(&format!(
-            "movie='{}',select='gt(scene,0.01)'",
-            path.to_string_lossy()
-                .replace("\\", "/")
-                .replace(":", "\\:")
-                .replace("'", "'\\''")
-        ))
+        .arg(path)
+        .args([
+            "-vf",
+            "select='gt(scene,0.3)',metadata=print:file=-",
+            "-f",
+            "null",
+            "-",
+        ])
         .output()
-        .await?; // Async execution
+        .await?;
 
     if !output.status.success() {
         return Err(format!(
-            "FFprobe failed: {}",
+            "FFmpeg scene detection failed: {}",
             String::from_utf8_lossy(&output.stderr)
         )
         .into());
@@ -61,18 +56,34 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
         scene_score: 1.0,
     });
 
-    for line in stdout.lines() {
-        if let Ok(ts) = line.trim().parse::<f64>() {
-            // Avoid duplicate 0.0 or very close timestamps
-            if !scenes.is_empty() && (ts - scenes.last().unwrap().timestamp).abs() < 0.5 {
-                continue;
-            }
+    let mut current_pts: Option<f64> = None;
 
-            scenes.push(VisualScene {
-                timestamp: ts,
-                motion_score: 0.5, // We don't have motion data from this simple scan, defaulting
-                scene_score: 1.0,  // It's a detected scene change
-            });
+    for line in stdout.lines() {
+        // FFmpeg metadata output looks like:
+        // frame:0    pts:21      pts_time:0.021029
+        // lavfi.scene_score=0.450000
+        
+        if line.contains("pts_time:") {
+            if let Some(ts_str) = line.split("pts_time:").last() {
+                if let Ok(ts) = ts_str.trim().parse::<f64>() {
+                    current_pts = Some(ts);
+                }
+            }
+        } else if line.contains("lavfi.scene_score=") {
+            if let (Some(ts), Some(score_str)) = (current_pts, line.split('=').last()) {
+                if let Ok(score) = score_str.trim().parse::<f64>() {
+                    // Avoid duplicate 0.0 or very close timestamps
+                    if !scenes.is_empty() && (ts - scenes.last().unwrap().timestamp).abs() < 0.5 {
+                        continue;
+                    }
+
+                    scenes.push(VisualScene {
+                        timestamp: ts,
+                        motion_score: score,
+                        scene_score: score,
+                    });
+                }
+            }
         }
     }
 

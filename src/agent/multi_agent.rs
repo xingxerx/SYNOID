@@ -18,6 +18,8 @@ pub struct SceneOutline {
     pub timestamp_end: f64,
     pub narrative_goal: String,
     pub visual_constraints: Vec<String>,
+    pub script: Option<String>,
+    pub voice_profile: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,9 +50,9 @@ impl DirectorAgent {
     pub fn new(model: &str, api_url: &str) -> Self {
         Self {
             model_id: model.to_string(),
-            system_prompt: "You are the SYNOID Director. Output ONLY valid JSON matching the StoryPlan structure: { global_intent: string, scenes: [ { timestamp_start: f64, timestamp_end: f64, narrative_goal: string, visual_constraints: [string] } ] }.".into(),
+            system_prompt: "You are the SYNOID Director. Output ONLY valid JSON matching the StoryPlan structure: { global_intent: string, scenes: [ { timestamp_start: f64, timestamp_end: f64, narrative_goal: string, visual_constraints: [string], script: string (optional), voice_profile: string (optional) } ] }.".into(),
             reasoning: ReasoningManager::new(),
-            agent: SynoidAgent::new(api_url),
+            agent: SynoidAgent::new(api_url, "gpt-oss:20b"),
         }
     }
 
@@ -61,7 +63,7 @@ impl DirectorAgent {
         &mut self,
         user_prompt: &str,
         style_profile: Option<&str>,
-    ) -> Result<StoryPlan, Box<dyn std::error::Error>> {
+    ) -> Result<StoryPlan, Box<dyn std::error::Error + Send + Sync>> {
         // Dynamic Reasoning Adjustment
         if let Some(style) = style_profile {
             if style.to_lowercase().contains("cinematic") {
@@ -89,7 +91,11 @@ impl DirectorAgent {
         );
 
         // Call LLM
-        let response_text = self.agent.reason(&prompt).await?;
+        let response_text = self
+            .agent
+            .reason(&prompt)
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         // Attempt to parse JSON.
         // Note: LLMs might wrap JSON in markdown code blocks, so we simple-clean it.
@@ -113,12 +119,16 @@ impl DirectorAgent {
                             timestamp_end: 5.0,
                             narrative_goal: "Intro/Setup (Fallback)".to_string(),
                             visual_constraints: vec!["Standard".to_string()],
+                            script: None,
+                            voice_profile: None,
                         },
                         SceneOutline {
                             timestamp_start: 5.0,
                             timestamp_end: 15.0,
                             narrative_goal: "Action/Core (Fallback)".to_string(),
                             visual_constraints: vec!["Dynamic".to_string()],
+                            script: None,
+                            voice_profile: None,
                         },
                     ],
                 };
