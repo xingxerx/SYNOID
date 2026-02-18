@@ -78,6 +78,11 @@ pub async fn upscale_video(
                 ).into());
             }
         }
+        Ok(())
+    }).await?;
+
+    if let Err(e) = resolution_check {
+        return Err(e.into());
     }
 
     // 4. Vectorize & Render High-Res (Parallel)
