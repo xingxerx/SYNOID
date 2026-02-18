@@ -16,60 +16,62 @@ pub struct VisualScene {
 /// Scan video for visual scenes using FFmpeg/FFprobe
 /// In a real implementation this might call Cuda kernels, but here we perform a simulated scan
 /// or use ffprobe's scene detection filter.
-pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::error::Error>> {
+pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::error::Error + Send + Sync>> {
     info!("[EYES] Scanning visual content: {:?}", path);
 
-    // Using ffprobe to detect scene changes (>0.3 difference)
-    // We pass the file directly with -i to avoid complex escaping issues with the 'movie' filter on Windows
-    let output = Command::new("ffprobe")
+    // Using ffmpeg to detect scene changes (>0.3 difference)
+    // metadata=print:file=- outputs metadata to stdout
+    let output = Command::new("ffmpeg")
         .args([
             "-v",
             "error",
-            "-show_entries",
-            "frame=pkt_pts_time,frame_tags=lavfi.scene_score",
-            "-of",
-            "csv=p=0", // Comma separated values for easier parsing
-            "-vf",
-            "select='gt(scene,0.3)'",
             "-i",
         ])
         .arg(path)
+        .args([
+            "-vf",
+            "select='gt(scene,0.3)',metadata=print:file=-",
+            "-f",
+            "null",
+            "-",
+        ])
         .output()
-        .await?; // Async execution
+        .await?;
 
     if !output.status.success() {
         return Err(format!(
-            "FFprobe failed: {}",
+            "FFmpeg scene detection failed: {}",
             String::from_utf8_lossy(&output.stderr)
         )
         .into());
     }
 
-    // Offload parsing to blocking task
-    let stdout_bytes = output.stdout;
-    let scenes = tokio::task::spawn_blocking(move || {
-        let stdout = String::from_utf8_lossy(&stdout_bytes);
-        let mut scenes = Vec::new();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut scenes = Vec::new();
 
-        // Always add start as a scene
-        scenes.push(VisualScene {
-            timestamp: 0.0,
-            motion_score: 0.0,
-            scene_score: 1.0,
-        });
+    // Always add start as a scene
+    scenes.push(VisualScene {
+        timestamp: 0.0,
+        motion_score: 0.0,
+        scene_score: 1.0,
+    });
 
-        for line in stdout.lines() {
-            // Output format: timestamp,score
-            let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() >= 1 {
-                if let Ok(ts) = parts[0].trim().parse::<f64>() {
-                    // Parse score if available, otherwise default to 1.0
-                    let score = if parts.len() >= 2 {
-                        parts[1].trim().parse::<f64>().unwrap_or(1.0)
-                    } else {
-                        1.0
-                    };
+    let mut current_pts: Option<f64> = None;
 
+    for line in stdout.lines() {
+        // FFmpeg metadata output looks like:
+        // frame:0    pts:21      pts_time:0.021029
+        // lavfi.scene_score=0.450000
+        
+        if line.contains("pts_time:") {
+            if let Some(ts_str) = line.split("pts_time:").last() {
+                if let Ok(ts) = ts_str.trim().parse::<f64>() {
+                    current_pts = Some(ts);
+                }
+            }
+        } else if line.contains("lavfi.scene_score=") {
+            if let (Some(ts), Some(score_str)) = (current_pts, line.split('=').last()) {
+                if let Ok(score) = score_str.trim().parse::<f64>() {
                     // Avoid duplicate 0.0 or very close timestamps
                     if !scenes.is_empty() && (ts - scenes.last().unwrap().timestamp).abs() < 0.5 {
                         continue;
@@ -77,7 +79,7 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
 
                     scenes.push(VisualScene {
                         timestamp: ts,
-                        motion_score: score, // Use scene score as proxy for motion intensity
+                        motion_score: score,
                         scene_score: score,
                     });
                 }

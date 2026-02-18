@@ -6,36 +6,39 @@ use crate::agent::vision_tools::calculate_optical_flow_diff;
 use rayon::prelude::*;
 use resvg::tiny_skia;
 use resvg::usvg;
-use std::fs;
+use std::fs as std_fs;
 use std::path::{Path, PathBuf};
+use tokio::fs;
 use tokio::process::Command;
 use tracing::{error, info};
 
-/// Upscale video by converting to Vector and re-rendering at higher resolution
+/// Upscale video by converting to Vector and re-rendering at higher resolution.
+/// Note: This performs Vector Stylization / Artistic Upscaling, creating a "painted" look.
+/// It does NOT perform photorealistic super-resolution.
 pub async fn upscale_video(
     input: &Path,
     scale_factor: f64,
     output: &Path,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     info!(
-        "[UPSCALE] Starting Infinite Zoom (Scale: {}x) on {:?}",
+        "[UPSCALE] Starting Vector Stylization & Upscale (Scale: {}x) on {:?}",
         scale_factor, input
     );
 
     // 1. Setup Directories
     let work_dir = input.parent().unwrap().join("synoid_upscale_work");
-    if work_dir.exists() {
-        tokio::fs::remove_dir_all(&work_dir).await?;
+    if fs::try_exists(&work_dir).await? {
+        fs::remove_dir_all(&work_dir).await?;
     }
-    tokio::fs::create_dir_all(&work_dir).await?;
+    fs::create_dir_all(&work_dir).await?;
 
     let frames_src = work_dir.join("src_frames");
     let frames_svg = work_dir.join("vectors");
     let frames_out = work_dir.join("high_res_frames");
 
-    tokio::fs::create_dir_all(&frames_src).await?;
-    tokio::fs::create_dir_all(&frames_svg).await?;
-    tokio::fs::create_dir_all(&frames_out).await?;
+    fs::create_dir_all(&frames_src).await?;
+    fs::create_dir_all(&frames_svg).await?;
+    fs::create_dir_all(&frames_out).await?;
 
     // 2. Extract Source Frames
     info!("[UPSCALE] Extracting source frames...");
@@ -55,32 +58,24 @@ pub async fn upscale_video(
 
     // 3. Resolution Safety Check
     // Calculate theoretical output size based on first frame
-    let frames_src_check = frames_src.clone();
-    let scale_factor_check = scale_factor;
+    let mut dir = fs::read_dir(&frames_src).await?;
+    // We only need the first valid entry
+    if let Ok(Some(first_frame)) = dir.next_entry().await {
+        if let Ok(dims) = image::image_dimensions(first_frame.path()) {
+            let (orig_w, orig_h) = dims;
+            let target_w = (orig_w as f64 * scale_factor) as u32;
+            let target_h = (orig_h as f64 * scale_factor) as u32;
 
-    // Blocking call wrapped in spawn_blocking
-    let resolution_check = tokio::task::spawn_blocking(move || -> Result<(), String> {
-        if let Some(first_frame) = fs::read_dir(&frames_src_check)
-            .map_err(|e| e.to_string())?
-            .filter_map(|e| e.ok())
-            .next()
-        {
-            if let Ok(dims) = image::image_dimensions(first_frame.path()) {
-                let (orig_w, orig_h) = dims;
-                let target_w = (orig_w as f64 * scale_factor_check) as u32;
-                let target_h = (orig_h as f64 * scale_factor_check) as u32;
+            info!(
+                "[UPSCALE] Original: {}x{}, Target: {}x{}",
+                orig_w, orig_h, target_w, target_h
+            );
 
-                info!(
-                    "[UPSCALE] Original: {}x{}, Target: {}x{}",
-                    orig_w, orig_h, target_w, target_h
-                );
-
-                if target_w > 16384 || target_h > 16384 {
-                    return Err(format!(
-                        "Safety Stop: Target resolution {}x{} exceeds 16K limit (16384px). Reduce scale factor.",
-                        target_w, target_h
-                    ));
-                }
+            if target_w > 16384 || target_h > 16384 {
+                return Err(format!(
+                    "Safety Stop: Target resolution {}x{} exceeds 16K limit (16384px). Reduce scale factor.",
+                    target_w, target_h
+                ).into());
             }
         }
         Ok(())
@@ -91,10 +86,9 @@ pub async fn upscale_video(
     }
 
     // 4. Vectorize & Render High-Res (Parallel)
-    // Read directory asynchronously first, then spawn blocking task
     let mut paths: Vec<PathBuf> = Vec::new();
-    let mut entries = tokio::fs::read_dir(&frames_src).await?;
-    while let Some(entry) = entries.next_entry().await? {
+    let mut dir = fs::read_dir(&frames_src).await?;
+    while let Ok(Some(entry)) = dir.next_entry().await {
         paths.push(entry.path());
     }
     info!(
@@ -130,7 +124,7 @@ pub async fn upscale_video(
         .await?;
 
     // Cleanup
-    tokio::fs::remove_dir_all(work_dir).await?;
+    fs::remove_dir_all(work_dir).await?;
 
     if status_enc.status.success() {
         Ok(format!("Upscaled video saved to {:?}", output))
@@ -231,7 +225,7 @@ fn process_frames_core(
             let out_png = frames_out.join(format!("{}.png", current_stem));
 
             // B. Render (SVG -> High-Res Raster)
-            if let Ok(svg_data) = fs::read(&key_svg_path) {
+            if let Ok(svg_data) = std_fs::read(&key_svg_path) {
                 let opt = usvg::Options::default();
                 if let Ok(tree) = usvg::Tree::from_data(&svg_data, &opt) {
                     let size = tree.size.to_screen_size();
@@ -256,7 +250,7 @@ pub async fn upscale_video_cuda(
     input: &Path,
     scale_factor: f64,
     output: &Path,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     // use cudarc::driver::CudaDevice;
 
     // info!("[UPSCALE-CUDA] Initializing CUDA 13.1 context...");
@@ -323,16 +317,16 @@ pub async fn vectorize_video(
     input: &Path,
     output_dir: &Path,
     config: VectorConfig,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     info!("[VECTOR] Starting vectorization engine on {:?}", input);
 
-    if !output_dir.exists() {
-        tokio::fs::create_dir_all(output_dir).await?;
+    if !fs::try_exists(output_dir).await? {
+        fs::create_dir_all(output_dir).await?;
     }
 
     // 1. Extract Frames using FFmpeg
     let frames_dir = output_dir.join("frames_src");
-    tokio::fs::create_dir_all(&frames_dir).await?;
+    fs::create_dir_all(&frames_dir).await?;
 
     info!("[VECTOR] Extracting frames...");
     let status = Command::new("ffmpeg")
@@ -349,8 +343,8 @@ pub async fn vectorize_video(
 
     // 2. Vectorize Frames using vtracer (Parallelized)
     let mut paths: Vec<PathBuf> = Vec::new();
-    let mut entries = tokio::fs::read_dir(&frames_dir).await?;
-    while let Some(entry) = entries.next_entry().await? {
+    let mut dir = fs::read_dir(&frames_dir).await?;
+    while let Ok(Some(entry)) = dir.next_entry().await {
         paths.push(entry.path());
     }
 
@@ -368,24 +362,23 @@ pub async fn vectorize_video(
         ..Default::default()
     };
 
-    let output_dir_clone = output_dir.to_path_buf();
-
-    // Blocking CPU Task Offload
+    // Parallel processing with Rayon
+    let output_dir_owned = output_dir.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        // Parallel processing with Rayon (blocks the thread provided by spawn_blocking)
         paths.par_iter().for_each(|frame_path| {
             let stem = frame_path.file_stem().unwrap().to_string_lossy();
-            let out_svg = output_dir_clone.join(format!("{}.svg", stem));
+            let out_svg = output_dir_owned.join(format!("{}.svg", stem));
 
             match vtracer::convert_image_to_svg(frame_path, &out_svg, vt_config.clone()) {
                 Ok(_) => {} // Silent success for speed
                 Err(e) => error!("Failed frame {}: {}", stem, e),
             }
         });
-    }).await?;
+    })
+    .await?;
 
     // 3. Cleanup Source Frames
-    tokio::fs::remove_dir_all(&frames_dir).await?;
+    fs::remove_dir_all(&frames_dir).await?;
 
     Ok(format!(
         "Vectorization complete. SVGs saved in {:?}",
