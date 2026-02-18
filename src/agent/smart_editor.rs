@@ -505,7 +505,7 @@ pub async fn smart_edit(
         log(&format!("[SMART] Using pre-scanned transcript ({} segments)", t.len()));
         Some(t)
     } else if use_enhanced_audio {
-        let engine = TranscriptionEngine::new().map_err(|e| e.to_string())?;
+        let engine = TranscriptionEngine::new(None).await.map_err(|e| e.to_string())?;
         match engine.transcribe(&enhanced_audio_path).await {
             Ok(t) => {
                 log(&format!(

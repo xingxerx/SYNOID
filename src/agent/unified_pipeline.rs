@@ -194,7 +194,7 @@ impl UnifiedPipeline {
 
         self.report_progress(config, "Transcribing audio...");
 
-        let engine = TranscriptionEngine::new()?;
+        let engine = TranscriptionEngine::new(None).await?;
         let segments = engine.transcribe(input).await?;
 
         self.report_progress(config, &format!("Transcribed {} segments", segments.len()));

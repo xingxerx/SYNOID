@@ -17,14 +17,14 @@ impl AudioIO {
         Self { sample_rate: 16000 } // 16kHz for voice
     }
 
-    /// Record audio from microphone to WAV file
+    /// Record audio from microphone to WAV file.
+    /// cpal::Stream is !Send, so the entire capture (including sleep) runs in spawn_blocking
+    /// using std::thread::sleep to avoid holding a !Send type across an .await point.
     pub async fn record_to_file(
         &self,
         output_path: &Path,
         duration_secs: u32,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-
         // Security check: Prevent directory traversal
         if output_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
             return Err("Security Violation: Path traversal detected".into());
@@ -35,56 +35,46 @@ impl AudioIO {
             duration_secs, output_path
         );
 
-        // Run audio capture in blocking task since cpal setup can be slow
-        // but wait, we need to sleep asynchronously.
-        // Actually cpal setup is fast enough, but stream building might block slightly.
-        // The main issue is the sleep.
-
         let sample_rate = self.sample_rate;
-        let samples: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
-        let samples_clone = samples.clone();
-
-        // We can't move non-Send types across await if we hold them.
-        // Stream is Send? cpal::Stream is usually Send.
-
-        let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or("No input device available")?;
-
-        let config = cpal::StreamConfig {
-            channels: 1,
-            sample_rate: cpal::SampleRate(sample_rate),
-            buffer_size: cpal::BufferSize::Default,
-        };
-
-        let stream = device.build_input_stream(
-            &config,
-            move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                if let Ok(mut lock) = samples_clone.lock() {
-                    lock.extend_from_slice(data);
-                }
-            },
-            |err| eprintln!("Stream error: {}", err),
-            None,
-        )?;
-
-        stream.play()?;
-
-        // Non-blocking sleep
-        tokio::time::sleep(tokio::time::Duration::from_secs(duration_secs as u64)).await;
-
-        drop(stream);
-
-        // Write to WAV in blocking task (Disk I/O)
-        let samples_final = samples.lock().unwrap().clone();
         let output_path_buf = output_path.to_path_buf();
-        let sr = self.sample_rate;
 
-        tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
+            let host = cpal::default_host();
+            let device = host
+                .default_input_device()
+                .ok_or("No input device available")?;
+
+            let config = cpal::StreamConfig {
+                channels: 1,
+                sample_rate: cpal::SampleRate(sample_rate),
+                buffer_size: cpal::BufferSize::Default,
+            };
+
+            let samples: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
+            let samples_clone = samples.clone();
+
+            let stream = device.build_input_stream(
+                &config,
+                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    if let Ok(mut lock) = samples_clone.lock() {
+                        lock.extend_from_slice(data);
+                    }
+                },
+                |err| eprintln!("Stream error: {}", err),
+                None,
+            )?;
+
+            stream.play()?;
+            std::thread::sleep(std::time::Duration::from_secs(duration_secs as u64));
+            drop(stream);
+
+            let samples_final = samples.lock().unwrap().clone();
+
             let spec = hound::WavSpec {
                 channels: 1,
-                sample_rate: sr,
+                sample_rate,
                 bits_per_sample: 16,
                 sample_format: hound::SampleFormat::Int,
             };
@@ -95,8 +85,8 @@ impl AudioIO {
                 writer.write_sample(amplitude)?;
             }
             writer.finalize()?;
-            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-        }).await??;
+            Ok(())
+        }).await?.map_err(|e| e.to_string())?;
 
         info!("[VOICE] Recording saved.");
         Ok(())
@@ -120,9 +110,8 @@ impl AudioIO {
             sink.append(source);
             sink.sleep_until_end();
             Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-        }).await??;
+        }).await?.map_err(|e| e.to_string())?;
 
         Ok(())
     }
-
 }

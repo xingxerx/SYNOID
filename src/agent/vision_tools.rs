@@ -85,9 +85,7 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
                 }
             }
         }
-        scenes
-    })
-    .await?;
+    }
 
     // Fallback if no scenes detected (e.g. short video or no changes) - ensure at least start is there
     if scenes.is_empty() {

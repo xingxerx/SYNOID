@@ -18,7 +18,6 @@ use crate::agent::source_tools;
 use crate::agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipeline};
 use crate::agent::vector_engine::{self, VectorConfig};
 use crate::agent::voice::VoiceEngine;
-use crate::agent::defense::{IntegrityGuard, Sentinel};
 use crate::agent::autonomous_learner::AutonomousLearner;
 use crate::gpu_backend;
 
@@ -494,15 +493,10 @@ impl AgentCore {
 
         let out_path = output.unwrap_or_else(|| PathBuf::from("voice_sample.wav"));
 
-        match tokio::task::spawn_blocking(
-            move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-                audio_io.record_to_file(&out_path, duration).map_err(|e| {
-                    let boxed: Box<dyn std::error::Error + Send + Sync> = e.to_string().into();
-                    boxed
-                })
-            },
-        )
-        .await?
+        match audio_io
+            .record_to_file(&out_path, duration)
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })
         {
             Ok(_) => self.log(&format!("[CORE] ✅ Recorded {} seconds", duration)),
             Err(e) => self.log(&format!("[CORE] ❌ Recording failed: {}", e)),
@@ -689,7 +683,7 @@ impl AgentCore {
 
             // Check File Integrity
             if mode == "all" || mode == "file" {
-                let violations = integrity.verify_integrity();
+                let violations = integrity.verify_integrity().await;
                 for v in violations {
                     self.log(&format!("[INTEGRITY] ❌ {}", v));
                 }
