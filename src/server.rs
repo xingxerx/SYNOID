@@ -114,6 +114,41 @@ async fn handle_chat(
     }
 }
 
+fn is_safe_path(path: &std::path::Path) -> bool {
+    // 1. Check for directory traversal (..)
+    for component in path.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return false;
+        }
+    }
+
+    // 2. Check for hidden files (starting with .)
+    if let Some(file_name) = path.file_name() {
+        let name = file_name.to_string_lossy();
+        if name.starts_with('.') {
+            return false;
+        }
+    } else {
+        return false; // No filename? Unlikely to be a valid file to stream
+    }
+
+    // 3. Check extension against strict allowlist
+    if let Some(ext) = path.extension() {
+        let ext_str = ext.to_string_lossy().to_lowercase();
+        let allowed_extensions = [
+            "mp4", "mkv", "avi", "mov", "webm", // Video
+            "mp3", "wav", "flac", "aac", "ogg", // Audio
+            "jpg", "jpeg", "png", "webp", "gif", // Image
+        ];
+
+        // Explicitly reject SVG as per security standards
+        if ext_str == "svg" {
+            return false;
+        }
+
+        allowed_extensions.contains(&ext_str.as_str())
+    } else {
+        false // No extension is suspicious for media streaming
 fn validate_stream_path(raw_path: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(raw_path);
 
@@ -145,6 +180,12 @@ async fn stream_video(
     Query(params): Query<StreamParams>,
     req: Request,
 ) -> impl axum::response::IntoResponse {
+    let path = std::path::PathBuf::from(params.path);
+
+    // Security check: Validate path before accessing filesystem
+    if !is_safe_path(&path) {
+        return axum::http::StatusCode::BAD_REQUEST.into_response();
+    }
     let path = match validate_stream_path(&params.path) {
         Ok(p) => p,
         Err(e) => {
