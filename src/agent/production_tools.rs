@@ -31,7 +31,7 @@ pub async fn trim_video(
     start_time: f64,
     duration: f64,
     output: &Path,
-) -> Result<ProductionResult, Box<dyn std::error::Error>> {
+) -> Result<ProductionResult, Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "[PROD] Trimming video: {:?} ({:.2}s + {:.2}s)",
         input, start_time, duration
@@ -83,7 +83,7 @@ pub async fn trim_video(
 pub async fn apply_anamorphic_mask(
     input: &Path,
     output: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("[PROD] Applying 2.39:1 Cinematic Mask");
     let safe_input = safe_arg_path(input);
     let safe_output = safe_arg_path(output);
@@ -108,7 +108,7 @@ pub async fn compress_video(
     input: &Path,
     target_size_mb: f64,
     output: &Path,
-) -> Result<ProductionResult, Box<dyn std::error::Error>> {
+) -> Result<ProductionResult, Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "[PROD] Compressing video: {:?} -> {:.2} MB",
         input, target_size_mb
@@ -175,7 +175,7 @@ pub async fn compress_video(
 }
 
 /// Enhance audio using vocal processing chain (EQ -> Compression -> Normalization)
-pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn enhance_audio(input: &Path, output: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("[PROD] Enhancing audio: {:?}", input);
 
     // Filter Chain:
@@ -220,7 +220,7 @@ pub async fn combine_av(
     video_path: &Path,
     audio_path: &Path,
     output_path: &Path,
-) -> Result<ProductionResult, Box<dyn std::error::Error>> {
+) -> Result<ProductionResult, Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "[PROD] Combining Video: {:?} + Audio: {:?}",
         video_path, audio_path

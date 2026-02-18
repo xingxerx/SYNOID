@@ -28,22 +28,31 @@ impl IntegrityGuard {
     }
 
     /// Build the initial database of file hashes
-    pub fn build_baseline(&mut self) -> std::io::Result<()> {
+    pub async fn build_baseline(&mut self) -> std::io::Result<()> {
         self.hashes.clear();
         info!("[DEFENSE] Building integrity baseline...");
 
-        for path in &self.watched_paths {
+        // We clone paths to avoid borrowing self in async loop
+        let watched = self.watched_paths.clone();
+
+        for path in watched {
             if path.is_file() {
-                if let Ok(hash) = self.hash_file(path) {
-                    self.hashes.insert(path.clone(), hash);
+                if let Ok(hash) = self.hash_file(&path).await {
+                    self.hashes.insert(path, hash);
                 }
             } else if path.is_dir() {
-                for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-                    if entry.file_type().is_file() {
-                        let fpath = entry.path().to_path_buf();
-                        if let Ok(hash) = self.hash_file(&fpath) {
-                            self.hashes.insert(fpath, hash);
-                        }
+                // Walking directory is blocking, so we collect paths first or wrap in blocking?
+                // WalkDir is efficient. Let's collect file paths first.
+                let mut files = Vec::new();
+                for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
+                     if entry.file_type().is_file() {
+                        files.push(entry.path().to_path_buf());
+                     }
+                }
+
+                for fpath in files {
+                    if let Ok(hash) = self.hash_file(&fpath).await {
+                        self.hashes.insert(fpath, hash);
                     }
                 }
             }
@@ -56,7 +65,7 @@ impl IntegrityGuard {
     }
 
     /// Check for changes against the baseline
-    pub fn verify_integrity(&self) -> Vec<String> {
+    pub async fn verify_integrity(&self) -> Vec<String> {
         let mut violations = Vec::new();
 
         for (path, original_hash) in &self.hashes {
@@ -67,7 +76,7 @@ impl IntegrityGuard {
                 continue;
             }
 
-            match self.hash_file(path) {
+            match self.hash_file(path).await {
                 Ok(current_hash) => {
                     if *original_hash != current_hash {
                         let msg = format!("TAMPER DETECTED: {:?} (Hash Mismatch)", path);
@@ -91,20 +100,25 @@ impl IntegrityGuard {
         violations
     }
 
-    fn hash_file(&self, path: &Path) -> std::io::Result<String> {
-        let mut file = File::open(path)?;
-        let mut hasher = Sha256::new();
-        // Use 64KB buffer for optimal I/O performance
-        let mut buffer = [0; 65536];
+    async fn hash_file(&self, path: &Path) -> std::io::Result<String> {
+        let path_buf = path.to_path_buf();
 
-        loop {
-            let count = file.read(&mut buffer)?;
-            if count == 0 {
-                break;
+        // Offload heavy hashing and I/O to blocking thread
+        tokio::task::spawn_blocking(move || {
+            let mut file = File::open(&path_buf)?;
+            let mut hasher = Sha256::new();
+            // Use 64KB buffer for optimal I/O performance
+            let mut buffer = [0; 65536];
+
+            loop {
+                let count = file.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..count]);
             }
-            hasher.update(&buffer[..count]);
-        }
 
-        Ok(format!("{:x}", hasher.finalize()))
+            Ok(format!("{:x}", hasher.finalize()))
+        }).await?
     }
 }

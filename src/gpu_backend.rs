@@ -279,7 +279,7 @@ pub async fn print_gpu_status() {
         println!();
         println!("[Note] RTX 50 series CUDA compute (sm_120) not yet supported");
         println!("       by Rust ML libs. Using FFmpeg NVENC for encoding.");
-        println!("       Whisper transcription uses CPU mode for reliability.");
+        println!("       Whisper transcription uses GPU mode for ultimate performance.");
     }
 }
 

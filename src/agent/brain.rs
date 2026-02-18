@@ -73,6 +73,7 @@ pub struct Brain {
     pub learning_kernel: LearningKernel,
     pub neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity,
     /// GPU/CUDA backend reference (late-bound after async detection).
+    /// Note: Uses 'static lifetime because GpuContext is a global singleton (OnceLock).
     gpu: Option<&'static GpuContext>,
     // Integrated components (silences unused warnings)
     _consciousness: Consciousness,
@@ -429,6 +430,73 @@ impl Brain {
                     Err(e) => Err(format!("Research failed: {}", e)),
                 }
             }
+            Intent::Vectorize { input, preset: _ } => {
+                info!("[BRAIN] 🎨 Activating Vector Engine...");
+                use crate::agent::vector_engine::{self, VectorConfig};
+                let input_path = std::path::Path::new(&input);
+                let output_path = input_path.with_file_name(format!(
+                    "{}_vectorized",
+                    input_path.file_stem().unwrap().to_string_lossy()
+                ));
+
+                let config = VectorConfig::default();
+
+                match vector_engine::vectorize_video(input_path, &output_path, config).await {
+                    Ok(msg) => {
+                        self.neuroplasticity.record_success();
+                        Ok(format!("Vectorization complete: {}", msg))
+                    }
+                    Err(e) => Err(format!("Vectorization failed: {}", e)),
+                }
+            }
+            Intent::Upscale { input, scale } => {
+                info!("[BRAIN] 🔎 Activating Infinite Upscale ({}x)...", scale);
+                use crate::agent::vector_engine;
+                let input_path = std::path::Path::new(&input);
+                let stem = input_path.file_stem().unwrap().to_string_lossy();
+                let output_path = input_path.with_file_name(format!("{}_upscaled.mp4", stem));
+
+                match vector_engine::upscale_video(input_path, scale, &output_path).await {
+                    Ok(msg) => {
+                        self.neuroplasticity.record_success();
+                        Ok(format!("Upscale complete: {}", msg))
+                    }
+                    Err(e) => Err(format!("Upscale failed: {}", e)),
+                }
+            }
+            Intent::VoiceClone { .. } | Intent::Speak { .. } => Err(
+                "Voice operations require access to the VoiceEngine. Please use the 'voice' CLI command.".to_string(),
+            ),
+            Intent::Orchestrate { goal, .. } => {
+                 info!("[BRAIN] 🎼 Orchestrating creative goal: {}", goal);
+                 // Use the LLM to reason about the orchestration
+                 if self.agent.is_none() {
+                    self.agent = Some(SynoidAgent::new(&self.api_url, &self.model));
+                 }
+                 if let Some(agent) = &self.agent {
+                    match agent.reason(&goal).await {
+                        Ok(resp) => Ok(format!("Orchestration Plan: {}", resp)),
+                        Err(e) => Err(format!("Orchestration failed: {}", e)),
+                    }
+                 } else {
+                    Err("Failed to initialize Cortex for orchestration".to_string())
+                 }
+            }
+            Intent::CreateEdit { input, instruction } => {
+                // Similar to Orchestrate but simpler
+                 info!("[BRAIN] 🎬 Planning edit for {}: {}", input, instruction);
+                 if self.agent.is_none() {
+                    self.agent = Some(SynoidAgent::new(&self.api_url, &self.model));
+                 }
+                 if let Some(agent) = &self.agent {
+                    match agent.reason(&instruction).await {
+                        Ok(resp) => Ok(format!("Edit Plan: {}", resp)),
+                        Err(e) => Err(format!("Planning failed: {}", e)),
+                    }
+                 } else {
+                     Err("Failed to initialize Cortex".to_string())
+                 }
+            }
             Intent::Unknown { request } => {
                 info!("[BRAIN] 🧠 Complex request detected. Waking up Cortex (GPT-OSS)...");
                 // Lazy-load the heavy AI agent only now
@@ -446,7 +514,6 @@ impl Brain {
                     Err("Failed to initialize Cortex".to_string())
                 }
             }
-            _ => Ok("Intent recognized but handler not implemented yet.".to_string()),
         }
     }
 }

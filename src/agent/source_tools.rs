@@ -37,7 +37,7 @@ pub async fn check_ytdlp() -> bool {
 fn build_ytdlp_info_args(
     url: &str,
     auth_browser: Option<&str>,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut args = vec![
         "-m".to_string(),
         "yt_dlp".to_string(),
@@ -70,7 +70,7 @@ fn build_ytdlp_download_args(
     url: &str,
     output_path: &Path,
     auth_browser: Option<&str>,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut args = vec![
         "-m".to_string(),
         "yt_dlp".to_string(),
@@ -99,7 +99,7 @@ pub async fn download_youtube(
     url: &str,
     output_dir: &Path,
     auth_browser: Option<&str>,
-) -> Result<SourceInfo, Box<dyn std::error::Error>> {
+) -> Result<SourceInfo, Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "[SOURCE] Downloading from YouTube: {} (Auth: {:?})",
         url, auth_browser
@@ -169,7 +169,7 @@ pub async fn download_youtube(
 pub async fn search_youtube(
     query: &str,
     limit: usize,
-) -> Result<Vec<SourceInfo>, Box<dyn std::error::Error>> {
+) -> Result<Vec<SourceInfo>, Box<dyn std::error::Error + Send + Sync>> {
     let search_query = format!("ytsearch{}:{}", limit, query);
     info!("[SOURCE] Searching YouTube: {}", search_query);
 
@@ -221,21 +221,28 @@ pub async fn search_youtube(
 }
 
 /// Get video duration using ffprobe
-pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error>> {
+pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
     let safe_path = safe_arg_path(path);
 
-    let output = Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-        ])
-        .arg(&safe_path)
-        .output()
-        .await?;
+    // Execute ffprobe with a timeout to prevent hanging
+    // Getting duration from header is usually instant.
+    let output = tokio::time::timeout(
+        tokio::time::Duration::from_secs(10),
+        Command::new("ffprobe")
+            .kill_on_drop(true) // Ensure process is killed if timeout occurs
+            .args([
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+            ])
+            .arg(&safe_path)
+            .output(),
+    )
+    .await
+    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "ffprobe duration check timed out"))??;
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let duration: f64 = output_str.trim().parse().map_err(|_| {
@@ -249,12 +256,12 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
 
 /// Scan a directory for all valid video files
 #[allow(dead_code)]
-pub fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
+pub async fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
     let mut videos = Vec::new();
     let extensions = ["mp4", "mov", "mkv", "avi", "webm"];
 
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
+    if let Ok(mut entries) = tokio::fs::read_dir(dir).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
             let path = entry.path();
             if path.is_file() {
                 if let Some(ext) = path.extension() {

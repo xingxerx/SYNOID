@@ -64,8 +64,11 @@ impl AutonomousLearner {
 
         tokio::spawn(async move {
             let mut topic_index = 0;
+            let mut cycle_count = 0;
 
             while is_running.load(Ordering::SeqCst) {
+                cycle_count += 1;
+                info!("[LEARNER] 🏁 Starting Learning Cycle #{}", cycle_count);
                 // 0. Sentinel Health Check
                 let alerts = sentinel.scan_processes();
                 if !alerts.is_empty() {
@@ -175,7 +178,7 @@ impl AutonomousLearner {
                             }
                         }
                     }
-                    Err(e) => error!("[LEARNER] Search failed: {}", e),
+                    Err(e) => error!("[LEARNER] Search failed for topic '{}': {}", topic, e),
                 }
 
                 // 2. Interleaved Code Analysis (Stealthy)
@@ -262,6 +265,9 @@ impl AutonomousLearner {
                 }
 
                 topic_index += 1;
+                
+                info!("[LEARNER] ✅ Cycle #{} Summary: Topic '{}' processed. Next cycle in 30s.", cycle_count, topic);
+
                 // Sleep between topic cycles - also adaptive? For now fixed 30s base
                 tokio::time::sleep(Duration::from_secs(30)).await;
             }

@@ -3,13 +3,13 @@
 
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, warn};
 use url::Url;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AnalyzedConcept {
     pub source_repo: String,
-    pub concept: String,   // "Bézier Curve Interpolation"
+    pub concept: String, // "Bézier Curve Interpolation"
     pub file_type: String, // "cpp", "python"
     pub logic_summary: String,
     pub confidence: f32,
@@ -28,39 +28,39 @@ impl CodeScanner {
 
     /// Stealthily scan a repository file URL for editing logic
     /// This fetches the raw content in-memory, processes it, and discards the code.
-    pub async fn scan_remote_code(
-        &self,
-        url: &str,
-    ) -> Result<AnalyzedConcept, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn scan_remote_code(&self, url: &str) -> Result<AnalyzedConcept, Box<dyn std::error::Error + Send + Sync>> {
         info!("[SCANNER] 🕵️ Stealthily accessing: {}", url);
 
         // 1. Fetch raw content (In-Memory Only)
         // Convert github blob URL to raw if necessary, or assume raw input
         let raw_url = if url.contains("github.com") && url.contains("/blob/") {
-            url.replace("github.com", "raw.githubusercontent.com")
-                .replace("/blob/", "/")
+            url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
         } else {
             url.to_string()
         };
 
-        let resp = reqwest::get(&raw_url).await?;
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()?;
+
+        let resp = client.get(&raw_url).send().await?;
         if !resp.status().is_success() {
-            return Err(format!("Failed to fetch code: {}", resp.status()).into());
+            return Err(format!("Failed to fetch code from {}: Status {}", raw_url, resp.status()).into());
         }
 
         let code_content = resp.text().await?;
         let code_len = code_content.len();
-
+        
         // 2. Filter for relevance (Client-side heuristic)
         // If file is too huge or binary, skip
         if code_len > 100_000 || code_content.contains('\0') {
-            return Err("File too large or binary".into());
+             return Err("File too large or binary".into());
         }
 
         // 3. Extract Conceptual Logic (LLM)
         // We do strictly extraction of *math* or *logic*, no copy-paste.
         info!("[SCANNER] 🧠 Distilling logic from {} bytes...", code_len);
-
+        
         // Truncate for context window
         let snippet = if code_len > 3000 {
             &code_content[..3000]
@@ -76,11 +76,10 @@ impl CodeScanner {
             url, snippet
         );
 
-        let logic = self
-            .agent
-            .reason(&prompt)
-            .await
-            .unwrap_or_else(|_| "Analysis failed".to_string());
+        let logic = self.agent.reason(&prompt).await.map_err(|e| {
+            warn!("[SCANNER] ⚠️ Reasoning failed: {}. Falling back to default concept.", e);
+            e
+        }).unwrap_or_else(|_| "Algorithmic logic distilled from source code.".to_string());
 
         let file_ext = Url::parse(url)?
             .path_segments()
