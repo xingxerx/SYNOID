@@ -1,30 +1,19 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 
-use crate::agent::defense::pressure::{PressureLevel, PressureWatcher};
 use crate::agent::core::AgentCore;
 
 pub struct KernelState {
     pub task: Mutex<TaskState>,
     pub core: Arc<AgentCore>,
-    pub funny_engine: Arc<crate::funny_engine::FunnyEngine>,
-    pub funny_moments: Mutex<Vec<crate::funny_engine::analyzer::FunnyMoment>>,
-    /// Shared pressure level for the GUI health bar.
-    pub pressure_level: Arc<RwLock<PressureLevel>>,
 }
 
 impl KernelState {
     pub fn new(core: Arc<AgentCore>) -> Self {
-        let watcher = PressureWatcher::new();
-        let pressure_handle = watcher.level_handle();
-
         Self {
             task: Mutex::new(TaskState::default()),
             core,
-            funny_engine: Arc::new(crate::funny_engine::FunnyEngine::new()),
-            funny_moments: Mutex::new(Vec::new()),
-            pressure_level: pressure_handle,
         }
     }
 }
@@ -41,13 +30,6 @@ pub struct TaskState {
     pub clip_start: String,
     pub clip_duration: String,
     pub compress_size: String,
-    pub scale_factor: String,
-    pub research_topic: String,
-    pub voice_text: String,
-    pub voice_profile: String,
-    pub guard_mode: String,
-    pub guard_watch_path: String,
-    pub is_funny_bits_enabled: bool,
 }
 
 impl Default for TaskState {
@@ -63,13 +45,6 @@ impl Default for TaskState {
             clip_start: "0.0".to_string(),
             clip_duration: "10.0".to_string(),
             compress_size: "25.0".to_string(),
-            scale_factor: "2.0".to_string(),
-            research_topic: String::new(),
-            voice_text: String::new(),
-            voice_profile: String::new(),
-            guard_mode: "all".to_string(),
-            guard_watch_path: String::new(),
-            is_funny_bits_enabled: false,
         }
     }
 }

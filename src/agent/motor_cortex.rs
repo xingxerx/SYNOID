@@ -1,8 +1,6 @@
-use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
 use crate::agent::production_tools;
 use crate::agent::vision_tools::VisualScene;
-use crate::agent::voice::transcription::TranscriptSegment;
 use crate::agent::smart_editor;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -16,7 +14,6 @@ pub struct EditPlan {
     pub normalize_audio: bool,
     pub target_duration_secs: Option<f64>,
     pub transitions: Vec<TransitionSpec>,
-    pub funny_moments: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -146,7 +143,6 @@ impl MotorCortex {
         input: &Path,
         output: &Path,
         visual_data: &[VisualScene],
-        transcript: &[TranscriptSegment],
         _audio_data: &AudioAnalysis,
         dry_run: bool,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
@@ -187,15 +183,6 @@ impl MotorCortex {
             info!("{}", msg);
         });
 
-        // We assume 'funny_mode' is false unless the intent carries specific markers
-        let funny_mode = intent.to_lowercase().contains("funny") || intent.to_lowercase().contains("comedy");
-
-        let transcript_opt = if transcript.is_empty() {
-            None
-        } else {
-            Some(transcript.to_vec())
-        };
-
         if dry_run {
             info!("[CORTEX] 🧪 Dry Run: Skipping smart_edit execution.");
             // Fallback to one-shot render in dry-run mode to generate command
@@ -208,10 +195,9 @@ impl MotorCortex {
             input,
             intent,
             output,
-            funny_mode,
             Some(callback),
             Some(editor_scenes),
-            transcript_opt,
+            None,
         ).await {
             Ok(summary) => {
                 info!("[CORTEX] ✅ Smart Edit completed via high-order logic.");
@@ -236,26 +222,13 @@ impl MotorCortex {
         _audio_data: &AudioAnalysis,
         dry_run: bool,
     ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let library = StyleLibrary::new();
-        let profile = library.get_profile(intent);
+        info!("[CORTEX] Building one-shot render for intent: {}", intent);
 
-        info!("[CORTEX] Applying Style Profile: {}", profile.name);
-
-        // 1. Rhythmic Assembly
-        // Divide video into segments based on avg_shot_length and snap to nearest audio beat
         let mut filters = Vec::new();
 
-        if profile.anamorphic {
-            filters.push("crop=in_w:in_w/2.39".to_string()); // 2.39:1 Cinematic Mask
-        }
-
-        if let Some(lut) = &profile.color_lut {
-            filters.push(format!("lut3d={}", lut));
-        }
-
-        // 2. Build FFmpeg Filtergraph (Video)
-        if filters.is_empty() {
-            // No video filters
+        // Cinematic mode: apply 2.39:1 crop
+        if intent.to_lowercase().contains("cinematic") {
+            filters.push("crop=in_w:in_w/2.39".to_string());
         }
 
         // 3. Build Audio Filtergraph (Enhanced Voice & Smart Cut)

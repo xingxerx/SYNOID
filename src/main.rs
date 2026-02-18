@@ -47,17 +47,6 @@ enum Commands {
         login: Option<String>,
     },
 
-    /// Autonomous Research: Find tutorials and resources
-    Research {
-        /// Topic to research
-        #[arg(short, long)]
-        topic: String,
-
-        /// Number of results to find
-        #[arg(short, long, default_value = "5")]
-        limit: usize,
-    },
-
     /// Trim/Clip a video
     Clip {
         /// Input video path
@@ -153,100 +142,13 @@ enum Commands {
     /// Check GPU status
     Gpu,
 
-    /// Vectorize video to SVG frames (Resolution Independent)
-    Vectorize {
-        /// Input video
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Output directory
-        #[arg(short, long)]
-        output: PathBuf,
-
-        /// Color mode: color/binary
-        #[arg(long, default_value = "color")]
-        mode: String,
-    },
-
-    /// Infinite Upscale (Neural/Vector)
-    Upscale {
-        /// Input video
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Scale factor (e.g. 2.0, 4.0)
-        #[arg(short, long, default_value_t = 2.0)]
-        scale: f64,
-
-        /// Output video path
-        #[arg(short, long)]
-        output: PathBuf,
-    },
-
-    /// Activate Cyberdefense Sentinel
-    Guard {
-        /// Monitor Mode (all/sys/file)
-        #[arg(short, long, default_value = "file")]
-        mode: String,
-
-        /// Path to watch for Integrity
-        #[arg(short, long)]
-        watch: Option<PathBuf>,
-    },
-
-    /// Voice Cloning & Neural TTS
-    Voice {
-        /// Record voice sample (seconds)
-        #[arg(long)]
-        record: Option<u32>,
-
-        /// Clone voice from audio file
-        #[arg(long)]
-        clone: Option<PathBuf>,
-
-        /// Create named voice profile from audio
-        #[arg(long)]
-        profile: Option<String>,
-
-        /// Text to speak
-        #[arg(long)]
-        speak: Option<String>,
-
-        /// Output audio file
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-
-        /// Download TTS/Whisper model
-        #[arg(long)]
-        download: bool,
-
-        /// Specify model (e.g., whisper-medium)
-        #[arg(long, default_value = "tiny")]
-        model: String,
-    },
-
-    /// Multi-Agent Role Execution
-    Agent {
-        /// Role to enact: director, critic, etc.
-        #[arg(long)]
-        role: String,
-
-        /// User prompt or context
-        #[arg(long)]
-        prompt: Option<String>,
-
-        /// Style profile to trigger dynamic reasoning
-        #[arg(long)]
-        style: Option<String>,
-    },
-
     /// GPU-accelerated unified processing pipeline
     Process {
         /// Input video/audio path
         #[arg(short, long)]
         input: PathBuf,
 
-        /// Processing stages (comma-separated): transcribe,smart_edit,vectorize,upscale,enhance,encode (or "all")
+        /// Processing stages (comma-separated): smart_edit,enhance,encode (or "all")
         #[arg(long, default_value = "all")]
         stages: String,
 
@@ -261,35 +163,13 @@ enum Commands {
         /// User intent for smart editing
         #[arg(long)]
         intent: Option<String>,
-
-        /// Scale factor for upscaling (2.0 = 2x resolution)
-        #[arg(long, default_value_t = 2.0)]
-        scale: f64,
-
-        /// Enable Funny Mode (commentary + transitions)
-        #[arg(long)]
-        funny: bool,
     },
-
-    /// Start Autonomous Learning Loop
-    Autonomous,
 
     /// Start the Dashboard Web Server
     Serve {
         /// Port to run the server on
         #[arg(short, long, default_value_t = 3000)]
         port: u16,
-    },
-
-    /// Apply "Funny Bits" enhancement to a video
-    Funny {
-        /// Input video path
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Output video path
-        #[arg(short, long)]
-        output: PathBuf,
     },
 }
 
@@ -298,7 +178,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
 
-    // Global panic handler: log panics instead of crashing silently
+    // Global panic handler
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
             .location()
@@ -317,7 +197,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     info!("--- SYNOID AGENTIC KERNEL v0.1.1 ---");
 
-    // Check external dependencies
     let missing_deps = synoid_core::agent::health::check_dependencies();
     if !missing_deps.is_empty() {
         tracing::warn!("⚠️ Missing dependencies: {:?}. Some features may not work.", missing_deps);
@@ -325,10 +204,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let api_url = std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
 
-    // Initialize the Ghost (Agent Core)
     let core = Arc::new(AgentCore::new(&api_url));
 
-    // Connect Brain → GPU/CUDA backend (neuroplasticity-tuned acceleration)
     core.connect_gpu_to_brain().await;
     info!(
         "🧠⚡ Neural-GPU bridge active: {}",
@@ -343,28 +220,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             use synoid_core::server;
             use synoid_core::state::KernelState;
 
-            // Start health monitor (heartbeat every 30 seconds)
             let health = HealthMonitor::new(30);
             let _health_shutdown = health.start();
             info!("🩺 Health Monitor started");
 
-            // Use the existing core instance
             let state = Arc::new(KernelState::new(core.clone()));
 
-            // Spawn Server in Background
             let server_state = state.clone();
             tokio::spawn(async move {
                 info!("🌐 Auto-launching Dashboard Server...");
                 server::start_server(3000, server_state).await;
             });
 
-            // Launch GUI (Blocking) — pass AgentCore
             info!("🖥️ Launching GUI Command Center...");
             if let Err(e) = window::run_gui(core) {
                 error!("GUI Error: {}", e);
             }
 
-            // Cleanup
             health.stop();
             info!("{}", health.status_report());
         }
@@ -375,11 +247,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             chunk_minutes,
             login,
         } => {
-            core.process_youtube_intent(&url, &intent, output, login.as_deref(), false, chunk_minutes)
+            core.process_youtube_intent(&url, &intent, output, login.as_deref(), chunk_minutes)
                 .await?;
-        }
-        Commands::Research { topic, limit } => {
-            core.process_research(&topic, limit).await?;
         }
         Commands::Clip {
             input,
@@ -438,16 +307,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     if count == 0 {
                         println!("❌ No scenes detected. Video might be empty or corrupt.");
                     } else {
-                        let duration = if !scenes.is_empty() {
-                            scenes.last().unwrap().timestamp
-                        } else {
-                            0.0
-                        };
-                        let avg = if count > 0 {
-                            duration / count as f64
-                        } else {
-                            0.0
-                        };
+                        let duration = scenes.last().unwrap().timestamp;
+                        let avg = duration / count as f64;
                         println!("✅ Analysis Complete: {} scenes detected.", count);
                         println!("   Avg Shot Length: {:.2}s", avg);
 
@@ -459,8 +320,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         } else {
                             println!("1. Pacing is balanced. Consider 'cinematic color grade'.");
                         }
-                        println!("2. Try 'vectorize' for a unique look.");
-                        println!("3. Try 'funny' mode to add humor.");
+                        println!("2. Try the Embody command with a creative intent.");
                     }
                 }
                 Err(e) => error!("Failed to analyze video: {}", e),
@@ -469,6 +329,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Commands::Gpu => {
             synoid_core::gpu_backend::print_gpu_status().await;
         }
+        Commands::Process {
+            input,
+            stages,
+            gpu,
+            output,
+            intent,
+        } => {
+            core.run_unified_pipeline(&input, &output, &stages, &gpu, intent)
+                .await?;
+        }
         Commands::Serve { port } => {
             use crate::agent::health::HealthMonitor;
             use synoid_core::server;
@@ -476,7 +346,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
             info!("🌐 Starting SYNOID Dashboard on port {}...", port);
 
-            // Start health monitor for long-running server
             let health = HealthMonitor::new(30);
             let _health_shutdown = health.start();
 
@@ -484,118 +353,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             server::start_server(port, state).await;
             health.stop();
             info!("{}", health.status_report());
-        }
-
-        Commands::Vectorize {
-            input,
-            output,
-            mode,
-        } => {
-            core.vectorize_video(&input, &output, &mode).await?;
-        }
-        Commands::Upscale {
-            input,
-            scale,
-            output,
-        } => {
-            core.upscale_video(&input, scale, &output).await?;
-        }
-        Commands::Guard { mode, watch } => {
-            // Guard runs indefinitely
-            core.activate_sentinel(&mode, watch).await;
-        }
-        Commands::Voice {
-            record,
-            clone,
-            profile,
-            speak,
-            output,
-            download,
-            model: _,
-        } => {
-            if let Some(duration) = record {
-                core.voice_record(output.clone(), duration).await?;
-            }
-            if download {
-                core.download_voice_model().await?;
-            }
-            if clone.is_some() || profile.is_some() {
-                if let Some(path) = clone {
-                    core.voice_clone(&path, profile.clone()).await?;
-                }
-            }
-            if let Some(text) = speak {
-                core.voice_speak(&text, profile, output).await?;
-            }
-        }
-        Commands::Agent {
-            role,
-            prompt,
-            style,
-        } => {
-            use synoid_core::agent::multi_agent::*;
-            let prompt_text = prompt.unwrap_or_else(|| "Do your job".to_string());
-
-            match role.as_str() {
-                "director" => {
-                    let mut dir = DirectorAgent::new("gpt-oss:20b", &api_url);
-                    let style_deref = style.as_deref();
-
-                    match dir.analyze_intent(&prompt_text, style_deref).await {
-                        Ok(plan) => {
-                            core.log(&format!("🎬 Story Plan Generated: {}", plan.global_intent));
-                        }
-                        Err(e) => error!("Director failed: {}", e),
-                    }
-                }
-                "critic" => {
-                    println!("🧐 Critic Agent analyzing request: '{}'", prompt_text);
-                    println!("   Critique: The concept is sound but needs more conflict. Try adding 'dramatic' to the intent.");
-                }
-                "editor" => {
-                    println!("✂️ Editor Agent ready. Please use 'embody' or 'process' commands for actual editing tasks.");
-                }
-                _ => println!("Unknown role: {}. Available: director, critic, editor", role),
-            }
-        }
-        Commands::Process {
-            input,
-            stages,
-            gpu,
-            output,
-            intent,
-            scale,
-            funny,
-        } => {
-            core.run_unified_pipeline(&input, &output, &stages, &gpu, intent, scale, funny)
-                .await?;
-        }
-        Commands::Autonomous => {
-            use agent::autonomous_learner::AutonomousLearner;
-            use agent::brain::Brain;
-            use tokio::signal;
-            use tokio::sync::Mutex;
-
-            info!("🚀 Starting Autonomous Learning Loop...");
-            let brain = Arc::new(Mutex::new(Brain::new(&api_url, "gpt-oss:20b")));
-            let learner = AutonomousLearner::new(brain);
-
-            learner.start();
-
-            info!("Press Ctrl+C to stop.");
-            signal::ctrl_c().await?;
-            learner.stop();
-            info!("🛑 Autonomous Loop Stopped.");
-        }
-        Commands::Funny { input, output } => {
-            use synoid_core::funny_engine::FunnyEngine;
-
-            info!("🤡 Starting Funny Bits Engine on {:?}", input);
-            let engine = FunnyEngine::new();
-            match engine.process_video(&input, &output).await {
-                Ok(_) => println!("✅ Video enhanced with funny bits: {:?}", output),
-                Err(e) => error!("Funny processing failed: {}", e),
-            }
         }
     }
 

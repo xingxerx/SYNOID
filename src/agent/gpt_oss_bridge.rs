@@ -2,9 +2,7 @@
 // SYNOID MCP Server Bridge
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use crate::agent::multi_agent::NativeTimelineEngine;
 use serde_json::json;
-use std::sync::Arc;
 use tracing::{info, warn};
 
 pub struct SynoidAgent {
@@ -128,15 +126,13 @@ impl Server {
 
 pub struct SynoidMcpServer {
     pub project_root: String,
-    pub timeline_engine: Arc<NativeTimelineEngine>,
     pub mcp_server: Server,
 }
 
 impl SynoidMcpServer {
-    pub fn init(path: &str, engine: Arc<NativeTimelineEngine>) -> Self {
+    pub fn init(path: &str) -> Self {
         let mut server = Server::new("SYNOID_Core_Bridge");
 
-        // Tool: Allows agent to execute a trim in the native app
         server.register_tool(Tool::new(
             "trim_clip",
             "Trims a specific clip in the SYNOID timeline",
@@ -145,7 +141,6 @@ impl SynoidMcpServer {
             },
         ));
 
-        // Resource: Exposes the current project media folder
         server.register_resource(Resource::new(
             "media://project/assets",
             "Access to local raw footage for semantic indexing",
@@ -153,7 +148,6 @@ impl SynoidMcpServer {
 
         Self {
             project_root: path.to_string(),
-            timeline_engine: engine,
             mcp_server: server,
         }
     }

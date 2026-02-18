@@ -4,8 +4,6 @@
 // Connected to: Neuroplasticity (adaptive speed) + GPU/CUDA backend
 // The Brain accelerates with experience and uses GPU when available.
 
-use crate::agent::body::Body;
-use crate::agent::consciousness::Consciousness;
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use crate::gpu_backend::GpuContext;
 use tracing::info;
@@ -27,25 +25,6 @@ pub enum Intent {
     CreateEdit {
         input: String,
         instruction: String,
-    },
-    Research {
-        topic: String,
-    },
-    Vectorize {
-        input: String,
-        preset: String,
-    },
-    Upscale {
-        input: String,
-        scale: f64,
-    },
-    VoiceClone {
-        input: String,
-        name: String,
-    },
-    Speak {
-        text: String,
-        profile: String,
     },
     /// Complex creative request requiring MoE orchestration
     Orchestrate {
@@ -75,9 +54,6 @@ pub struct Brain {
     /// GPU/CUDA backend reference (late-bound after async detection).
     /// Note: Uses 'static lifetime because GpuContext is a global singleton (OnceLock).
     gpu: Option<&'static GpuContext>,
-    // Integrated components (silences unused warnings)
-    _consciousness: Consciousness,
-    _body: Body,
 }
 
 impl Brain {
@@ -89,8 +65,6 @@ impl Brain {
             learning_kernel: LearningKernel::new(),
             neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity::new(),
             gpu: None,
-            _consciousness: Consciousness::new(),
-            _body: Body::new(),
         }
     }
 
@@ -156,65 +130,7 @@ impl Brain {
             };
         }
 
-        // 4. Research Heuristics
-        if req_lower.contains("find")
-            || req_lower.contains("search")
-            || req_lower.contains("tutorial")
-        {
-            // Simple topic extraction: everything after key verb
-            let keys = ["find", "search for", "tutorial on", "about"];
-            for key in keys {
-                if let Some(idx) = req_lower.find(key) {
-                    let topic = request[idx + key.len()..].trim().to_string();
-                    if !topic.is_empty() {
-                        return Intent::Research { topic };
-                    }
-                }
-            }
-        }
-
-        // 5. Vector Engine Heuristics
-        if req_lower.contains("vector") || req_lower.contains("svg") {
-            return Intent::Vectorize {
-                input: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
-                preset: "default".to_string(),
-            };
-        }
-
-        if req_lower.contains("upscale") || req_lower.contains("enhance") {
-            let scale = if req_lower.contains("4x") { 4.0 } else { 2.0 };
-            return Intent::Upscale {
-                input: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
-                scale,
-            };
-        }
-
-        // 6. Voice Engine Heuristics
-        if req_lower.contains("clone voice")
-            || (req_lower.contains("voice") && req_lower.contains("learn"))
-        {
-            return Intent::VoiceClone {
-                input: "sample.wav".to_string(),
-                name: "cloned_voice".to_string(),
-            };
-        }
-
-        if req_lower.contains("say") || req_lower.contains("speak") {
-            let text = if let Some(idx) = req_lower.find("say") {
-                request[idx + 3..].trim().to_string()
-            } else if let Some(idx) = req_lower.find("speak") {
-                request[idx + 5..].trim().to_string()
-            } else {
-                "Hello".to_string()
-            };
-
-            return Intent::Speak {
-                text,
-                profile: "default".to_string(),
-            };
-        }
-
-        // 7. Orchestrate Heuristics (MoE Dispatcher)
+        // 4. Orchestrate Heuristics (MoE Dispatcher)
         // Complex creative requests requiring multi-expert coordination
         let orchestrate_verbs = [
             "create",
@@ -410,63 +326,6 @@ impl Brain {
                     Err(e) => Err(format!("Failed to analyze video for learning: {}", e)),
                 }
             }
-            Intent::Research { topic } => {
-                info!("[BRAIN] ⚡ Fast-path activated: Research Agent");
-                use crate::agent::source_tools;
-                match source_tools::search_youtube(&topic, 5).await {
-                    Ok(results) => {
-                        let mut response =
-                            format!("Found {} resources for '{}':\n", results.len(), topic);
-                        for (i, r) in results.iter().enumerate() {
-                            response.push_str(&format!(
-                                "{}. {} ({})\n",
-                                i + 1,
-                                r.title,
-                                r.original_url.as_deref().unwrap_or("?")
-                            ));
-                        }
-                        Ok(response)
-                    }
-                    Err(e) => Err(format!("Research failed: {}", e)),
-                }
-            }
-            Intent::Vectorize { input, preset: _ } => {
-                info!("[BRAIN] 🎨 Activating Vector Engine...");
-                use crate::agent::vector_engine::{self, VectorConfig};
-                let input_path = std::path::Path::new(&input);
-                let output_path = input_path.with_file_name(format!(
-                    "{}_vectorized",
-                    input_path.file_stem().unwrap().to_string_lossy()
-                ));
-
-                let config = VectorConfig::default();
-
-                match vector_engine::vectorize_video(input_path, &output_path, config).await {
-                    Ok(msg) => {
-                        self.neuroplasticity.record_success();
-                        Ok(format!("Vectorization complete: {}", msg))
-                    }
-                    Err(e) => Err(format!("Vectorization failed: {}", e)),
-                }
-            }
-            Intent::Upscale { input, scale } => {
-                info!("[BRAIN] 🔎 Activating Infinite Upscale ({}x)...", scale);
-                use crate::agent::vector_engine;
-                let input_path = std::path::Path::new(&input);
-                let stem = input_path.file_stem().unwrap().to_string_lossy();
-                let output_path = input_path.with_file_name(format!("{}_upscaled.mp4", stem));
-
-                match vector_engine::upscale_video(input_path, scale, &output_path).await {
-                    Ok(msg) => {
-                        self.neuroplasticity.record_success();
-                        Ok(format!("Upscale complete: {}", msg))
-                    }
-                    Err(e) => Err(format!("Upscale failed: {}", e)),
-                }
-            }
-            Intent::VoiceClone { .. } | Intent::Speak { .. } => Err(
-                "Voice operations require access to the VoiceEngine. Please use the 'voice' CLI command.".to_string(),
-            ),
             Intent::Orchestrate { goal, .. } => {
                  info!("[BRAIN] 🎼 Orchestrating creative goal: {}", goal);
                  // Use the LLM to reason about the orchestration
