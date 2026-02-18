@@ -316,6 +316,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }));
 
     info!("--- SYNOID AGENTIC KERNEL v0.1.1 ---");
+
+    // Check external dependencies
+    let missing_deps = synoid_core::agent::health::check_dependencies();
+    if !missing_deps.is_empty() {
+        tracing::warn!("⚠️ Missing dependencies: {:?}. Some features may not work.", missing_deps);
+    }
+
     let api_url = std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
 
     // Initialize the Ghost (Agent Core)

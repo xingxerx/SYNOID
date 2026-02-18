@@ -4,7 +4,7 @@
 
 **Agentic Video Production Kernel**
 
-*Autonomous AI-powered video editing, voice cloning, and infinite resolution upscaling*
+*Autonomous AI-powered video editing, voice cloning, and vector stylization*
 
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-Proprietary-blue?style=flat-square)]()
@@ -20,9 +20,9 @@
 
 Built on a high-performance **Rust** foundation, SYNOID integrates a suite of cutting-edge technologies into a single, cohesive **Command Center**:
 - **Semantic Understanding**: Deconstructs video content to identify "boring" vs "action" segments based on your directives.
-- **Infinite Resolution**: Converts raster footage into resolution-independent vector graphics for limitless upscaling.
-- **Neural Synthesis**: Clones voices and generates neural speech for dynamic audio production.
-- **Active Defense**: Protects your workspace with a background sentinel that monitors for unauthorized system activity.
+- **Vector Stylization / Artistic Upscaling**: Converts raster footage into resolution-independent vector graphics for unique artistic upscaling (best for animation/graphics).
+- **Neural Synthesis (Experimental)**: Interfaces with external tools to clone voices and generate neural speech.
+- **Active Defense (Optional)**: Can monitor your workspace with a background sentinel for unauthorized system activity (experimental).
 - **Neuroplasticity**: The system learns from your edits and rendering successes to optimize future performance.
 
 Whether you are repurposing long-form content, restoring legacy footage, or building automated media pipelines, SYNOID provides the intelligent infrastructure to execute with precision and speed.
@@ -35,10 +35,10 @@ Whether you are repurposing long-form content, restoring legacy footage, or buil
 The heart of SYNOID is the **Command Center**, a premium dark-mode interface organizing all capabilities into a streamlined workflow:
 
 - **Media**: Upload videos (YouTube/Local), clip segments, and strictly compress files without quality loss.
-- **Visual**: Vectorize footage to SVG and perform infinite upscaling.
+- **Visual**: Vectorize footage to SVG for artistic effects.
 - **AI Core**: Direct the "Brain" with natural language, run embodied agents, and learn editing styles.
-- **Voice Studio**: Unified interface to record samples, clone voices, and generate speech.
-- **Security**: Monitor system integrity and active processes with the Cyberdefense Sentinel.
+- **Voice Studio**: Unified interface to record samples and generate speech (Simulated/Experimental).
+- **Security**: Monitor system integrity and active processes with the Cyberdefense Sentinel (Experimental).
 - **Research**: AI-powered topic research and video sourcing.
 
 ### ⚡ Viral Video Transformation
@@ -48,22 +48,22 @@ Transform raw footage into high-retention content automatically:
 - **Engagement Consolidator**: Intelligently structures video for maximum viewer retention.
 
 ### 🎭 Funny Mode & Smart Transitions
-- **Funny Mode**: Injects AI commentary and detects humorous moments.
+- **Funny Mode**: Injects AI commentary and detects humorous moments. *Requires local Ollama setup and external Python scripts.*
 - **Smart Transitions**: Analyzes scene motion to select the perfect transition:
     - *High Motion* → **Wipe/Slide**
     - *Medium Motion* → **Mix/Crossfade**
     - *Speech/Dialogue* → **Seamless Cut**
     - *Static/Low Motion* → **ZoomPan**
 
-### 🔎 Infinite Resolution Engine
-- **Vector Upscaling**: Convert raster video to SVG, scale infinitely, re-render at any resolution.
+### 🔎 Vector Stylization Engine
+- **Vector Upscaling**: Convert raster video to SVG, scale infinitely, re-render at any resolution. *Note: This produces a "vector art" style, not photorealistic super-resolution.*
 - **Vectorization**: Export video frames as resolution-independent SVGs.
 - **16K Safety Limit**: Automatic safeguards for extreme upscales.
 
-### 🛡️ Cyberdefense Sentinel
+### 🛡️ Cyberdefense Sentinel (Experimental)
 - **Process Monitoring**: Detect suspicious system activity and unauthorized processes.
 - **File Integrity**: Watch directories for unauthorized changes to critical assets.
-- **Continuous Guard**: Real-time system protection running in the background.
+- **Continuous Guard**: Real-time system protection running in the background. *Disabled by default.*
 
 ---
 
@@ -73,6 +73,7 @@ Transform raw footage into high-retention content automatically:
 - **Rust** 1.70+
 - **FFmpeg** (in PATH)
 - **yt-dlp** (for YouTube features)
+- **Python 3** (for Voice/TTS features)
 - **Ollama** (running `gpt-oss:20b` or similar)
 
 ### Build

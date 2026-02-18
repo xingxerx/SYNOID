@@ -726,6 +726,8 @@ impl SynoidApp {
                 core.activate_sentinel(&mode, watch).await;
             });
         }
+        ui.add_space(5.0);
+        ui.label(egui::RichText::new("Note: Requires SYNOID_ENABLE_SENTINEL=true environment variable.").small().color(COLOR_TEXT_SECONDARY));
     }
 
     fn render_research_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {

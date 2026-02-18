@@ -164,3 +164,28 @@ fn check_disk_health() -> bool {
         Err(_) => false,
     }
 }
+
+/// Check for required external dependencies
+pub fn check_dependencies() -> Vec<String> {
+    let mut missing = Vec::new();
+    let deps = vec![
+        ("ffmpeg", "-version"),
+        ("python", "--version"),
+        ("yt-dlp", "--version"),
+        ("ollama", "--version"),
+    ];
+
+    for (dep, flag) in deps {
+        if std::process::Command::new(dep).arg(flag).output().is_err() {
+            // For python, try python3 fallback
+            if dep == "python" {
+                if std::process::Command::new("python3").arg(flag).output().is_err() {
+                     missing.push(dep.to_string());
+                }
+            } else {
+                missing.push(dep.to_string());
+            }
+        }
+    }
+    missing
+}
