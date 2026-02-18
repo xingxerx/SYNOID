@@ -1,5 +1,6 @@
 use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
+use crate::agent::production_tools;
 use crate::agent::vision_tools::VisualScene;
 use crate::agent::voice::transcription::TranscriptSegment;
 use crate::agent::smart_editor;
@@ -293,7 +294,7 @@ impl MotorCortex {
         args.push("ffmpeg".to_string());
         args.push("-y".to_string());
         args.push("-i".to_string());
-        args.push(input.to_string_lossy().to_string());
+        args.push(production_tools::safe_arg_path(input).to_string_lossy().to_string());
 
         if !filters.is_empty() {
             args.push("-vf".to_string());
@@ -321,7 +322,7 @@ impl MotorCortex {
         args.push("-pix_fmt".to_string());
         args.push("yuv420p".to_string());
 
-        args.push(output.to_string_lossy().to_string());
+        args.push(production_tools::safe_arg_path(output).to_string_lossy().to_string());
 
         Ok(args)
     }
