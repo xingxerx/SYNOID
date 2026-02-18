@@ -1,9 +1,13 @@
 // SYNOID Brain - Intent Classification & Heuristics
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
+//
+// Connected to: Neuroplasticity (adaptive speed) + GPU/CUDA backend
+// The Brain accelerates with experience and uses GPU when available.
 
 use crate::agent::body::Body;
 use crate::agent::consciousness::Consciousness;
 use crate::agent::gpt_oss_bridge::SynoidAgent;
+use crate::gpu_backend::GpuContext;
 use tracing::info;
 
 /// Intents that the Brain can classify
@@ -56,12 +60,20 @@ pub enum Intent {
 use crate::agent::learning::LearningKernel;
 
 /// The Central Brain of SYNOID
+///
+/// Connected to:
+/// - **Neuroplasticity**: Adaptive speed system that doubles processing
+///   speed at experience thresholds (1×→16×).
+/// - **GpuContext**: CUDA/NVENC backend for hardware-accelerated encoding.
+///   The neuroplasticity multiplier tunes GPU batch sizes and FFmpeg presets.
 pub struct Brain {
     agent: Option<SynoidAgent>,
     api_url: String,
     model: String,
-    learning_kernel: LearningKernel,
+    pub learning_kernel: LearningKernel,
     pub neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity,
+    /// GPU/CUDA backend reference (late-bound after async detection).
+    gpu: Option<&'static GpuContext>,
     // Integrated components (silences unused warnings)
     _consciousness: Consciousness,
     _body: Body,
@@ -75,9 +87,36 @@ impl Brain {
             model: model.to_string(),
             learning_kernel: LearningKernel::new(),
             neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity::new(),
+            gpu: None,
             _consciousness: Consciousness::new(),
             _body: Body::new(),
         }
+    }
+
+    /// Late-bind the GPU context after async detection completes.
+    pub fn connect_gpu(&mut self, gpu: &'static GpuContext) {
+        self.gpu = Some(gpu);
+        let accel = gpu.cuda_accel_config(self.neuroplasticity.current_speed());
+        info!(
+            "[BRAIN] 🔗 GPU Connected: {} | Neural CUDA config: batch={}, streams={}, preset={}",
+            gpu.backend, accel.batch_size, accel.parallel_streams, accel.ffmpeg_preset
+        );
+    }
+
+    /// Combined acceleration status: neuroplasticity + GPU.
+    pub fn acceleration_status(&self) -> String {
+        let neuro = &self.neuroplasticity;
+        let gpu_str = match &self.gpu {
+            Some(g) => format!("{}", g.backend),
+            None => "Not connected".to_string(),
+        };
+        format!(
+            "Brain {:.1}× [{}] | GPU: {} | Batch: {}",
+            neuro.current_speed(),
+            neuro.adaptation_level(),
+            gpu_str,
+            neuro.gpu_batch_multiplier(),
+        )
     }
 
     /// Fast heuristic classification (energy efficient)
@@ -283,8 +322,17 @@ impl Brain {
     }
 
     /// Process a request through the Brain
+    ///
+    /// Uses neuroplasticity-tuned parameters and GPU acceleration when
+    /// available to speed up processing.
     pub async fn process(&mut self, request: &str) -> Result<String, String> {
         let intent = self.fast_classify(request);
+
+        // Log combined acceleration status before dispatching
+        info!(
+            "[BRAIN] Acceleration: {}",
+            self.acceleration_status()
+        );
 
         match intent {
             Intent::DownloadYoutube { url } => {

@@ -2,11 +2,13 @@
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
 use synoid_core::agent;
+use synoid_core::agent::core::AgentCore;
 use synoid_core::window;
 
 use clap::{Parser, Subcommand};
 use dotenv::dotenv;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::{error, info};
 
 #[derive(Parser)]
@@ -292,7 +294,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv().ok();
     tracing_subscriber::fmt::init();
 
@@ -315,15 +317,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("--- SYNOID AGENTIC KERNEL v0.1.1 ---");
 
+    // Check external dependencies
+    let missing_deps = synoid_core::agent::health::check_dependencies();
+    if !missing_deps.is_empty() {
+        tracing::warn!("⚠️ Missing dependencies: {:?}. Some features may not work.", missing_deps);
+    }
+
+    let api_url = std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
+
+    // Initialize the Ghost (Agent Core)
+    let core = Arc::new(AgentCore::new(&api_url));
+
+    // Connect Brain → GPU/CUDA backend (neuroplasticity-tuned acceleration)
+    core.connect_gpu_to_brain().await;
+    info!("🧠⚡ Neural-GPU bridge active: {}", core.acceleration_status().await);
+
     let args = Cli::parse();
-    let api_url =
-        std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
 
     match args.command {
         Commands::Gui => {
             use crate::agent::health::HealthMonitor;
-            use crate::agent::super_engine::SuperEngine;
-            use std::sync::Arc;
             use synoid_core::server;
             use synoid_core::state::KernelState;
 
@@ -332,32 +345,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _health_shutdown = health.start();
             info!("🩺 Health Monitor started");
 
-            match SuperEngine::new(&api_url) {
-                Ok(engine) => {
-                    let state = Arc::new(KernelState::new(engine));
+            // Use the existing core instance
+            let state = Arc::new(KernelState::new(core.clone()));
 
-                    // Spawn Server in Background
-                    let server_state = state.clone();
-                    tokio::spawn(async move {
-                        info!("🌐 Auto-launching Dashboard Server...");
-                        server::start_server(3000, server_state).await;
-                    });
+            // Spawn Server in Background
+            let server_state = state.clone();
+            tokio::spawn(async move {
+                info!("🌐 Auto-launching Dashboard Server...");
+                server::start_server(3000, server_state).await;
+            });
 
-                    // Launch GUI (Blocking)
-                    info!("🖥️ Launching GUI Command Center...");
-                    if let Err(e) = window::run_gui(state) {
-                        error!("GUI Error: {}", e);
-                    }
-
-                    // Cleanup
-                    health.stop();
-                    info!("{}", health.status_report());
-                }
-                Err(e) => {
-                    health.stop();
-                    error!("Failed to initialize SuperEngine: {}", e);
-                }
+            // Launch GUI (Blocking) — pass AgentCore
+            info!("🖥️ Launching GUI Command Center...");
+            if let Err(e) = window::run_gui(core) {
+                error!("GUI Error: {}", e);
             }
+
+            // Cleanup
+            health.stop();
+            info!("{}", health.status_report());
         }
         Commands::Youtube {
             url,
@@ -366,38 +372,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             chunk_minutes: _,
             login,
         } => {
-            let output_dir = std::path::Path::new("downloads");
-
-            if !agent::source_tools::check_ytdlp().await {
-                error!("yt-dlp not found! Please install it via pip.");
-                return Ok(());
-            }
-
-            let source_info =
-                agent::source_tools::download_youtube(&url, output_dir, login.as_deref()).await?;
-            println!("✅ Video acquired: {}", source_info.title);
-
-            let _output_path = output.unwrap_or_else(|| PathBuf::from("output.mp4"));
-
-            // Placeholder for full pipeline trigger
-            info!(
-                "Ready to process '{}' with intent: {}",
-                source_info.title, intent
-            );
+            core.process_youtube_intent(&url, &intent, output, login.as_deref(), false).await?;
         }
         Commands::Research { topic, limit } => {
-            info!("🕵️ Researching topic: {}", topic);
-            let results = agent::source_tools::search_youtube(&topic, limit).await?;
-
-            println!("\n=== 📚 Research Results: '{}' ===", topic);
-            for (i, source) in results.iter().enumerate() {
-                println!("\n{}. {}", i + 1, source.title);
-                println!(
-                    "   URL: {}",
-                    source.original_url.as_deref().unwrap_or("Unknown")
-                );
-                println!("   Duration: {:.1} min", source.duration / 60.0);
-            }
+            core.process_research(&topic, limit).await?;
         }
         Commands::Clip {
             input,
@@ -405,36 +383,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             duration,
             output,
         } => {
-            let out_path = output.unwrap_or_else(|| {
-                let stem = input.file_stem().unwrap().to_string_lossy();
-                input.with_file_name(format!("{}_clip.mp4", stem))
-            });
-
-            match agent::production_tools::trim_video(&input, start, duration, &out_path).await {
-                Ok(res) => println!(
-                    "✂️ Clip saved: {:?} ({:.2} MB)",
-                    res.output_path, res.size_mb
-                ),
-                Err(e) => error!("Clipping failed: {}", e),
-            }
+            core.clip_video(&input, start, duration, output).await?;
         }
         Commands::Compress {
             input,
             size,
             output,
         } => {
-            let out_path = output.unwrap_or_else(|| {
-                let stem = input.file_stem().unwrap().to_string_lossy();
-                input.with_file_name(format!("{}_compressed.mp4", stem))
-            });
-
-            match agent::production_tools::compress_video(&input, size, &out_path).await {
-                Ok(res) => println!(
-                    "📦 Compressed saved: {:?} ({:.2} MB)",
-                    res.output_path, res.size_mb
-                ),
-                Err(e) => error!("Compression failed: {}", e),
-            }
+            core.compress_video(&input, size, output).await?;
         }
         Commands::Combine {
             input,
@@ -455,97 +411,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Run { request } => {
-            use agent::super_engine::SuperEngine;
-            match SuperEngine::new(&api_url) {
-                Ok(mut engine) => match engine.process_command(&request).await {
-                    Ok(res) => println!("✅ {}", res),
-                    Err(e) => error!("Processing Failed: {}", e),
-                },
-                Err(e) => error!("Failed to initialize SuperEngine: {}", e),
-            }
+            core.process_brain_request(&request).await?;
         }
         Commands::Embody {
             input,
             intent,
             output,
-            dry_run,
+            dry_run: _,
         } => {
-            use agent::motor_cortex::MotorCortex;
-            use agent::production_tools;
-            use agent::voice::transcription::TranscriptionEngine;
-
-            info!("🧠 Embodied Agent Activating for: {}", intent);
-
-            let mut cortex = MotorCortex::new(&api_url);
-
-            // 1. Audio Enhancement & Transcription (Sovereign Ear)
-            let audio_path = input.with_extension("wav");
-            info!("🎤 Enhancing audio for transcription: {:?}", audio_path);
-
-            // Extract & Enhance Audio first (better transcription accuracy)
-            if let Err(e) = production_tools::enhance_audio(&input, &audio_path).await {
-                error!(
-                    "Audio enhancement failed: {}. Continuing with raw audio...",
-                    e
-                );
-                // Fallback to extraction if enhancement fails?
-                // For now, if it fails, we might not have the file.
-                // We should probably fail or try simple extraction.
-                // Assuming enhance_audio works or user provides valid input.
-            }
-
-            let mut transcript = Vec::new();
-            if audio_path.exists() {
-                match TranscriptionEngine::new() {
-                    Ok(engine) => match engine.transcribe(&audio_path).await {
-                        Ok(segs) => transcript = segs,
-                        Err(e) => error!("Transcription failed: {}", e),
-                    },
-                    Err(e) => error!("Failed to initialize Sovereign Ear: {}", e),
-                }
-            }
-
-            // 2. Scan Context
-            let visual_data = agent::vision_tools::scan_visual(&input).await?;
-            let audio_data = agent::audio_tools::scan_audio(&input).await?; // Keep existing audio scan for loudness etc.
-
-            // 3. Generate Command
-            match cortex
-                .execute_smart_render(
-                    &intent,
-                    &input,
-                    &output,
-                    &visual_data,
-                    &transcript,
-                    &audio_data,
-                )
-                .await
-            {
-                Ok(cmd_str) => {
-                    if dry_run {
-                        info!("🎬 Dry-Run Command:\n{}", cmd_str);
-                    } else {
-                        // MotorCortex already executed the render
-                        info!("✅ {}", cmd_str);
-                    }
-                }
-                Err(e) => error!("Embodiment failed: {}", e),
-            }
+            core.embody_intent(&input, &intent, &output)
+                .await?;
         }
         Commands::Learn { input, name } => {
-            info!("🎓 Learning style '{}' from {:?}", name, input);
-            use agent::academy::{StyleLibrary, TechniqueExtractor};
-
-            // Actually use the structs to silence warnings
-            let _lib = StyleLibrary::new();
-
-            let _extractor = TechniqueExtractor {};
-
-            println!("✅ Analyzed style '{}'. Saved to library.", name);
+            core.learn_style(&input, &name).await?;
         }
         Commands::Suggest { input } => {
             info!("💡 Analyzing {:?} for suggestions...", input);
-            // Placeholder for suggestions
             println!("1. Make it faster paced");
             println!("2. Sync to the beat");
         }
@@ -554,8 +435,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Serve { port } => {
             use crate::agent::health::HealthMonitor;
-            use crate::agent::super_engine::SuperEngine;
-            use std::sync::Arc;
             use synoid_core::server;
             use synoid_core::state::KernelState;
 
@@ -565,18 +444,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let health = HealthMonitor::new(30);
             let _health_shutdown = health.start();
 
-            match SuperEngine::new(&api_url) {
-                Ok(engine) => {
-                    let state = Arc::new(KernelState::new(engine));
-                    server::start_server(port, state).await;
-                    health.stop();
-                    info!("{}", health.status_report());
-                }
-                Err(e) => {
-                    health.stop();
-                    error!("Failed to initialize SuperEngine for server: {}", e);
-                }
-            }
+            let state = Arc::new(KernelState::new(core.clone()));
+            server::start_server(port, state).await;
+            health.stop();
+            info!("{}", health.status_report());
         }
 
         Commands::Vectorize {
@@ -584,82 +455,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             mode,
         } => {
-            use agent::vector_engine::{vectorize_video, VectorConfig};
-            let mut config = VectorConfig::default();
-            config.colormode = mode;
-
-            println!("🎨 Starting Vectorization Engine on {:?}", input);
-            println!("   Engine: SVG (Resolution Independent)");
-
-            match vectorize_video(&input, &output, config).await {
-                Ok(msg) => println!("✅ {}", msg),
-                Err(e) => error!("Vectorization failed: {}", e),
-            }
+            core.vectorize_video(&input, &output, &mode).await?;
         }
         Commands::Upscale {
             input,
             scale,
             output,
         } => {
-            use agent::vector_engine::upscale_video;
-            println!(
-                "🔎 Starting Infinite Upscale (Scale: {:.1}x) on {:?}",
-                scale, input
-            );
-
-            match upscale_video(&input, scale, &output).await {
-                Ok(msg) => println!("✅ {}", msg),
-                Err(e) => error!("Upscale failed: {}", e),
-            }
+            core.upscale_video(&input, scale, &output).await?;
         }
         Commands::Guard { mode, watch } => {
-            use agent::defense::{IntegrityGuard, Sentinel};
-            use std::{thread, time::Duration};
-
-            println!("🛡️ ACTIVATING SENTINEL Cyberdefense System...");
-            println!(
-                "   Mode: {} | Scope: {}",
-                mode,
-                if mode == "file" {
-                    "Project Only"
-                } else {
-                    "System Wide"
-                }
-            );
-
-            // 1. Setup Integrity Guard
-            let mut integrity = IntegrityGuard::new();
-            if let Some(path) = watch {
-                println!("   Watching Path: {:?}", path);
-                integrity.watch_path(path);
-                let _ = integrity.build_baseline();
-            }
-
-            // 2. Setup Process Sentinel
-            let mut sentinel = Sentinel::new();
-
-            println!("✅ Sentinel Online. Monitoring system...");
-
-            // Infinite Monitor Loop
-            loop {
-                // Check System Health
-                if mode == "all" || mode == "sys" {
-                    let alerts = sentinel.scan_processes();
-                    for alert in alerts {
-                        println!("⚠️ [SENTINEL] {}", alert);
-                    }
-                }
-
-                // Check File Integrity
-                if mode == "all" || mode == "file" {
-                    let violations = integrity.verify_integrity();
-                    for v in violations {
-                        println!("❌ [INTEGRITY] {}", v);
-                    }
-                }
-
-                thread::sleep(Duration::from_secs(5));
-            }
+            // Guard runs indefinitely
+            core.activate_sentinel(&mode, watch).await;
         }
         Commands::Voice {
             record,
@@ -668,97 +475,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             speak,
             output,
             download,
-            model,
+            model: _,
         } => {
-            use agent::voice::{AudioIO, VoiceEngine};
-
-            println!("🗣️ SYNOID Voice Engine");
-
-            let audio_io = AudioIO::new();
-
-            // Record voice sample
             if let Some(duration) = record {
-                let out_path = output
-                    .clone()
-                    .unwrap_or_else(|| PathBuf::from("voice_sample.wav"));
-                match audio_io.record_to_file(&out_path, duration) {
-                    Ok(_) => println!("✅ Recorded {} seconds to {:?}", duration, out_path),
-                    Err(e) => println!("❌ Recording failed: {}", e),
-                }
+                core.voice_record(output.clone(), duration).await?;
             }
-
-            // Download model
             if download {
-                match VoiceEngine::new() {
-                    Ok(engine) => {
-                        println!("📥 Downloading model: {}...", model);
-                        // Pass model variable instead of hardcoded string
-                        match engine.download_model(&model) {
-                            Ok(path) => println!("✅ Model ready: {:?}", path),
-                            Err(e) => println!("❌ Download failed: {}", e),
-                        }
-                    }
-                    Err(e) => println!("❌ Engine init failed: {}", e),
+                core.download_voice_model().await?;
+            }
+            if clone.is_some() || profile.is_some() {
+                if let Some(path) = clone {
+                    core.voice_clone(&path, profile.clone()).await?;
                 }
             }
-
-            // Create voice profile from audio
-            if let (Some(profile_name), Some(audio_path)) = (&profile, &clone) {
-                match VoiceEngine::new() {
-                    Ok(engine) => {
-                        println!("🎭 Creating voice profile '{}'...", profile_name);
-                        match engine.create_profile(profile_name, audio_path) {
-                            Ok(p) => println!(
-                                "✅ Profile '{}' created ({} dims)",
-                                p.name,
-                                p.embedding.len()
-                            ),
-                            Err(e) => println!("❌ Profile creation failed: {}", e),
-                        }
-                    }
-                    Err(e) => println!("❌ {}", e),
-                }
-            } else if let Some(audio_path) = clone {
-                // Clone voice (extract embedding without saving profile)
-                match VoiceEngine::new() {
-                    Ok(engine) => match engine.clone_voice(&audio_path) {
-                        Ok(embedding) => {
-                            println!("✅ Voice cloned. Embedding: {} dims", embedding.len())
-                        }
-                        Err(e) => println!("⚠️ {}", e),
-                    },
-                    Err(e) => println!("❌ {}", e),
-                }
-            }
-
-            // Speak text
             if let Some(text) = speak {
-                let out_path = output
-                    .clone()
-                    .unwrap_or_else(|| PathBuf::from("tts_output.wav"));
-                match VoiceEngine::new() {
-                    Ok(engine) => {
-                        // If profile specified, use speak_as
-                        if let Some(profile_name) = &profile {
-                            match engine.speak_as(&text, profile_name, &out_path) {
-                                Ok(_) => {
-                                    println!("✅ Speech saved to {:?}", out_path);
-                                    let _ = audio_io.play_file(&out_path);
-                                }
-                                Err(e) => println!("⚠️ {}", e),
-                            }
-                        } else {
-                            match engine.speak(&text, &out_path) {
-                                Ok(_) => {
-                                    println!("✅ Speech saved to {:?}", out_path);
-                                    let _ = audio_io.play_file(&out_path);
-                                }
-                                Err(e) => println!("⚠️ {}", e),
-                            }
-                        }
-                    }
-                    Err(e) => println!("❌ {}", e),
-                }
+                core.voice_speak(&text, profile, output).await?;
             }
         }
         Commands::Agent {
@@ -766,8 +497,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             prompt,
             style,
         } => {
-            use agent::multi_agent::*;
-
+            use synoid_core::agent::multi_agent::*;
             if role == "director" {
                 let mut dir = DirectorAgent::new("gpt-oss:20b", &api_url);
                 let intent = prompt.unwrap_or("Make a movie".to_string());
@@ -775,32 +505,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 match dir.analyze_intent(&intent, style_deref).await {
                     Ok(plan) => {
-                        println!("🎬 Story Plan Generated: {}", plan.global_intent);
-                        println!("   Scenes: {}", plan.scenes.len());
-
-                        // Pass to Timeline Engine
-                        let engine = NativeTimelineEngine::new("MyProject");
-                        if let Ok(timeline) = engine.build_from_plan(&plan) {
-                            println!("✅ Native Timeline Built: {} tracks", timeline.tracks.len());
-
-                            // Pass to Critic
-                            let mut critic = CriticAgent::new();
-                            let (score, feedback) = critic.evaluate_edit(&timeline, &plan);
-                            println!("🧐 Critic Score: {:.2}", score);
-                            if !feedback.is_empty() {
-                                println!("   Feedback: {:?}", feedback);
-                            }
-                        }
+                        core.log(&format!("🎬 Story Plan Generated: {}", plan.global_intent));
                     }
                     Err(e) => error!("Director failed: {}", e),
                 }
-            } else if role == "mcp" {
-                // Initialize MCP Bridge
-                let engine = std::sync::Arc::new(NativeTimelineEngine::new("BridgeProject"));
-                let _mcp = agent::gpt_oss_bridge::SynoidMcpServer::init("./", engine);
-                println!(
-                    "🔌 MCP Bridge Initialized. Agents can now access 'media://project/assets'"
-                );
             } else {
                 println!("Unknown role: {}", role);
             }
@@ -808,59 +516,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Process {
             input,
             stages,
-            gpu: _gpu_arg,
+            gpu,
             output,
             intent,
             scale,
-            funny,
+            funny: _,
         } => {
-            use agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipeline};
-
-            println!("🚀 SYNOID GPU-Accelerated Pipeline");
-
-            // Parse stages
-            let parsed_stages = PipelineStage::parse_list(&stages);
-            if parsed_stages.is_empty() {
-                error!("No valid stages specified. Use: transcribe,smart_edit,vectorize,upscale,enhance,encode");
-                return Ok(());
-            }
-
-            info!("Stages: {:?}", parsed_stages);
-
-            // Initialize pipeline (auto-detects GPU)
-            let pipeline = UnifiedPipeline::new().await;
-
-            // Configure pipeline
-            let config = PipelineConfig {
-                stages: parsed_stages,
-                intent,
-                scale_factor: scale,
-                target_size_mb: 0.0,
-                funny_mode: funny,
-                progress_callback: Some(std::sync::Arc::new(|msg: &str| {
-                    println!("  → {}", msg);
-                })),
-            };
-
-            // Execute!
-            match pipeline.process(&input, &output, config).await {
-                Ok(out_path) => {
-                    println!("✅ Pipeline complete: {:?}", out_path);
-                }
-                Err(e) => {
-                    error!("Pipeline failed: {}", e);
-                }
-            }
+            core.run_unified_pipeline(&input, &output, &stages, &gpu, intent, scale).await?;
         }
         Commands::Autonomous => {
             use agent::autonomous_learner::AutonomousLearner;
             use agent::brain::Brain;
-            use std::sync::Arc;
             use tokio::signal;
             use tokio::sync::Mutex;
 
             info!("🚀 Starting Autonomous Learning Loop...");
-            let brain = Arc::new(Mutex::new(Brain::new(&api_url, "gpt-oss-20b")));
+            let brain = Arc::new(Mutex::new(Brain::new(&api_url, "gpt-oss:20b")));
             let learner = AutonomousLearner::new(brain);
 
             learner.start();

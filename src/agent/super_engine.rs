@@ -142,6 +142,8 @@ impl SuperEngine {
                     Some(Box::new(|msg: &str| {
                         info!("[MoE/SmartEditor] {}", msg);
                     })),
+                    None,
+                    None,
                 )
                 .await
                 {
