@@ -1,5 +1,6 @@
-// SYNOID Voice Engine - Enhanced with Speaker Embeddings
-// Neural TTS & Voice Cloning using Candle
+// SYNOID Voice Engine - Experimental / Simulated
+// Currently relies on external Python tools or simulation stubs.
+// Neural TTS & Voice Cloning using Candle (Work in Progress)
 
 use candle_core::Device;
 use hf_hub::api::sync::Api;
@@ -168,7 +169,7 @@ impl VoiceEngine {
     /// Generate speech from text (TTS)
     pub fn speak(&self, text: &str, _output_path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!(
-            "[VOICE] (Simulation) Synthesizing to {:?}: \"{}\"",
+            "[VOICE] (Simulation) Synthesizing to {:?}: \"{}\" - This is currently a stub/simulation.",
             _output_path, text
         );
         // Err("TTS model not yet loaded - run 'synoid voice --download' first".into())
@@ -189,7 +190,7 @@ impl VoiceEngine {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // let profile = self.load_profile(profile_name)?;
         info!(
-            "[VOICE] (Simulation) Synthesizing as '{}': \"{}\"",
+            "[VOICE] (Simulation) Synthesizing as '{}': \"{}\" - This is currently a stub/simulation.",
             profile_name, text
         );
         // Err("Voice cloning model not yet loaded".into())
