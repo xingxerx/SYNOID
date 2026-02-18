@@ -650,12 +650,12 @@ pub async fn smart_edit(
         // Accurate input-seeking (-ss and -t before -i) prevents frame doubling and lag
         cmd.arg("-ss").arg(&scene.start_time.to_string());
         cmd.arg("-t").arg(&scene.duration.to_string());
-        cmd.arg("-i").arg(input.to_str().unwrap());
+        cmd.arg("-i").arg(production_tools::safe_arg_path(input));
 
         if use_enhanced_audio {
             cmd.arg("-ss").arg(&scene.start_time.to_string());
             cmd.arg("-t").arg(&scene.duration.to_string());
-            cmd.arg("-i").arg(enhanced_audio_path.to_str().unwrap());
+            cmd.arg("-i").arg(production_tools::safe_arg_path(&enhanced_audio_path));
         }
 
         // Mapping
@@ -680,7 +680,7 @@ pub async fn smart_edit(
         cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
 
         cmd.arg("-avoid_negative_ts").arg("make_zero");
-        cmd.arg(seg_path.to_str().unwrap());
+        cmd.arg(production_tools::safe_arg_path(&seg_path));
 
         let status = cmd.output().await?;
 
@@ -725,7 +725,7 @@ pub async fn smart_edit(
 
             // Inputs (Video Segments)
             for seg in &segment_files {
-                cmd.arg("-i").arg(seg);
+                cmd.arg("-i").arg(production_tools::safe_arg_path(seg));
             }
 
             // Inputs (Commentary Audio)
@@ -749,7 +749,7 @@ pub async fn smart_edit(
                 .arg("-crf")
                 .arg("23");
             cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
-            cmd.arg(output.to_str().unwrap());
+            cmd.arg(production_tools::safe_arg_path(output));
 
             let status = cmd.output().await?;
             if !status.status.success() {
@@ -787,19 +787,17 @@ pub async fn smart_edit(
 
     // 7. Concatenate segments
     let status = Command::new("ffmpeg")
-        .args([
-            "-y",
-            "-nostdin",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            concat_file.to_str().unwrap(),
-            "-c",
-            "copy",
-            output.to_str().unwrap(),
-        ])
+        .arg("-y")
+        .arg("-nostdin")
+        .arg("-f")
+        .arg("concat")
+        .arg("-safe")
+        .arg("0")
+        .arg("-i")
+        .arg(production_tools::safe_arg_path(&concat_file))
+        .arg("-c")
+        .arg("copy")
+        .arg(production_tools::safe_arg_path(output))
         .output()
         .await?;
 
