@@ -7,6 +7,7 @@
 use crate::agent::body::Body;
 use crate::agent::consciousness::Consciousness;
 use crate::agent::gpt_oss_bridge::SynoidAgent;
+use crate::agent::hive_mind::HiveMind;
 use crate::gpu_backend::GpuContext;
 use tracing::info;
 
@@ -31,22 +32,8 @@ pub enum Intent {
     Research {
         topic: String,
     },
-    Vectorize {
-        input: String,
-        preset: String,
-    },
-    Upscale {
-        input: String,
-        scale: f64,
-    },
-    VoiceClone {
-        input: String,
-        name: String,
-    },
-    Speak {
-        text: String,
-        profile: String,
-    },
+
+
     /// Complex creative request requiring MoE orchestration
     Orchestrate {
         goal: String,
@@ -69,7 +56,7 @@ use crate::agent::learning::LearningKernel;
 pub struct Brain {
     agent: Option<SynoidAgent>,
     api_url: String,
-    model: String,
+    pub hive_mind: HiveMind,
     pub learning_kernel: LearningKernel,
     pub neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity,
     /// GPU/CUDA backend reference (late-bound after async detection).
@@ -81,17 +68,21 @@ pub struct Brain {
 }
 
 impl Brain {
-    pub fn new(api_url: &str, model: &str) -> Self {
+    pub fn new(api_url: &str, _model: &str) -> Self {
         Self {
             agent: None,
             api_url: api_url.to_string(),
-            model: model.to_string(),
+            hive_mind: HiveMind::new(api_url),
             learning_kernel: LearningKernel::new(),
             neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity::new(),
             gpu: None,
             _consciousness: Consciousness::new(),
             _body: Body::new(),
         }
+    }
+
+    pub async fn initialize_hive_mind(&mut self) -> Result<(), String> {
+        self.hive_mind.refresh_models().await.map_err(|e| e.to_string())
     }
 
     /// Late-bind the GPU context after async detection completes.
@@ -173,46 +164,7 @@ impl Brain {
             }
         }
 
-        // 5. Vector Engine Heuristics
-        if req_lower.contains("vector") || req_lower.contains("svg") {
-            return Intent::Vectorize {
-                input: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
-                preset: "default".to_string(),
-            };
-        }
 
-        if req_lower.contains("upscale") || req_lower.contains("enhance") {
-            let scale = if req_lower.contains("4x") { 4.0 } else { 2.0 };
-            return Intent::Upscale {
-                input: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
-                scale,
-            };
-        }
-
-        // 6. Voice Engine Heuristics
-        if req_lower.contains("clone voice")
-            || (req_lower.contains("voice") && req_lower.contains("learn"))
-        {
-            return Intent::VoiceClone {
-                input: "sample.wav".to_string(),
-                name: "cloned_voice".to_string(),
-            };
-        }
-
-        if req_lower.contains("say") || req_lower.contains("speak") {
-            let text = if let Some(idx) = req_lower.find("say") {
-                request[idx + 3..].trim().to_string()
-            } else if let Some(idx) = req_lower.find("speak") {
-                request[idx + 5..].trim().to_string()
-            } else {
-                "Hello".to_string()
-            };
-
-            return Intent::Speak {
-                text,
-                profile: "default".to_string(),
-            };
-        }
 
         // 7. Orchestrate Heuristics (MoE Dispatcher)
         // Complex creative requests requiring multi-expert coordination
@@ -430,48 +382,13 @@ impl Brain {
                     Err(e) => Err(format!("Research failed: {}", e)),
                 }
             }
-            Intent::Vectorize { input, preset: _ } => {
-                info!("[BRAIN] 🎨 Activating Vector Engine...");
-                use crate::agent::vector_engine::{self, VectorConfig};
-                let input_path = std::path::Path::new(&input);
-                let output_path = input_path.with_file_name(format!(
-                    "{}_vectorized",
-                    input_path.file_stem().unwrap().to_string_lossy()
-                ));
 
-                let config = VectorConfig::default();
 
-                match vector_engine::vectorize_video(input_path, &output_path, config).await {
-                    Ok(msg) => {
-                        self.neuroplasticity.record_success();
-                        Ok(format!("Vectorization complete: {}", msg))
-                    }
-                    Err(e) => Err(format!("Vectorization failed: {}", e)),
-                }
-            }
-            Intent::Upscale { input, scale } => {
-                info!("[BRAIN] 🔎 Activating Infinite Upscale ({}x)...", scale);
-                use crate::agent::vector_engine;
-                let input_path = std::path::Path::new(&input);
-                let stem = input_path.file_stem().unwrap().to_string_lossy();
-                let output_path = input_path.with_file_name(format!("{}_upscaled.mp4", stem));
-
-                match vector_engine::upscale_video(input_path, scale, &output_path).await {
-                    Ok(msg) => {
-                        self.neuroplasticity.record_success();
-                        Ok(format!("Upscale complete: {}", msg))
-                    }
-                    Err(e) => Err(format!("Upscale failed: {}", e)),
-                }
-            }
-            Intent::VoiceClone { .. } | Intent::Speak { .. } => Err(
-                "Voice operations require access to the VoiceEngine. Please use the 'voice' CLI command.".to_string(),
-            ),
             Intent::Orchestrate { goal, .. } => {
                  info!("[BRAIN] 🎼 Orchestrating creative goal: {}", goal);
                  // Use the LLM to reason about the orchestration
                  if self.agent.is_none() {
-                    self.agent = Some(SynoidAgent::new(&self.api_url, &self.model));
+                    self.agent = Some(SynoidAgent::new(&self.api_url, &self.hive_mind.get_reasoning_model()));
                  }
                  if let Some(agent) = &self.agent {
                     match agent.reason(&goal).await {
@@ -486,7 +403,7 @@ impl Brain {
                 // Similar to Orchestrate but simpler
                  info!("[BRAIN] 🎬 Planning edit for {}: {}", input, instruction);
                  if self.agent.is_none() {
-                    self.agent = Some(SynoidAgent::new(&self.api_url, &self.model));
+                    self.agent = Some(SynoidAgent::new(&self.api_url, &self.hive_mind.get_reasoning_model()));
                  }
                  if let Some(agent) = &self.agent {
                     match agent.reason(&instruction).await {
@@ -501,14 +418,26 @@ impl Brain {
                 info!("[BRAIN] 🧠 Complex request detected. Waking up Cortex (GPT-OSS)...");
                 // Lazy-load the heavy AI agent only now
                 if self.agent.is_none() {
-                    self.agent = Some(SynoidAgent::new(&self.api_url, &self.model));
+                    let best_model = self.hive_mind.get_reasoning_model();
+                    info!("[BRAIN] 🧠 Selected Reasoning Model: {}", best_model);
+                    self.agent = Some(SynoidAgent::new(&self.api_url, &best_model));
                 }
 
                 if let Some(agent) = &self.agent {
-                    // Simple passthrough for now - in reality this would call tool use
-                    match agent.reason(&request).await {
-                        Ok(resp) => Ok(format!("Cortex reasoned: {}", resp)),
-                        Err(e) => Err(format!("Cortex failed: {}", e)),
+                    // Check if model changed (neuroplasticity might upgrade us)
+                    let current_best = self.hive_mind.get_reasoning_model();
+                    if agent.model != current_best {
+                         info!("[BRAIN] 🔄 Upgrading Cortex to better model: {} -> {}", agent.model, current_best);
+                         self.agent = Some(SynoidAgent::new(&self.api_url, &current_best));
+                    }
+                    
+                    if let Some(agent) = &self.agent {
+                         match agent.reason(&request).await {
+                             Ok(resp) => Ok(format!("Cortex reasoned: {}", resp)),
+                             Err(e) => Err(format!("Cortex failed: {}", e)),
+                         }
+                    } else {
+                        Err("Failed to initialize Cortex".to_string())
                     }
                 } else {
                     Err("Failed to initialize Cortex".to_string())

@@ -40,8 +40,11 @@ Thumbs.db
 *.avi
 *.mkv
 *.webm
+*.wav
 Hytale_Project/
 downloads/
+synoid_audio_enhanced.wav
+Videos/synoid_audio_enhanced.wav
 
 # Large Debug Files
 *.pdb
@@ -74,3 +77,4 @@ brain_memory.json
 .env
 temp_verification/
 check_errors*.txt
+.claude/

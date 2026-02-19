@@ -74,7 +74,7 @@ Transform raw footage into high-retention content automatically:
 - **FFmpeg** (in PATH)
 - **yt-dlp** (for YouTube features)
 - **Python 3** (for Voice/TTS features)
-- **Ollama** (running `gpt-oss:20b` or similar)
+- **Ollama** (running `deepseek-r1:14b` or similar)
 
 ### Build
 ```bash

@@ -23,7 +23,7 @@ pub struct UrlReader {
 impl UrlReader {
     pub fn new(api_url: &str) -> Self {
         Self {
-            agent: SynoidAgent::new(api_url, "gpt-oss:20b"),
+            agent: SynoidAgent::new(api_url, "llama3:latest"),
         }
     }
 

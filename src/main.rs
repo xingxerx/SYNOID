@@ -42,6 +42,7 @@ enum Commands {
         #[arg(long, default_value = "10")]
         chunk_minutes: u32,
 
+
         /// Browser to borrow cookies from for authentication
         #[arg(long)]
         login: Option<String>,
@@ -153,36 +154,6 @@ enum Commands {
     /// Check GPU status
     Gpu,
 
-    /// Vectorize video to SVG frames (Resolution Independent)
-    Vectorize {
-        /// Input video
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Output directory
-        #[arg(short, long)]
-        output: PathBuf,
-
-        /// Color mode: color/binary
-        #[arg(long, default_value = "color")]
-        mode: String,
-    },
-
-    /// Infinite Upscale (Neural/Vector)
-    Upscale {
-        /// Input video
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Scale factor (e.g. 2.0, 4.0)
-        #[arg(short, long, default_value_t = 2.0)]
-        scale: f64,
-
-        /// Output video path
-        #[arg(short, long)]
-        output: PathBuf,
-    },
-
     /// Activate Cyberdefense Sentinel
     Guard {
         /// Monitor Mode (all/sys/file)
@@ -192,37 +163,6 @@ enum Commands {
         /// Path to watch for Integrity
         #[arg(short, long)]
         watch: Option<PathBuf>,
-    },
-
-    /// Voice Cloning & Neural TTS
-    Voice {
-        /// Record voice sample (seconds)
-        #[arg(long)]
-        record: Option<u32>,
-
-        /// Clone voice from audio file
-        #[arg(long)]
-        clone: Option<PathBuf>,
-
-        /// Create named voice profile from audio
-        #[arg(long)]
-        profile: Option<String>,
-
-        /// Text to speak
-        #[arg(long)]
-        speak: Option<String>,
-
-        /// Output audio file
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-
-        /// Download TTS/Whisper model
-        #[arg(long)]
-        download: bool,
-
-        /// Specify model (e.g., whisper-medium)
-        #[arg(long, default_value = "tiny")]
-        model: String,
     },
 
     /// Multi-Agent Role Execution
@@ -246,7 +186,7 @@ enum Commands {
         #[arg(short, long)]
         input: PathBuf,
 
-        /// Processing stages (comma-separated): transcribe,smart_edit,vectorize,upscale,enhance,encode (or "all")
+        /// Processing stages (comma-separated): transcribe,smart_edit,enhance,encode (or "all")
         #[arg(long, default_value = "all")]
         stages: String,
 
@@ -265,10 +205,6 @@ enum Commands {
         /// Scale factor for upscaling (2.0 = 2x resolution)
         #[arg(long, default_value_t = 2.0)]
         scale: f64,
-
-        /// Enable Funny Mode (commentary + transitions)
-        #[arg(long)]
-        funny: bool,
     },
 
     /// Start Autonomous Learning Loop
@@ -280,22 +216,18 @@ enum Commands {
         #[arg(short, long, default_value_t = 3000)]
         port: u16,
     },
-
-    /// Apply "Funny Bits" enhancement to a video
-    Funny {
-        /// Input video path
-        #[arg(short, long)]
-        input: PathBuf,
-
-        /// Output video path
-        #[arg(short, long)]
-        output: PathBuf,
-    },
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv().ok();
+    
+    // Set default log level to suppress noisy internal crates (wgpu, naga, etc.)
+    // unless explicitly overridden by the user.
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info,wgpu_core=error,wgpu_hal=error,naga=error,winit=error,symphonia=error");
+    }
+
     tracing_subscriber::fmt::init();
 
     // Global panic handler: log panics instead of crashing silently
@@ -330,10 +262,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Connect Brain → GPU/CUDA backend (neuroplasticity-tuned acceleration)
     core.connect_gpu_to_brain().await;
-    info!(
-        "🧠⚡ Neural-GPU bridge active: {}",
-        core.acceleration_status().await
-    );
+    info!("🧠⚡ Neural-GPU bridge active: {}", core.acceleration_status().await);
+    
+    // Initialize Hive Mind (Ollama discovery) - Non-blocking background task
+    let core_for_hive = core.clone();
+    tokio::spawn(async move {
+        match core_for_hive.initialize_hive_mind().await {
+            Ok(_) => info!("🐝 Hive Mind Active: Connected to Ollama Neural Network"),
+            Err(e) => {
+                tracing::warn!("⚠️ Hive Mind Offline: {}", e);
+                info!("⚠️ Continuing in degraded mode (Brain defaults only)");
+            }
+        }
+    });
 
     let args = Cli::parse();
 
@@ -375,8 +316,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             chunk_minutes,
             login,
         } => {
-            core.process_youtube_intent(&url, &intent, output, login.as_deref(), false, chunk_minutes)
-                .await?;
+            core.process_youtube_intent(&url, &intent, output, login.as_deref(), false, chunk_minutes).await?;
         }
         Commands::Research { topic, limit } => {
             core.process_research(&topic, limit).await?;
@@ -486,47 +426,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             info!("{}", health.status_report());
         }
 
-        Commands::Vectorize {
-            input,
-            output,
-            mode,
-        } => {
-            core.vectorize_video(&input, &output, &mode).await?;
-        }
-        Commands::Upscale {
-            input,
-            scale,
-            output,
-        } => {
-            core.upscale_video(&input, scale, &output).await?;
-        }
         Commands::Guard { mode, watch } => {
             // Guard runs indefinitely
             core.activate_sentinel(&mode, watch).await;
-        }
-        Commands::Voice {
-            record,
-            clone,
-            profile,
-            speak,
-            output,
-            download,
-            model: _,
-        } => {
-            if let Some(duration) = record {
-                core.voice_record(output.clone(), duration).await?;
-            }
-            if download {
-                core.download_voice_model().await?;
-            }
-            if clone.is_some() || profile.is_some() {
-                if let Some(path) = clone {
-                    core.voice_clone(&path, profile.clone()).await?;
-                }
-            }
-            if let Some(text) = speak {
-                core.voice_speak(&text, profile, output).await?;
-            }
         }
         Commands::Agent {
             role,
@@ -538,7 +440,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
             match role.as_str() {
                 "director" => {
-                    let mut dir = DirectorAgent::new("gpt-oss:20b", &api_url);
+                    let mut dir = DirectorAgent::new("llama3:latest", &api_url);
                     let style_deref = style.as_deref();
 
                     match dir.analyze_intent(&prompt_text, style_deref).await {
@@ -565,9 +467,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             output,
             intent,
             scale,
-            funny,
         } => {
-            core.run_unified_pipeline(&input, &output, &stages, &gpu, intent, scale, funny)
+            core.run_unified_pipeline(&input, &output, &stages, &gpu, intent, scale)
                 .await?;
         }
         Commands::Autonomous => {
@@ -577,7 +478,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             use tokio::sync::Mutex;
 
             info!("🚀 Starting Autonomous Learning Loop...");
-            let brain = Arc::new(Mutex::new(Brain::new(&api_url, "gpt-oss:20b")));
+            let brain = Arc::new(Mutex::new(Brain::new(&api_url, "llama3:latest")));
             let learner = AutonomousLearner::new(brain);
 
             learner.start();
@@ -586,16 +487,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             signal::ctrl_c().await?;
             learner.stop();
             info!("🛑 Autonomous Loop Stopped.");
-        }
-        Commands::Funny { input, output } => {
-            use synoid_core::funny_engine::FunnyEngine;
-
-            info!("🤡 Starting Funny Bits Engine on {:?}", input);
-            let engine = FunnyEngine::new();
-            match engine.process_video(&input, &output).await {
-                Ok(_) => println!("✅ Video enhanced with funny bits: {:?}", output),
-                Err(e) => error!("Funny processing failed: {}", e),
-            }
         }
     }
 

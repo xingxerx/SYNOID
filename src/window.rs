@@ -56,21 +56,19 @@ enum ActiveCommand {
     Clip,
     Compress,
     // Visual
-    Vectorize,
-    Upscale,
+
     // AI Core
     Brain,
     Embody,
     Learn,
     Suggest,
-    // Voice (Unified)
-    Voice,
     // Security
     Guard,
     // Research
     Research,
     // Audio
     AudioMixer,
+    Betterment,
 }
 
 #[derive(Default, Clone)]
@@ -78,7 +76,6 @@ pub struct TreeState {
     pub media_expanded: bool,
     pub visual_expanded: bool,
     pub ai_core_expanded: bool,
-    pub voice_expanded: bool,
     pub security_expanded: bool,
     pub research_expanded: bool,
     pub audio_expanded: bool,
@@ -99,30 +96,26 @@ pub struct UiState {
     pub compress_size: String,
     pub scale_factor: String,
     pub research_topic: String,
-    pub voice_text: String,
-    pub voice_profile: String,
+    pub style_name: String,
     pub guard_mode: String,
     pub guard_watch_path: String,
-    pub is_funny_bits_enabled: bool,
     pub is_autonomous_running: bool,
     // UI specific
-    pub voice_tab: VoiceTab,
     pub detected_tracks: Vec<crate::agent::audio_tools::AudioTrack>,
+    pub hive_mind_status: String,
+    pub preview_bytes: Option<Vec<u8>>,
+    pub last_previewed_path: String,
+    pub suggestions: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, Default)]
-pub enum VoiceTab {
-    #[default]
-    Record,
-    Clone,
-    Speak,
-}
+
 
 pub struct SynoidApp {
     core: Arc<AgentCore>,
     ui_state: Arc<Mutex<UiState>>,
     tree_state: TreeState,
     active_command: ActiveCommand,
+    preview_texture: Option<egui::TextureHandle>,
 }
 
 impl SynoidApp {
@@ -135,19 +128,34 @@ impl SynoidApp {
         ui_state.scale_factor = "2.0".to_string();
         ui_state.guard_mode = "all".to_string();
 
+        // Start background poller for Hive Mind status
+        let core_clone = core.clone();
+        let ui_state_clone = Arc::new(Mutex::new(ui_state.clone()));
+        let return_state = ui_state_clone.clone();
+
+        tokio::spawn(async move {
+            loop {
+                let status = core_clone.get_hive_status().await;
+                if let Ok(mut state) = ui_state_clone.lock() {
+                    state.hive_mind_status = status;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            }
+        });
+
         Self {
             core,
-            ui_state: Arc::new(Mutex::new(ui_state)),
+            ui_state: return_state,
             tree_state: TreeState {
                 media_expanded: true,
                 visual_expanded: true,
                 ai_core_expanded: true,
-                voice_expanded: false,
                 security_expanded: false,
                 research_expanded: false,
                 audio_expanded: true,
             },
             active_command: ActiveCommand::None,
+            preview_texture: None,
         }
     }
 
@@ -268,57 +276,87 @@ impl SynoidApp {
 
     fn render_command_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         match self.active_command {
-            ActiveCommand::None => {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(100.0);
-                    ui.label(egui::RichText::new("🎯").size(48.0));
-                    ui.add_space(20.0);
-                    ui.label(
-                        egui::RichText::new("Select a Command")
-                            .size(24.0)
-                            .color(COLOR_TEXT_SECONDARY),
-                    );
-                    ui.add_space(10.0);
-                    ui.label(
-                        egui::RichText::new("Choose from the sidebar to get started")
-                            .size(14.0)
-                            .color(COLOR_TEXT_SECONDARY),
-                    );
-                });
-            }
+            ActiveCommand::None => self.render_dashboard(ui, state),
             ActiveCommand::Clip => self.render_clip_panel(ui, state),
             ActiveCommand::Compress => self.render_compress_panel(ui, state),
-            ActiveCommand::Vectorize => self.render_vectorize_panel(ui, state),
-            ActiveCommand::Upscale => self.render_upscale_panel(ui, state),
+
             ActiveCommand::Brain => self.render_brain_panel(ui, state),
             ActiveCommand::Embody => self.render_embody_panel(ui, state),
             ActiveCommand::Learn => self.render_learn_panel(ui, state),
             ActiveCommand::Suggest => self.render_suggest_panel(ui, state),
-            ActiveCommand::Voice => self.render_voice_unified_panel(ui, state),
             ActiveCommand::Guard => self.render_guard_panel(ui, state),
             ActiveCommand::Research => self.render_research_panel(ui, state),
             ActiveCommand::AudioMixer => self.render_audio_mixer_panel(ui, state),
+            ActiveCommand::Betterment => self.render_betterment_panel(ui, state),
         }
     }
 
-    fn render_voice_unified_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
-        ui.heading(egui::RichText::new("🗣️ Voice Studio").color(COLOR_ACCENT_GREEN));
-        ui.separator();
-        ui.add_space(10.0);
-
-        ui.horizontal(|ui| {
-             ui.selectable_value(&mut state.voice_tab, VoiceTab::Record, "🎙️ Record");
-             ui.selectable_value(&mut state.voice_tab, VoiceTab::Clone, "🎭 Clone");
-             ui.selectable_value(&mut state.voice_tab, VoiceTab::Speak, "🔊 Speak");
+    fn render_dashboard(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.vertical_centered(|ui| {
+             ui.add_space(20.0);
+             ui.label(egui::RichText::new("🚀 SYNOID Dashboard").size(24.0).color(COLOR_ACCENT_ORANGE).strong());
+             ui.add_space(10.0);
+             ui.label(egui::RichText::new("Autonomous Video Kernel v0.1.1").color(COLOR_TEXT_SECONDARY));
+             ui.add_space(30.0);
         });
-        ui.add_space(15.0);
 
-        match state.voice_tab {
-            VoiceTab::Record => self.render_voice_record_panel(ui, state),
-            VoiceTab::Clone => self.render_voice_clone_panel(ui, state),
-            VoiceTab::Speak => self.render_voice_speak_panel(ui, state),
+        ui.columns(2, |cols| {
+            cols[0].group(|ui| {
+                ui.heading("🐝 Hive Status");
+                ui.label(egui::RichText::new(&state.hive_mind_status).monospace());
+                ui.add_space(10.0);
+                if ui.button("🔄 Refresh Nodes").clicked() {
+                    let core = self.core.clone();
+                    tokio::spawn(async move { let _ = core.initialize_hive_mind().await; });
+                }
+            });
+
+            cols[1].group(|ui| {
+                ui.heading("🎓 Neuroplasticity");
+                ui.label("Learning Loop: Active");
+                ui.label(format!("Adaptation: {}", if state.is_autonomous_running { "Stable" } else { "Paused" }));
+                ui.add_space(10.0);
+                ui.toggle_value(&mut state.is_autonomous_running, "Autonomous Mode");
+            });
+        });
+
+        if !state.suggestions.is_empty() {
+            ui.add_space(20.0);
+            ui.group(|ui| {
+                ui.heading("💡 Creative Sparks");
+                for suggestion in &state.suggestions {
+                    ui.label(format!("• {}", suggestion));
+                }
+            });
         }
     }
+
+    fn render_preview_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(10.0);
+            ui.heading(egui::RichText::new("📺 Preview").color(COLOR_ACCENT_BLUE));
+            ui.add_space(8.0);
+
+            if let Some(texture) = &self.preview_texture {
+                let size = texture.size_vec2();
+                let max_width = ui.available_width() - 20.0;
+                let scale = max_width / size.x;
+                ui.image((texture.id(), size * scale));
+            } else {
+                ui.add_space(50.0);
+                ui.label("No Preview Available");
+                ui.label(egui::RichText::new("Select a video file to begin").small().color(COLOR_TEXT_SECONDARY));
+                ui.add_space(50.0);
+            }
+
+            ui.add_space(10.0);
+            if !state.input_path.is_empty() {
+                ui.label(egui::RichText::new(&state.input_path).small().color(COLOR_TEXT_SECONDARY));
+            }
+        });
+    }
+
+
 
     // --- Command Panels ---
 
@@ -404,79 +442,9 @@ impl SynoidApp {
         }
     }
 
-    fn render_vectorize_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
-        ui.heading(egui::RichText::new("🎨 Vectorize to SVG").color(COLOR_ACCENT_PURPLE));
-        ui.separator();
-        ui.add_space(10.0);
 
-        self.render_input_file_picker(ui, state);
-        ui.add_space(10.0);
 
-        ui.label("Output Directory:");
-        ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut state.output_path);
-            if ui.button("📂").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .set_directory(get_default_videos_path())
-                    .pick_folder() {
-                    state.output_path = path.to_string_lossy().to_string();
-                }
-            }
-        });
-        ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🎨 Convert to SVG").size(16.0))
-                    .fill(COLOR_ACCENT_PURPLE),
-            )
-            .clicked()
-        {
-            let core = self.core.clone();
-            let input = PathBuf::from(&state.input_path);
-            let output = PathBuf::from(&state.output_path);
-
-            tokio::spawn(async move {
-                let _ = core.vectorize_video(&input, &output, "color").await;
-            });
-        }
-    }
-
-    fn render_upscale_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
-        ui.heading(egui::RichText::new("🔎 Infinite Upscale").color(COLOR_ACCENT_ORANGE));
-        ui.separator();
-        ui.add_space(10.0);
-
-        self.render_input_file_picker(ui, state);
-        ui.add_space(10.0);
-
-        ui.horizontal(|ui| {
-            ui.label("Scale Factor:");
-            ui.add(egui::TextEdit::singleline(&mut state.scale_factor).desired_width(60.0));
-            ui.label("x");
-        });
-        ui.add_space(10.0);
-
-        self.render_output_file_picker(ui, state);
-        ui.add_space(20.0);
-
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🔎 Upscale Video").size(16.0))
-                    .fill(COLOR_ACCENT_ORANGE),
-            )
-            .clicked()
-        {
-            let core = self.core.clone();
-            let input = PathBuf::from(&state.input_path);
-            let output = PathBuf::from(&state.output_path);
-            let scale: f64 = state.scale_factor.parse().unwrap_or(2.0);
-
-            tokio::spawn(async move {
-                let _ = core.upscale_video(&input, scale, &output).await;
-            });
-        }
-    }
 
     fn render_brain_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🧠 Brain Command").color(COLOR_ACCENT_BLUE));
@@ -534,10 +502,7 @@ impl SynoidApp {
                 .desired_width(f32::INFINITY),
         );
         ui.add_space(5.0);
-        ui.checkbox(
-            &mut state.is_funny_bits_enabled,
-            "🎭 Enable Funny Mode (Commentary + Transitions)",
-        );
+
         ui.add_space(10.0);
 
         self.render_output_file_picker(ui, state);
@@ -579,10 +544,8 @@ impl SynoidApp {
                     None
                 };
                 let intent = state.intent.clone();
-                let funny = state.is_funny_bits_enabled;
-
                 tokio::spawn(async move {
-                    let _ = core.process_youtube_intent(&input, &intent, output, None, funny, 0).await;
+                    let _ = core.process_youtube_intent(&input, &intent, output, None, false, 0).await;
                 });
             }
         });
@@ -613,7 +576,7 @@ impl SynoidApp {
         ui.add_space(10.0);
 
         ui.label("Style Name:");
-        ui.text_edit_singleline(&mut state.voice_profile);
+        ui.text_edit_singleline(&mut state.style_name);
         ui.add_space(20.0);
 
         if ui
@@ -625,7 +588,7 @@ impl SynoidApp {
         {
             let core = self.core.clone();
             let input = PathBuf::from(&state.input_path);
-            let name = state.voice_profile.clone();
+            let name = state.style_name.clone();
 
             tokio::spawn(async move {
                 let _ = core.learn_style(&input, &name).await;
@@ -641,140 +604,36 @@ impl SynoidApp {
         self.render_input_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("💡 Analyze Video").size(16.0))
-                    .fill(COLOR_ACCENT_BLUE),
-            )
-            .clicked()
-        {
-            self.core
-                .log("Suggest feature pending core implementation.");
+        if ui.add(egui::Button::new(egui::RichText::new("💡 Analyze Video").size(16.0)).fill(COLOR_ACCENT_BLUE)).clicked() {
+             let core = self.core.clone();
+             let ui_ptr = self.ui_state.clone();
+             // Clone input path to move into async block
+             let input_path_str = state.input_path.clone();
+             
+             tokio::spawn(async move {
+                 let path = std::path::PathBuf::from(input_path_str);
+                 if let Ok(suggs) = core.get_suggestions(&path).await {
+                     if let Ok(mut s) = ui_ptr.lock() {
+                         s.suggestions = suggs;
+                     }
+                 }
+             });
         }
-    }
 
-    fn render_voice_record_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
-        ui.heading(egui::RichText::new("🎙️ Record Voice").color(COLOR_ACCENT_RED));
-        ui.separator();
-        ui.add_space(10.0);
-
-        ui.label("Recording Duration (seconds):");
-        ui.add(egui::TextEdit::singleline(&mut state.clip_duration).desired_width(80.0));
-        ui.add_space(10.0);
-
-        self.render_output_file_picker(ui, state);
-        ui.add_space(20.0);
-
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🎙️ Start Recording").size(16.0))
-                    .fill(COLOR_ACCENT_RED),
-            )
-            .clicked()
-        {
-            let core = self.core.clone();
-            let duration: u32 = state.clip_duration.parse().unwrap_or(5);
-            let output = if !state.output_path.is_empty() {
-                Some(PathBuf::from(&state.output_path))
-            } else {
-                None
-            };
-
-            tokio::spawn(async move {
-                let _ = core.voice_record(output, duration).await;
-            });
-        }
-    }
-
-    fn render_voice_clone_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
-        ui.heading(egui::RichText::new("🎭 Clone Voice").color(COLOR_ACCENT_PURPLE));
-        ui.separator();
-        ui.add_space(10.0);
-
-        ui.label("Voice Sample (Audio File):");
-        ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut state.input_path);
-            if ui.button("📂").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Audio", &["wav", "mp3"])
-                    .set_directory(get_default_videos_path())
-                    .pick_file() {
-                    state.input_path = path.to_string_lossy().to_string();
+        if !state.suggestions.is_empty() {
+            ui.add_space(10.0);
+            ui.group(|ui| {
+                ui.label("Suggestions for this video:");
+                for (i, sugg) in state.suggestions.iter().enumerate() {
+                    if ui.button(format!("{}. {}", i+1, sugg)).clicked() {
+                         state.intent = sugg.clone();
+                    }
                 }
-            }
-        });
-        ui.add_space(10.0);
-
-        ui.label("Profile Name:");
-        ui.text_edit_singleline(&mut state.voice_profile);
-        ui.add_space(20.0);
-
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🎭 Create Voice Profile").size(16.0))
-                    .fill(COLOR_ACCENT_PURPLE),
-            )
-            .clicked()
-        {
-            let core = self.core.clone();
-            let input = PathBuf::from(&state.input_path);
-            let name = if !state.voice_profile.is_empty() {
-                Some(state.voice_profile.clone())
-            } else {
-                None
-            };
-
-            tokio::spawn(async move {
-                let _ = core.voice_clone(&input, name).await;
             });
         }
     }
 
-    fn render_voice_speak_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
-        ui.heading(egui::RichText::new("🗣️ Text to Speech").color(COLOR_ACCENT_ORANGE));
-        ui.separator();
-        ui.add_space(10.0);
 
-        ui.label("Text to Speak:");
-        ui.add(
-            egui::TextEdit::multiline(&mut state.voice_text)
-                .desired_rows(4)
-                .desired_width(f32::INFINITY),
-        );
-        ui.add_space(10.0);
-
-        ui.label("Voice Profile (optional):");
-        ui.text_edit_singleline(&mut state.voice_profile);
-        ui.add_space(10.0);
-
-        self.render_output_file_picker(ui, state);
-        ui.add_space(20.0);
-
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🗣️ Generate Speech").size(16.0))
-                    .fill(COLOR_ACCENT_ORANGE),
-            )
-            .clicked()
-        {
-            let core = self.core.clone();
-            let text = state.voice_text.clone();
-            let profile = if !state.voice_profile.is_empty() {
-                Some(state.voice_profile.clone())
-            } else {
-                None
-            };
-            let output = if !state.output_path.is_empty() {
-                Some(PathBuf::from(&state.output_path))
-            } else {
-                None
-            };
-
-            tokio::spawn(async move {
-                let _ = core.voice_speak(&text, profile, output).await;
-            });
-        }
-    }
 
     fn render_guard_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🛡️ Cyberdefense Sentinel").color(COLOR_ACCENT_RED));
@@ -947,6 +806,52 @@ impl SynoidApp {
         }
     }
 
+    fn render_betterment_panel(&self, ui: &mut egui::Ui, _state: &mut UiState) {
+        ui.heading(egui::RichText::new("⚡ Video Editing Agent - Betterment").color(COLOR_ACCENT_ORANGE));
+        ui.separator();
+        ui.add_space(10.0);
+
+        ui.label("The Video Editing Agent autonomously scouts for high-quality benchmarks and adapts its editing style based on world-class cinematography.");
+        ui.add_space(10.0);
+
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("🚀 Betterment Cycle").strong());
+            ui.label("Trigger a focused learning cycle on a specific cinematic topic.");
+            ui.add_space(8.0);
+            
+            ui.horizontal(|ui| {
+                ui.label("Topic:");
+                let mut topic = "Award winning travel cinematography".to_string();
+                ui.text_edit_singleline(&mut topic);
+                
+                if ui.button("🔥 Start Betterment").clicked() {
+                    let core = self.core.clone();
+                    let topic_name = topic.clone();
+                    tokio::spawn(async move {
+                        core.ensure_video_editing_agent();
+                        let vea_opt = {
+                            let vea_guard = core.video_editing_agent.lock().ok();
+                            vea_guard.and_then(|g| g.clone())
+                        };
+                        
+                        if let Some(vea) = vea_opt {
+                            let _ = vea.run_betterment_cycle(&topic_name).await;
+                        }
+                    });
+                }
+            });
+        });
+
+        ui.add_space(20.0);
+        ui.heading("📊 Learned Models");
+        ui.label("Current active styles learned through betterment cycles:");
+        ui.add_space(5.0);
+        
+        // Mocked/Future list
+        ui.label("• cinematic_pacing: v2.3 (Optimized)");
+        ui.label("• travel_vlog_storytelling: v1.1 (Developing)");
+    }
+
     // --- Helper renders ---
 
     fn render_input_file_picker(&self, ui: &mut egui::Ui, state: &mut UiState) {
@@ -983,6 +888,44 @@ impl eframe::App for SynoidApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.configure_style(ctx);
 
+        // --- BACKGROUND LOGIC ---
+        {
+            let mut state = self.ui_state.lock().unwrap();
+            
+            // 1. Texture conversion
+            if let Some(bytes) = state.preview_bytes.take() {
+                if let Ok(image) = image::load_from_memory(&bytes) {
+                    let size = [image.width() as _, image.height() as _];
+                    let image_buffer = image.to_rgba8();
+                    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, image_buffer.as_raw());
+                    self.preview_texture = Some(ctx.load_texture("preview_frame", color_image, Default::default()));
+
+                }
+            }
+
+            // 2. Auto-preview and auto-suggest when path changes
+            if !state.input_path.is_empty() && state.input_path != state.last_previewed_path {
+                state.last_previewed_path = state.input_path.clone();
+                let core = self.core.clone();
+                let ui_ptr = self.ui_state.clone();
+                let path = std::path::PathBuf::from(&state.input_path);
+                
+                tokio::spawn(async move {
+                    // Preview Frame
+                    if let Ok(frame) = core.get_video_frame(&path, 0.0).await {
+                        let mut s = ui_ptr.lock().unwrap();
+                        s.preview_bytes = Some(frame);
+                    }
+                    // Suggestions
+                    if let Ok(suggs) = core.get_suggestions(&path).await {
+                        let mut s = ui_ptr.lock().unwrap();
+                        s.suggestions = suggs;
+                    }
+                });
+            }
+        }
+
+
         // Left Sidebar - Command Tree
         egui::SidePanel::left("command_tree")
             .default_width(240.0)
@@ -1008,15 +951,29 @@ impl eframe::App for SynoidApp {
                         .size(11.0)
                         .color(COLOR_TEXT_SECONDARY),
                 );
+                
+                ui.add_space(8.0);
+                // Hive Mind Status Display
+                let hive_status = {
+                    let state = self.ui_state.lock().unwrap();
+                    state.hive_mind_status.clone()
+                };
+                
+                if !hive_status.is_empty() {
+                     ui.group(|ui| {
+                         ui.label(egui::RichText::new("🐝 Hive Mind").color(COLOR_ACCENT_ORANGE).strong());
+                         ui.label(egui::RichText::new(hive_status).size(10.0));
+                     });
+                }
+
                 ui.add_space(16.0);
                 ui.separator();
                 ui.add_space(12.0);
 
                 // Clone expanded states for mutable borrow
                 let mut media_exp = self.tree_state.media_expanded;
-                let mut visual_exp = self.tree_state.visual_expanded;
+                let visual_exp = self.tree_state.visual_expanded;
                 let mut ai_exp = self.tree_state.ai_core_expanded;
-                let mut voice_exp = self.tree_state.voice_expanded;
                 let mut security_exp = self.tree_state.security_expanded;
                 let mut research_exp = self.tree_state.research_expanded;
                 let mut audio_exp = self.tree_state.audio_expanded;
@@ -1038,20 +995,7 @@ impl eframe::App for SynoidApp {
                     new_cmd = Some(cmd);
                 }
 
-                // Visual
-                if let Some(cmd) = self.render_tree_category(
-                    ui,
-                    "Visual",
-                    "🎨",
-                    COLOR_ACCENT_PURPLE,
-                    &mut visual_exp,
-                    vec![
-                        ("✨", "Vectorize", ActiveCommand::Vectorize),
-                        ("🔎", "Upscale", ActiveCommand::Upscale),
-                    ],
-                ) {
-                    new_cmd = Some(cmd);
-                }
+
 
                 // AI Core
                 if let Some(cmd) = self.render_tree_category(
@@ -1064,25 +1008,13 @@ impl eframe::App for SynoidApp {
                         ("💬", "Brain", ActiveCommand::Brain),
                         ("🤖", "Embody", ActiveCommand::Embody),
                         ("🎓", "Learn", ActiveCommand::Learn),
+                        ("⚡", "Betterment", ActiveCommand::Betterment),
                         ("💡", "Suggest", ActiveCommand::Suggest),
                     ],
                 ) {
                     new_cmd = Some(cmd);
                 }
 
-                // Voice
-                if let Some(cmd) = self.render_tree_category(
-                    ui,
-                    "Voice",
-                    "🗣️",
-                    COLOR_ACCENT_GREEN,
-                    &mut voice_exp,
-                    vec![
-                        ("🎙️", "Voice", ActiveCommand::Voice),
-                    ],
-                ) {
-                    new_cmd = Some(cmd);
-                }
 
                 // Security
                 if let Some(cmd) = self.render_tree_category(
@@ -1123,7 +1055,6 @@ impl eframe::App for SynoidApp {
                 self.tree_state.media_expanded = media_exp;
                 self.tree_state.visual_expanded = visual_exp;
                 self.tree_state.ai_core_expanded = ai_exp;
-                self.tree_state.voice_expanded = voice_exp;
                 self.tree_state.security_expanded = security_exp;
                 self.tree_state.research_expanded = research_exp;
                 self.tree_state.audio_expanded = audio_exp;
@@ -1221,6 +1152,21 @@ impl eframe::App for SynoidApp {
                 );
             });
 
+        // Right Sidebar - Preview
+        egui::SidePanel::right("preview_panel")
+            .default_width(320.0)
+            .resizable(true)
+            .frame(
+                egui::Frame::none()
+                    .fill(COLOR_SIDEBAR_BG)
+                    .inner_margin(egui::Margin::same(12.0)),
+            )
+            .show(ctx, |ui| {
+                let mut state = self.ui_state.lock().unwrap();
+                self.render_preview_panel(ui, &mut state);
+            });
+
+
         // Always request repaint to show log updates from background threads
         ctx.request_repaint();
     }
@@ -1232,6 +1178,7 @@ pub fn run_gui(core: Arc<AgentCore>) -> Result<(), eframe::Error> {
             .with_inner_size([1280.0, 800.0])
             .with_title("SYNOID Command Center")
             .with_decorations(true),
+        renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
 

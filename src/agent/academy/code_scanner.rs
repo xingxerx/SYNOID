@@ -22,21 +22,32 @@ pub struct CodeScanner {
 impl CodeScanner {
     pub fn new(api_url: &str) -> Self {
         Self {
-            agent: SynoidAgent::new(api_url, "gpt-oss:20b"),
+            agent: SynoidAgent::new(api_url, "deepseek-r1:14b"),
         }
     }
 
     /// Stealthily scan a repository file URL for editing logic
     /// This fetches the raw content in-memory, processes it, and discards the code.
     pub async fn scan_remote_code(&self, url: &str) -> Result<AnalyzedConcept, Box<dyn std::error::Error + Send + Sync>> {
-        info!("[SCANNER] 🕵️ Stealthily accessing: {}", url);
-
         // 1. Fetch raw content (In-Memory Only)
+        // Clean the URL to collapse potential multiple slashes (e.g., https:///github.com -> https://github.com)
+        let mut cleaned_url = url.trim().to_string();
+        
+        // Robust collapse: identify protocol and hostname, ensure exactly two slashes between them
+        if let Some(pos) = cleaned_url.find("://") {
+            let protocol = &cleaned_url[..pos];
+            let rest = &cleaned_url[pos + 3..];
+            let sanitized_rest = rest.trim_start_matches('/');
+            cleaned_url = format!("{}://{}", protocol, sanitized_rest);
+        }
+
+        info!("[SCANNER] 🕵️ Stealthily accessing: {}", cleaned_url);
+
         // Convert github blob URL to raw if necessary, or assume raw input
-        let raw_url = if url.contains("github.com") && url.contains("/blob/") {
-            url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+        let raw_url = if cleaned_url.contains("github.com") && cleaned_url.contains("/blob/") {
+            cleaned_url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
         } else {
-            url.to_string()
+            cleaned_url
         };
 
         let client = reqwest::Client::builder()

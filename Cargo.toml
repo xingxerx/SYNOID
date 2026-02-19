@@ -10,37 +10,21 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 dotenv = "0.15"
 anyhow = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-vtracer = "0.6" # Core vectorizer engine
-rayon = "1.7"   # Parallel processing for frames
+regex = "1.10"
+rayon = "1.7"
 reqwest = { version = "0.11", features = ["json"] }
-eframe = "0.29.1"
+eframe = { version = "0.29.1", features = ["wgpu"] }
 rfd = "0.13"
 image = "0.24"
 scraper = "0.19"
-resvg = "0.29"   # SVG rendering engine
-tiny-skia = "0.11" # 2D Graphics library for resvg (Matches resvg 0.29 req)
 sysinfo = "0.29" # System monitoring (Processes/RAM)
 sha2 = "0.10"    # File integrity hashing
 walkdir = "2.3"  # Efficient directory traversal
 num_cpus = "1.0"
 
-# Funny Bits Engine Dependencies
-symphonia = { version = "0.5", features = ["all"] } # Audio decoding/analysis
-rand = "0.8" # Random selection for memes/sounds
-
-# Voice Cloning & Neural TTS
-# Note: RTX 50 series (sm_120) not yet supported by CUDA
-# Explicitly use default features (CPU) for candle
-candle-core = "0.8"
-candle-nn = "0.8"
-candle-transformers = "0.8"
-tokenizers = "0.15"
+# Transcription Engine (Whisper)
 whisper-rs = { version = "0.11.1" } # Native Whisper implementation (CPU mode for compatibility)
 hf-hub = "0.3"    # HuggingFace model downloads
-rodio = "0.17"    # Audio playback
-cpal = "0.15"     # Audio recording  
 hound = "3.5"     # WAV file writing
 dirs = "5.0"      # Platform cache directories
 url = "2.5.8"
@@ -53,3 +37,7 @@ axum = { version = "0.7", features = ["macros"] }
 tower-http = { version = "0.5", features = ["fs", "cors"] }
 tower = { version = "0.4", features = ["util"] }
 petgraph = "0.8.3"
+uuid = { version = "1.21.0", features = ["v4", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+urlencoding = "2.1"

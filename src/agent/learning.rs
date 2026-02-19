@@ -61,20 +61,34 @@ impl LearningKernel {
 
     /// Retrieve the best known editing pattern for a user intent
     pub fn recall_pattern(&self, intent: &str) -> EditingPattern {
-        // Simple keyword matching for now
-        let key =
-            if intent.to_lowercase().contains("hype") || intent.to_lowercase().contains("fast") {
-                "fast_paced"
-            } else if intent.to_lowercase().contains("cinematic")
-                || intent.to_lowercase().contains("slow")
-            {
-                "cinematic"
-            } else {
-                "general"
-            };
+        let intent_lower = intent.to_lowercase();
+        
+        // 1. Direct Match
+        if let Some(pattern) = self.patterns.get(intent) {
+            info!("[KERNEL] 🧠 Exact match pattern for '{}'", intent);
+            return pattern.clone();
+        }
+
+        // 2. Keyword Match (Iterate over all keys)
+        // If the user asks for "gaming video", and we have "gaming_montage", match it.
+        for (key, pattern) in &self.patterns {
+            if intent_lower.contains(key) || key.contains(&intent_lower) {
+                info!("[KERNEL] 🧠 Fuzzy match: '{}' -> '{}'", intent, key);
+                return pattern.clone();
+            }
+        }
+        
+        // 3. Fallback Heuristics (if no learned data matches)
+        let key = if intent_lower.contains("hype") || intent_lower.contains("fast") {
+            "fast_paced" 
+        } else if intent_lower.contains("cinematic") || intent_lower.contains("slow") {
+            "cinematic"
+        } else {
+            "general"
+        };
 
         if let Some(pattern) = self.patterns.get(key) {
-            info!("[KERNEL] 🧠 Recalled pattern for '{}': {:?}", key, pattern);
+            info!("[KERNEL] 🧠 Fallback heuristic pattern for '{}': {:?}", key, pattern);
             pattern.clone()
         } else {
             info!("[KERNEL] New context encountered. Using default heuristics.");
@@ -84,15 +98,12 @@ impl LearningKernel {
 
     /// Store a successful editing decision to long-term memory
     pub fn memorize(&mut self, intent: &str, pattern: EditingPattern) {
-        let key = if intent.to_lowercase().contains("hype") {
-            "fast_paced"
-        } else if intent.to_lowercase().contains("cinematic") {
-            "cinematic"
-        } else {
-            "general"
-        };
-
-        self.patterns.insert(key.to_string(), pattern);
+        // Store under the specific intent tag provided by the learning process
+        // e.g. "cinematic_travel_video"
+        let key = intent.to_lowercase().replace(" ", "_");
+        
+        info!("[KERNEL] 💾 Memorizing pattern for '{}'", key);
+        self.patterns.insert(key, pattern);
         self.save();
     }
 

@@ -16,9 +16,10 @@ use crate::agent::motor_cortex::MotorCortex;
 use crate::agent::production_tools;
 use crate::agent::source_tools;
 use crate::agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipeline};
-use crate::agent::vector_engine::{self, VectorConfig};
-use crate::agent::voice::VoiceEngine;
+
+
 use crate::agent::autonomous_learner::AutonomousLearner;
+use crate::agent::editor_queue::{VideoEditorQueue, EditJob, JobStatus};
 use crate::gpu_backend;
 
 /// The shared state of the agent
@@ -34,14 +35,19 @@ pub struct AgentCore {
     pub brain: Arc<AsyncMutex<Brain>>,
     pub cortex: Arc<AsyncMutex<MotorCortex>>,
 
-    // Voice Engine (Sync Mutex because it's used synchronously in blocking blocks or directly)
-    pub voice_engine: Arc<Mutex<Option<VoiceEngine>>>,
+
 
     // Unified Pipeline (Async Mutex)
     pub pipeline: Arc<AsyncMutex<Option<UnifiedPipeline>>>,
 
     // Autonomous Learner (Sync Mutex)
     pub autonomous_learner: Arc<Mutex<Option<AutonomousLearner>>>,
+
+    // Video Editor Queue (Sync for easy access)
+    pub editor_queue: Arc<VideoEditorQueue>,
+    
+    // Video Editing Agent (The high-level orchestrator)
+    pub video_editing_agent: Arc<Mutex<Option<crate::agent::video_editing_agent::VideoEditingAgent>>>,
 }
 
 impl AgentCore {
@@ -53,11 +59,21 @@ impl AgentCore {
                 "[SYSTEM] SYNOID Core initialized.".to_string()
             ])),
             sentinel_active: Arc::new(AtomicBool::new(false)),
-            brain: Arc::new(AsyncMutex::new(Brain::new(api_url, "gpt-oss:20b"))),
+            brain: Arc::new(AsyncMutex::new(Brain::new(api_url, "llama3:latest"))),
             cortex: Arc::new(AsyncMutex::new(MotorCortex::new(api_url))),
-            voice_engine: Arc::new(Mutex::new(None)),
+
             pipeline: Arc::new(AsyncMutex::new(None)),
             autonomous_learner: Arc::new(Mutex::new(None)), // Lazy init
+            editor_queue: Arc::new(VideoEditorQueue::new(Arc::new(AsyncMutex::new(Brain::new(api_url, "llama3:latest"))))),
+            video_editing_agent: Arc::new(Mutex::new(None)), // Lazy init
+        }
+    }
+
+    pub fn ensure_video_editing_agent(&self) {
+        let mut vea = self.video_editing_agent.lock().unwrap();
+        if vea.is_none() {
+            self.log("[CORE] 🤖 Initializing Video Editing Agent...");
+            *vea = Some(crate::agent::video_editing_agent::VideoEditingAgent::new(self.brain.clone()));
         }
     }
 
@@ -71,6 +87,21 @@ impl AgentCore {
             "[CORE] 🔗 Neural-GPU bridge active: {}",
             brain.acceleration_status()
         ));
+    }
+
+    pub async fn initialize_hive_mind(&self) -> Result<(), String> {
+        let mut brain = self.brain.lock().await;
+        brain.initialize_hive_mind().await
+    }
+
+    pub async fn get_hive_status(&self) -> String {
+        let brain = self.brain.lock().await;
+        format!(
+            "🧠 Reasoning: {}\n⚡ Fast: {}\n📚 Models Loaded: {}", 
+            brain.hive_mind.get_reasoning_model(),
+            brain.hive_mind.get_fast_model(),
+            brain.hive_mind.models.len()
+        )
     }
 
     /// Get combined acceleration status from Brain + GPU + Neuroplasticity.
@@ -91,6 +122,10 @@ impl AgentCore {
         info!("{}", msg); // Also log to stdout/tracing
         if let Ok(mut logs) = self.logs.lock() {
             logs.push(msg.to_string());
+            // Cap at 500 logs to prevent memory exhaustion
+            if logs.len() > 500 {
+                logs.remove(0);
+            }
         }
     }
 
@@ -102,7 +137,13 @@ impl AgentCore {
     }
 
     pub fn get_logs(&self) -> Vec<String> {
-        self.logs.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        let logs = self.logs.lock().unwrap_or_else(|e| e.into_inner());
+        // Only return the last 200 logs to keep the GUI responsive
+        if logs.len() > 200 {
+            logs[logs.len() - 200..].to_vec()
+        } else {
+            logs.clone()
+        }
     }
 
     // --- Core Logic Methods ---
@@ -218,17 +259,42 @@ impl AgentCore {
             self.set_status(&format!("🧠 Processing Intent: {}", intent));
             self.log(&format!("[CORE] Applying intent: {}", intent));
 
-            use crate::agent::smart_editor;
-
-            let self_clone = self.clone();
-            let callback = Box::new(move |msg: &str| {
-                self_clone.log(msg);
-            });
-
-            match smart_editor::smart_edit(&local_path, intent, &out_path, funny_mode, Some(callback), None, None).await {
-                Ok(res) => self.log(&format!("[CORE] ✅ {}", res)),
-                Err(e) => self.log(&format!("[CORE] ❌ Edit failed: {}", e)),
+            // 1. Query Brain for Learned Pattern
+            let mut pattern = None;
+            {
+                let brain = self.brain.lock().await;
+                // Only try to recall if intent looks like a style or has substance
+                if intent.len() > 3 {
+                    let recalled = brain.learning_kernel.recall_pattern(intent);
+                    // Check if recalled pattern is just default (success_rating 3) or learned (rating > 3 or specific tag)
+                    if recalled.intent_tag != "general" || recalled.success_rating > 3 {
+                        self.log(&format!("[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
+                             recalled.intent_tag, recalled.avg_scene_duration));
+                        pattern = Some(recalled);
+                    }
+                }
             }
+
+            use uuid::Uuid;
+            use std::time::Instant;
+
+            let job = EditJob {
+                id: Uuid::new_v4(),
+                input: local_path.clone(),
+                intent: intent.to_string(),
+                output: out_path.clone(),
+                funny_mode,
+                status: JobStatus::Queued,
+                created_at: Instant::now(),
+                pre_scanned_scenes: None,
+                pre_scanned_transcript: None,
+                // NEW: Pass learned pattern to the job/editor
+                learned_pattern: pattern,
+            };
+
+            let job_id = self.editor_queue.add_job(job).await;
+            self.log(&format!("[CORE] 📥 Video edit queued. Job ID: {}", job_id));
+            self.set_status("📥 Edit Queued");
         } else {
             if let Err(e) = std::fs::copy(&local_path, &out_path) {
                 self.log(&format!("[CORE] ❌ Copy failed: {}", e));
@@ -347,7 +413,7 @@ impl AgentCore {
         input: &Path,
         intent: &str,
         output: &Path,
-        dry_run: bool,
+        _dry_run: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🤖 Embodying...");
         self.log(&format!("[CORE] Embodied Agent Activating for: {}", intent));
@@ -357,7 +423,7 @@ impl AgentCore {
 
         // 1. Scan Context
         self.log("[CORE] Scanning visual context...");
-        let visual_data = match vision_tools::scan_visual(input).await {
+        let _visual_data = match vision_tools::scan_visual(input).await {
             Ok(d) => d,
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Vision scan failed: {}", e));
@@ -366,7 +432,7 @@ impl AgentCore {
         };
 
         self.log("[CORE] Scanning audio context...");
-        let audio_data = match audio_tools::scan_audio(input).await {
+        let _audio_data = match audio_tools::scan_audio(input).await {
             Ok(d) => d,
             Err(e) => {
                 self.log(&format!("[CORE] ❌ Audio scan failed: {}", e));
@@ -374,25 +440,43 @@ impl AgentCore {
             }
         };
 
-        // 2. Execute — Route through Smart Render for deep editing/cutting
-        self.set_status("🧠 Planning & Rendering...");
-        let result = {
-            let mut cortex = self.cortex.lock().await;
-            // execute_smart_render now calls smart_edit which handles transcription and cutting
-            cortex.execute_smart_render(intent, input, output, &visual_data, &[], &audio_data, dry_run).await
-        };
+        // 2. Execute — Queue through VideoEditorQueue
+        self.set_status("📥 Edit Queued");
+        use crate::agent::editor_queue::{EditJob, JobStatus};
+        use uuid::Uuid;
+        use std::time::Instant;
 
-        match result {
-            Ok(summary) => {
-                self.log(&format!("[CORE] ✅ {}", summary));
-            }
-            Err(e) => {
-                self.log(&format!("[CORE] ❌ Embodiment failed: {}", e));
-                return Err(e.into());
+        // Query Brain for Learned Pattern
+        let mut pattern = None;
+        {
+            let brain = self.brain.lock().await;
+            if intent.len() > 3 {
+                let recalled = brain.learning_kernel.recall_pattern(intent);
+                if recalled.intent_tag != "general" || recalled.success_rating > 3 {
+                    self.log(&format!("[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
+                         recalled.intent_tag, recalled.avg_scene_duration));
+                    pattern = Some(recalled);
+                }
             }
         }
 
-        // Record success in neuroplasticity so the system speeds up
+        let job = EditJob {
+            id: Uuid::new_v4(),
+            input: input.to_path_buf(),
+            intent: intent.to_string(),
+            output: output.to_path_buf(),
+            funny_mode: false, // Embody intent doesn't have funny_mode param yet
+            status: JobStatus::Queued,
+            created_at: Instant::now(),
+            pre_scanned_scenes: None,
+            pre_scanned_transcript: None,
+            learned_pattern: pattern,
+        };
+
+        let job_id = self.editor_queue.add_job(job).await;
+        self.log(&format!("[CORE] 📥 Embodied intent queued. Job ID: {}", job_id));
+
+        // Record success (of queuing at least)
         {
             let mut brain = self.brain.lock().await;
             brain.neuroplasticity.record_success();
@@ -420,183 +504,65 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn vectorize_video(
-        &self,
-        input: &Path,
-        output: &Path,
-        mode: &str,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.set_status("🎨 Vectorizing...");
-        self.log(&format!("[CORE] Vectorizing {:?}", input));
 
-        let mut config = VectorConfig::default();
-        config.colormode = mode.to_string();
 
-        match vector_engine::vectorize_video(input, output, config).await {
-            Ok(msg) => self.log(&format!("[CORE] ✅ {}", msg)),
-            Err(e) => {
-                self.log(&format!("[CORE] ❌ Vectorization failed: {}", e));
-                return Err(e.to_string().into());
-            }
+
+
+    pub async fn get_video_frame(&self, path: &Path, time_secs: f64) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+        let safe_input = production_tools::safe_arg_path(path);
+        
+        // Extract 1 frame at the given timestamp as a JPG
+        let output = tokio::process::Command::new("ffmpeg")
+            .arg("-ss")
+            .arg(time_secs.to_string())
+            .arg("-i")
+            .arg(&safe_input)
+            .args(["-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "-"])
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            return Err(format!("FFmpeg frame extraction failed: {:?}", String::from_utf8_lossy(&output.stderr)).into());
         }
 
-        self.set_status("⚡ Ready");
-        Ok(())
+        Ok(output.stdout)
     }
 
-    pub async fn upscale_video(
-        &self,
-        input: &Path,
-        scale: f64,
-        output: &Path,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.set_status(&format!("🔎 Upscaling {:.1}x...", scale));
-        self.log(&format!(
-            "[CORE] Infinite Upscale (Scale: {:.1}x) on {:?}",
-            scale, input
-        ));
 
-        match vector_engine::upscale_video(input, scale, output).await {
-            Ok(msg) => self.log(&format!("[CORE] ✅ {}", msg)),
-            Err(e) => {
-                self.log(&format!("[CORE] ❌ Upscale failed: {}", e));
-                return Err(e.to_string().into());
+
+    pub async fn get_suggestions(&self, input: &Path) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        self.set_status("💡 Generating Suggestions...");
+        self.log(&format!("[CORE] Analyzing {:?} for creative suggestions...", input));
+
+        // 1. Scan Context (Quick look)
+        use crate::agent::vision_tools;
+        let scenes = vision_tools::scan_visual(input).await.unwrap_or_default();
+        
+        let mut brain = self.brain.lock().await;
+        let prompt = format!(
+            "Analyze this video context: {} scenes detected. Path: {:?}. Generate 3 short, punchy creative editing suggestions.",
+            scenes.len(), input
+        );
+
+        match brain.process(&prompt).await {
+            Ok(res) => {
+                // Split multi-line response or just return it as a list
+                let suggestions = res.lines()
+                    .map(|l| l.trim_matches(|c: char| c.is_numeric() || c == '.' || c == ' ' ).to_string())
+                    .filter(|s| !s.is_empty())
+                    .take(3)
+                    .collect();
+                Ok(suggestions)
             }
+            Err(e) => Err(e.into())
         }
-
-        self.set_status("⚡ Ready");
-        Ok(())
     }
 
     pub async fn get_audio_tracks(&self, input: &Path) -> Result<Vec<crate::agent::audio_tools::AudioTrack>, Box<dyn std::error::Error + Send + Sync>> {
         crate::agent::audio_tools::get_audio_tracks(input).await
     }
 
-    // --- Voice Tools ---
 
-    // Ensure voice engine is initialized
-    fn ensure_voice_engine(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let mut engine = self.voice_engine.lock().unwrap();
-        if engine.is_none() {
-            match VoiceEngine::new() {
-                Ok(e) => *engine = Some(e),
-                Err(e) => return Err(e.to_string().into()),
-            }
-        }
-        Ok(())
-    }
-
-    pub async fn voice_record(&self, output: Option<PathBuf>, duration: u32) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.set_status("🎙️ Recording...");
-        use crate::agent::voice::AudioIO;
-        let audio_io = AudioIO::new();
-
-        let out_path = output.unwrap_or_else(|| PathBuf::from("voice_sample.wav"));
-
-        match audio_io
-            .record_to_file(&out_path, duration)
-            .await
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.to_string().into() })
-        {
-            Ok(_) => self.log(&format!("[CORE] ✅ Recorded {} seconds", duration)),
-            Err(e) => self.log(&format!("[CORE] ❌ Recording failed: {}", e)),
-        }
-
-        self.set_status("⚡ Ready");
-        Ok(())
-    }
-
-    pub async fn voice_clone(
-        &self,
-        audio_path: &Path,
-        profile_name: Option<String>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.set_status("🎭 Cloning Voice...");
-        if let Err(e) = self.ensure_voice_engine() {
-            self.log(&format!("[CORE] ❌ Engine init failed: {}", e));
-            return Err(e);
-        }
-
-        let engine_guard = self.voice_engine.lock().unwrap();
-        let engine = engine_guard.as_ref().unwrap();
-
-        if let Some(name) = profile_name {
-            self.log(&format!("[CORE] Creating voice profile '{}'...", name));
-            match engine.create_profile(&name, audio_path) {
-                Ok(p) => self.log(&format!(
-                    "[CORE] ✅ Profile '{}' created ({} dims)",
-                    p.name,
-                    p.embedding.len()
-                )),
-                Err(e) => self.log(&format!("[CORE] ❌ Profile creation failed: {}", e)),
-            }
-        } else {
-            match engine.clone_voice(audio_path) {
-                Ok(embedding) => self.log(&format!(
-                    "[CORE] ✅ Voice cloned. Embedding: {} dims",
-                    embedding.len()
-                )),
-                Err(e) => self.log(&format!("[CORE] ❌ Clone failed: {}", e)),
-            }
-        }
-
-        self.set_status("⚡ Ready");
-        Ok(())
-    }
-
-    pub async fn voice_speak(
-        &self,
-        text: &str,
-        profile: Option<String>,
-        output: Option<PathBuf>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.set_status("🗣️ Speaking...");
-        if let Err(e) = self.ensure_voice_engine() {
-            self.log(&format!("[CORE] ❌ Engine init failed: {}", e));
-            return Err(e);
-        }
-
-        let out_path = output.unwrap_or_else(|| PathBuf::from("tts_output.wav"));
-        let engine_guard = self.voice_engine.lock().unwrap();
-        let engine = engine_guard.as_ref().unwrap();
-
-        let res = if let Some(p_name) = profile {
-            engine.speak_as(text, &p_name, &out_path)
-        } else {
-            engine.speak(text, &out_path)
-        };
-
-        match res {
-            Ok(_) => {
-                self.log(&format!("[CORE] ✅ Speech saved to {:?}", out_path));
-                // Play it
-                use crate::agent::voice::AudioIO;
-                let audio_io = AudioIO::new();
-                let _ = audio_io.play_file(&out_path);
-            }
-            Err(e) => self.log(&format!("[CORE] ❌ Speech failed: {}", e)),
-        }
-
-        self.set_status("⚡ Ready");
-        Ok(())
-    }
-
-    pub async fn download_voice_model(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.set_status("📥 Downloading Model...");
-        if let Err(e) = self.ensure_voice_engine() {
-            return Err(e);
-        }
-        let engine_guard = self.voice_engine.lock().unwrap();
-        let engine = engine_guard.as_ref().unwrap();
-
-        match engine.download_model("microsoft/speecht5_tts") {
-            Ok(path) => self.log(&format!("[CORE] ✅ Model ready: {:?}", path)),
-            Err(e) => self.log(&format!("[CORE] ❌ Download failed: {}", e)),
-        }
-
-        self.set_status("⚡ Ready");
-        Ok(())
-    }
 
     // --- Unified Pipeline ---
 
@@ -608,9 +574,22 @@ impl AgentCore {
         _gpu: &str,
         intent: Option<String>,
         scale: f64,
-        funny_mode: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🚀 Running Pipeline...");
+
+        // Query Brain for Learned Pattern if intent is present
+        let mut pattern = None;
+        if let Some(ref intent_str) = intent {
+            let brain = self.brain.lock().await;
+            if intent_str.len() > 3 {
+                let recalled = brain.learning_kernel.recall_pattern(intent_str);
+                if recalled.intent_tag != "general" || recalled.success_rating > 3 {
+                    self.log(&format!("[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
+                         recalled.intent_tag, recalled.avg_scene_duration));
+                    pattern = Some(recalled);
+                }
+            }
+        }
 
         let parsed_stages = PipelineStage::parse_list(stages_str);
         if parsed_stages.is_empty() {
@@ -634,10 +613,10 @@ impl AgentCore {
             intent,
             scale_factor: scale,
             target_size_mb: 0.0,
-            funny_mode,
             progress_callback: Some(Arc::new(move |msg: &str| {
                 self_clone.log(msg);
             })),
+            learned_pattern: pattern,
         };
         match pipeline.process(input, output, config).await {
             Ok(out_path) => self.log(&format!("[CORE] ✅ Pipeline complete: {:?}", out_path)),

@@ -176,15 +176,30 @@ pub fn check_dependencies() -> Vec<String> {
     ];
 
     for (dep, flag) in deps {
-        if std::process::Command::new(dep).arg(flag).output().is_err() {
-            // For python, try python3 fallback
+        let mut found = std::process::Command::new(dep).arg(flag).output().is_ok();
+        
+        // Special fallbacks for common developer environments
+        if !found {
             if dep == "python" {
-                if std::process::Command::new("python3").arg(flag).output().is_err() {
-                     missing.push(dep.to_string());
+                found = std::process::Command::new("python3").arg(flag).output().is_ok();
+            } else if dep == "yt-dlp" {
+                // Check if available as a python module
+                for py_cmd in ["python3", "python", "py"] {
+                    if std::process::Command::new(py_cmd)
+                        .args(["-m", "yt_dlp", "--version"])
+                        .output()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false) 
+                    {
+                        found = true;
+                        break;
+                    }
                 }
-            } else {
-                missing.push(dep.to_string());
             }
+        }
+
+        if !found {
+            missing.push(dep.to_string());
         }
     }
     missing

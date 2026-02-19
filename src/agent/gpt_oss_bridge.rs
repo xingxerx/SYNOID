@@ -10,7 +10,7 @@ use tracing::{info, warn};
 pub struct SynoidAgent {
     client: reqwest::Client,
     api_url: String,
-    model: String,
+    pub model: String,
 }
 
 impl SynoidAgent {

@@ -342,3 +342,37 @@ pub fn build_transition_filter(
 
     filter
 }
+
+/// Extract audio as 16kHz Mono PCM WAV (Ideal for Whisper)
+pub async fn extract_audio_wav(
+    input_video: &Path,
+    output_wav: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+    info!("[PROD] Extracting WAV for AI: {:?} -> {:?}", input_video, output_wav);
+
+    let safe_input = safe_arg_path(input_video);
+    let safe_output = safe_arg_path(output_wav);
+
+    let status = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-i")
+        .arg(&safe_input)
+        .args([
+            "-vn",          // No video
+            "-acodec",
+            "pcm_s16le",    // PCM 16-bit
+            "-ar",
+            "16000",        // 16kHz sample rate
+            "-ac",
+            "1",            // Mono
+        ])
+        .arg(&safe_output)
+        .status()
+        .await?;
+
+    if !status.success() {
+        return Err("FFmpeg audio extraction failed".into());
+    }
+
+    Ok(output_wav.to_path_buf())
+}

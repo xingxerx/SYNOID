@@ -8,8 +8,7 @@ use crate::agent::core::AgentCore;
 pub struct KernelState {
     pub task: Mutex<TaskState>,
     pub core: Arc<AgentCore>,
-    pub funny_engine: Arc<crate::funny_engine::FunnyEngine>,
-    pub funny_moments: Mutex<Vec<crate::funny_engine::analyzer::FunnyMoment>>,
+
     /// Shared pressure level for the GUI health bar.
     pub pressure_level: Arc<RwLock<PressureLevel>>,
 }
@@ -22,8 +21,7 @@ impl KernelState {
         Self {
             task: Mutex::new(TaskState::default()),
             core,
-            funny_engine: Arc::new(crate::funny_engine::FunnyEngine::new()),
-            funny_moments: Mutex::new(Vec::new()),
+
             pressure_level: pressure_handle,
         }
     }
@@ -43,11 +41,7 @@ pub struct TaskState {
     pub compress_size: String,
     pub scale_factor: String,
     pub research_topic: String,
-    pub voice_text: String,
-    pub voice_profile: String,
     pub guard_mode: String,
-    pub guard_watch_path: String,
-    pub is_funny_bits_enabled: bool,
 }
 
 impl Default for TaskState {
@@ -65,11 +59,7 @@ impl Default for TaskState {
             compress_size: "25.0".to_string(),
             scale_factor: "2.0".to_string(),
             research_topic: String::new(),
-            voice_text: String::new(),
-            voice_profile: String::new(),
             guard_mode: "all".to_string(),
-            guard_watch_path: String::new(),
-            is_funny_bits_enabled: false,
         }
     }
 }

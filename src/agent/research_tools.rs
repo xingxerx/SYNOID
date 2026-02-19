@@ -211,6 +211,24 @@ pub async fn research_for_intent(intent: &str) -> Vec<ResearchFinding> {
     research_tips(topic).await
 }
 
+/// Scout GitHub for open-source repositories related to video editing (simulated for now)
+/// Real implementation would use: https://api.github.com/search/repositories?q=topic:video-editing
+pub async fn scout_github_topics() -> Vec<String> {
+    info!("[RESEARCH] Scouting GitHub for FOSS video tools...");
+    
+    // In a real scenario, we would fetch from API. 
+    // Here we return a curated list of active open source video projects 
+    // to expand the learner's knowledge base.
+    vec![
+        "https://github.com/olive-editor/olive".to_string(), // New professional OS editor
+        "https://github.com/NatronGitHub/Natron".to_string(), // Compositing (Nuke alternative)
+        "https://github.com/maandree/melted".to_string(), // MLT video server
+        "https://github.com/SubtitleEdit/subtitleedit".to_string(), // Subtitling
+        "https://github.com/mifi/lossless-cut".to_string(), // Fast cutting
+        "https://github.com/ffmpeg/ffmpeg".to_string(), // The core of everything
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

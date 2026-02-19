@@ -1,24 +1,23 @@
 // SYNOID Super Engine
 // The Unified "Brain" and "Body" Orchestrator
-// Integrates: Vector Engine, Voice Engine, Vision, SmartEditor, and GPT-OSS
+// Integrates: Vision, SmartEditor, and GPT-OSS
 
 use crate::agent::brain::{Brain, Intent};
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use crate::agent::multi_agent::DirectorAgent;
-use crate::agent::vector_engine::{upscale_video, vectorize_video, VectorConfig};
-use crate::agent::voice::engine::VoiceEngine;
+
+
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use tracing::{info, warn};
 
 /// The Super Engine is the high-level controller for all Synoid capabilities.
 /// It uses the Brain for intent classification and GPT-OSS for complex reasoning,
-/// then delegates tasks to specialized engines (Vector, Voice, SmartEditor, etc.)
+/// then delegates tasks to specialized engines (SmartEditor, etc.)
 /// via a Mixture-of-Experts (MoE) dispatch pattern.
 pub struct SuperEngine {
     brain: Brain,
     gpt_brain: Option<SynoidAgent>,
-    voice_engine: Arc<VoiceEngine>,
+
     api_url: String,
     work_dir: PathBuf,
 }
@@ -28,21 +27,10 @@ impl SuperEngine {
     pub fn new(api_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
         info!("[SUPER_ENGINE] Initializing Synoid Unified Systems...");
 
-        // Brain utilizes GPT-OSS 20B
-        let brain = Brain::new(api_url, "gpt-oss:20b");
-        let gpt_brain = Some(SynoidAgent::new(api_url, "gpt-oss:20b"));
+        // Brain utilizes LLM
+        let brain = Brain::new(api_url, "llama3:latest");
+        let gpt_brain = Some(SynoidAgent::new(api_url, "llama3:latest"));
 
-        // Initialize Voice Engine (might fail if models missing, but we shouldn't crash)
-        let voice_engine = match VoiceEngine::new() {
-            Ok(v) => Arc::new(v),
-            Err(e) => {
-                warn!(
-                    "[SUPER_ENGINE] Voice Engine failed to init: {}. Voice features disabled.",
-                    e
-                );
-                return Err(e);
-            }
-        };
 
         let work_dir = std::env::current_dir()?.join("synoid_workspace");
         if !work_dir.exists() {
@@ -53,7 +41,6 @@ impl SuperEngine {
         Ok(Self {
             brain,
             gpt_brain,
-            voice_engine,
             api_url: api_url.to_string(),
             work_dir,
         })
@@ -97,7 +84,7 @@ impl SuperEngine {
         info!("[MoE] Goal: \"{}\"", goal);
 
         // === Phase 1: Director Agent (The Brain) ===
-        let mut director = DirectorAgent::new("gpt-oss:20b", &self.api_url);
+        let mut director = DirectorAgent::new("llama3:latest", &self.api_url);
 
         info!("[MoE] 📋 Consulting DirectorAgent for plan...");
         let plan = director
@@ -138,10 +125,11 @@ impl SuperEngine {
                     input,
                     goal, // Pass the full NLP goal as the creative intent
                     &output,
-                    false, // funny_mode
+                    false, // unused param placeholder
                     Some(Box::new(|msg: &str| {
                         info!("[MoE/SmartEditor] {}", msg);
                     })),
+                    None,
                     None,
                     None,
                 )
@@ -164,89 +152,9 @@ impl SuperEngine {
             results.push("ℹ️ No input video provided for editing.".to_string());
         }
 
-        // Expert 2: VoiceEngine (if plan implies narration/voiceover)
-        // Expert 2: VoiceEngine (Generate narration/dialogue from script)
-        let voice_out_dir = self.work_dir.join("voice_output");
-        if !voice_out_dir.exists() {
-            let _ = std::fs::create_dir_all(&voice_out_dir);
-        }
 
-        let mut voice_tasks_count = 0;
-        for (i, scene) in plan.scenes.iter().enumerate() {
-            if let Some(script) = &scene.script {
-                voice_tasks_count += 1;
-                let filename = format!(
-                    "scene_{}_{}.wav",
-                    i,
-                    scene
-                        .narrative_goal
-                        .chars()
-                        .take(10)
-                        .collect::<String>()
-                        .replace(" ", "_")
-                );
-                let output_path = voice_out_dir.join(&filename);
 
-                info!(
-                    "[MoE] 🗣️ VoiceEngine generating for Scene {}: \"{}\"",
-                    i,
-                    script.chars().take(30).collect::<String>()
-                );
 
-                let res = if let Some(profile) = &scene.voice_profile {
-                    self.voice_engine.speak_as(script, profile, &output_path)
-                } else {
-                    self.voice_engine.speak(script, &output_path)
-                };
-
-                match res {
-                    Ok(_) => {
-                        results.push(format!("🗣️ Scene {}: Audio generated at {:?}", i, filename))
-                    }
-                    Err(e) => {
-                        warn!("[MoE] Voice generation failed: {}", e);
-                        results.push(format!("⚠️ Voice failed for Scene {}: {}", i, e));
-                    }
-                }
-            }
-        }
-
-        if voice_tasks_count == 0 {
-            results.push("ℹ️ No scripts found in StoryPlan.".to_string());
-        }
-
-        // Expert 3: VectorEngine (if plan implies stylization)
-        // Expert 3: VectorEngine (Vectorize if requested)
-        let needs_vector = plan.scenes.iter().any(|s| {
-            s.visual_constraints.iter().any(|c| {
-                let c_lower = c.to_lowercase();
-                c_lower.contains("vector") || c_lower.contains("svg") || c_lower.contains("styliz")
-            })
-        });
-
-        if needs_vector {
-            if let Some(video_path) = input_path {
-                info!("[MoE] 🎨 Dispatching to VectorEngine expert...");
-                let input = Path::new(video_path);
-                let output_dir = self.work_dir.join("vectors");
-                let config = crate::agent::vector_engine::VectorConfig::default();
-
-                // Reuse vector_engine::vectorize_video (imported/available)
-                match crate::agent::vector_engine::vectorize_video(input, &output_dir, config).await
-                {
-                    Ok(msg) => {
-                        results.push(format!("🎨 VectorEngine: {}", msg));
-                        info!("[MoE] ✅ VectorEngine completed: {}", msg);
-                    }
-                    Err(e) => {
-                        results.push(format!("⚠️ VectorEngine failed: {}", e));
-                        warn!("[MoE] VectorEngine failed: {}", e);
-                    }
-                }
-            } else {
-                results.push("⚠️ Vectorization requested but no video input provided.".to_string());
-            }
-        }
 
         // === Phase 3: Summary ===
         let summary = format!(
@@ -275,46 +183,8 @@ impl SuperEngine {
                     Err(e) => Err(format!("Download failed: {}", e)),
                 }
             }
-            Intent::Vectorize { input, preset } => {
-                let input_path = Path::new(&input);
-                let output_dir = self.work_dir.join("vectors");
 
-                let config = match preset.as_str() {
-                    "detailed" => VectorConfig {
-                        filter_speckle: 2,
-                        ..Default::default()
-                    },
-                    _ => VectorConfig::default(),
-                };
 
-                match vectorize_video(input_path, &output_dir, config).await {
-                    Ok(msg) => Ok(msg),
-                    Err(e) => Err(format!("Vectorization failed: {}", e)),
-                }
-            }
-            Intent::Upscale { input, scale } => {
-                let input_path = Path::new(&input);
-                let output_path = self.work_dir.join(format!("upscaled_{}x.mp4", scale));
-
-                match upscale_video(input_path, scale, &output_path).await {
-                    Ok(msg) => Ok(msg),
-                    Err(e) => Err(format!("Upscaling failed: {}", e)),
-                }
-            }
-            Intent::VoiceClone { input, name } => {
-                let input_path = Path::new(&input);
-                match self.voice_engine.create_profile(&name, input_path) {
-                    Ok(_) => Ok(format!(
-                        "Voice profile '{}' created from {:?}",
-                        name, input_path
-                    )),
-                    Err(e) => Err(format!("Voice cloning failed: {}", e)),
-                }
-            }
-            Intent::Speak { text, profile } => {
-                let _output_path = self.work_dir.join("speech_output.wav");
-                Ok(format!("(Simulated) Spoke: \"{}\" as '{}'", text, profile))
-            }
             Intent::Research { topic } => {
                 use crate::agent::source_tools;
                 match source_tools::search_youtube(&topic, 3).await {

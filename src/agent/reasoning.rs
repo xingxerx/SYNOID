@@ -1,5 +1,5 @@
 // SYNOID™ Reasoning Manager
-// Logic: Switch gpt-oss:20b effort levels based on task priority
+// Logic: Switch llama3:latest effort levels based on task priority
 
 use tracing::info;
 
@@ -31,7 +31,7 @@ impl ReasoningManager {
             );
             self.current_effort = effort;
             // In a real implementation, this would update the 'reasoning_effort' parameter
-            // in the gpt-oss API config payload.
+            // in the llama3:latest API config payload.
         }
     }
 

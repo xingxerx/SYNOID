@@ -2,7 +2,7 @@ use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
 use crate::agent::production_tools;
 use crate::agent::vision_tools::VisualScene;
-use crate::agent::voice::transcription::TranscriptSegment;
+use crate::agent::transcription::TranscriptSegment;
 use crate::agent::smart_editor;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -35,10 +35,7 @@ impl EditPlan {
     }
 }
 
-#[allow(dead_code)]
-pub struct MotorCortex {
-    api_url: String,
-}
+// MotorCortex defined below with impl block
 
 #[allow(dead_code)]
 pub struct EditGraph {
@@ -134,6 +131,10 @@ impl TransitionAgent for SmartTransition {
         }
     }
 }
+#[allow(dead_code)]
+pub struct MotorCortex {
+    api_url: String,
+}
 
 impl MotorCortex {
     pub fn new(api_url: &str) -> Self {
@@ -212,6 +213,7 @@ impl MotorCortex {
             Some(callback),
             Some(editor_scenes),
             transcript_opt,
+            None,
         ).await {
             Ok(summary) => {
                 info!("[CORTEX] ✅ Smart Edit completed via high-order logic.");
@@ -328,6 +330,7 @@ impl MotorCortex {
         args.push("yuv420p".to_string());
 
         args.push(production_tools::safe_arg_path(output).to_string_lossy().to_string());
+
 
         // EXECUTE THE COMMAND
         if dry_run {

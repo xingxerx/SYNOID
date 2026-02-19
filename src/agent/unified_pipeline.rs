@@ -16,11 +16,9 @@ pub enum PipelineStage {
     Download,   // Download from YouTube/URL
     Transcribe, // Speech-to-text transcription
     SmartEdit,  // Intent-based smart editing
-    Vectorize,  // Convert to vector graphics
-    Upscale,    // Upscale via vector rendering
+
     Enhance,    // Audio enhancement
     Encode,     // Final video encoding
-    VoiceTts,   // Text-to-speech synthesis
 }
 
 impl PipelineStage {
@@ -30,11 +28,10 @@ impl PipelineStage {
             "download" => Some(Self::Download),
             "transcribe" => Some(Self::Transcribe),
             "smart_edit" | "smartedit" | "edit" => Some(Self::SmartEdit),
-            "vectorize" | "vector" => Some(Self::Vectorize),
-            "upscale" => Some(Self::Upscale),
+
             "enhance" | "audio" => Some(Self::Enhance),
             "encode" | "render" => Some(Self::Encode),
-            "voice" | "tts" | "voice_tts" => Some(Self::VoiceTts),
+
             _ => None,
         }
     }
@@ -66,10 +63,11 @@ pub struct PipelineConfig {
     pub scale_factor: f64,
     /// Target size in MB for compression (0 = no compression)
     pub target_size_mb: f64,
-    /// Enable Funny Mode (commentary + transitions)
-    pub funny_mode: bool,
+
     /// Progress callback
     pub progress_callback: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+    /// Learned editing pattern for smart edit
+    pub learned_pattern: Option<crate::agent::learning::EditingPattern>,
 }
 
 impl Default for PipelineConfig {
@@ -79,8 +77,9 @@ impl Default for PipelineConfig {
             intent: None,
             scale_factor: 2.0,
             target_size_mb: 0.0,
-            funny_mode: false,
+
             progress_callback: None,
+            learned_pattern: None,
         }
     }
 }
@@ -140,16 +139,7 @@ impl UnifiedPipeline {
                         warn!("[PIPELINE] SmartEdit skipped: no intent provided");
                     }
                 }
-                PipelineStage::Vectorize => {
-                    current_input = self
-                        .run_vectorize(&current_input, &stage_output, &config)
-                        .await?;
-                }
-                PipelineStage::Upscale => {
-                    current_input = self
-                        .run_upscale(&current_input, &stage_output, config.scale_factor, &config)
-                        .await?;
-                }
+
                 PipelineStage::Enhance => {
                     current_input = self
                         .run_enhance(&current_input, &stage_output, &config)
@@ -190,7 +180,7 @@ impl UnifiedPipeline {
         input: &Path,
         config: &PipelineConfig,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        use crate::agent::voice::transcription::TranscriptionEngine;
+        use crate::agent::transcription::TranscriptionEngine;
 
         self.report_progress(config, "Transcribing audio...");
 
@@ -217,46 +207,14 @@ impl UnifiedPipeline {
         let callback: Option<Box<dyn Fn(&str) + Send + Sync>> = progress_cb
             .map(|cb| Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send + Sync>);
 
-        smart_editor::smart_edit(input, intent, output, config.funny_mode, callback, None, None).await?;
+        smart_editor::smart_edit(input, intent, output, false, callback, None, None, config.learned_pattern.clone()).await?;
 
         Ok(output.to_path_buf())
     }
 
-    async fn run_vectorize(
-        &self,
-        input: &Path,
-        output: &Path,
-        config: &PipelineConfig,
-    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-        use crate::agent::vector_engine::{vectorize_video, VectorConfig};
 
-        self.report_progress(config, "Vectorizing frames...");
 
-        let vector_config = VectorConfig::default();
-        let output_dir = output.parent().unwrap().join("vectors");
 
-        vectorize_video(input, &output_dir, vector_config).await?;
-
-        // Vector output is SVG directory, not video - return input for now
-        // In a full implementation, we'd reassemble the video
-        Ok(input.to_path_buf())
-    }
-
-    async fn run_upscale(
-        &self,
-        input: &Path,
-        output: &Path,
-        scale_factor: f64,
-        config: &PipelineConfig,
-    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-        use crate::agent::vector_engine::upscale_video;
-
-        self.report_progress(config, &format!("Upscaling {}x...", scale_factor));
-
-        upscale_video(input, scale_factor, output).await?;
-
-        Ok(output.to_path_buf())
-    }
 
     async fn run_enhance(
         &self,
@@ -364,11 +322,10 @@ mod tests {
 
     #[test]
     fn test_stage_parsing() {
-        let stages = PipelineStage::parse_list("vectorize,upscale,encode");
-        assert_eq!(stages.len(), 3);
-        assert_eq!(stages[0], PipelineStage::Vectorize);
-        assert_eq!(stages[1], PipelineStage::Upscale);
-        assert_eq!(stages[2], PipelineStage::Encode);
+        let stages = PipelineStage::parse_list("transcribe,encode");
+        assert_eq!(stages.len(), 2);
+        assert_eq!(stages[0], PipelineStage::Transcribe);
+        assert_eq!(stages[1], PipelineStage::Encode);
     }
 
     #[test]

@@ -52,7 +52,7 @@ impl DirectorAgent {
             model_id: model.to_string(),
             system_prompt: "You are the SYNOID Director. Output ONLY valid JSON matching the StoryPlan structure: { global_intent: string, scenes: [ { timestamp_start: f64, timestamp_end: f64, narrative_goal: string, visual_constraints: [string], script: string (optional), voice_profile: string (optional) } ] }.".into(),
             reasoning: ReasoningManager::new(),
-            agent: SynoidAgent::new(api_url, "gpt-oss:20b"),
+            agent: SynoidAgent::new(api_url, "llama3:latest"),
         }
     }
 

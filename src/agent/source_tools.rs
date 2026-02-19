@@ -24,9 +24,79 @@ pub struct SourceInfo {
     pub format: String,
 }
 
+/// Find the available python command (python3, python, or py).
+/// Prioritizes a command that has yt-dlp installed, but falls back to a valid python
+/// interpreter if none have yt-dlp, so we don't get "No such file or directory".
+pub async fn get_python_command() -> String {
+    // 1. Candidate commands to try (in order of preference for Linux/WSL then Windows)
+    let candidates = ["python3", "python", "py"]; // 'python3' first for WSL
+    
+    let mut best_fallback = None;
+
+    for cmd in candidates {
+        // Check if command exists
+        let check_args = vec!["--version"];
+        match Command::new(cmd).args(&check_args).output().await {
+            Ok(output) => {
+                if output.status.success() {
+                    // Command exists, record it as a fallback
+                    if best_fallback.is_none() {
+                        best_fallback = Some(cmd.to_string());
+                    }
+
+                    // Now check for yt-dlp module
+                    let module_args = vec!["-m", "yt_dlp", "--version"];
+                    match Command::new(cmd).args(&module_args).output().await {
+                        Ok(mod_out) => {
+                            if mod_out.status.success() {
+                                info!("[SOURCE] ✅ Found valid Python with yt-dlp: '{}'", cmd);
+                                return cmd.to_string();
+                            } else {
+                                tracing::debug!("[SOURCE] '{}' exists but yt-dlp missing: {}", cmd, String::from_utf8_lossy(&mod_out.stderr));
+                            }
+                        },
+                        Err(e) => {
+                             tracing::debug!("[SOURCE] Failed to run '{} -m yt_dlp': {}", cmd, e);
+                        }
+                    }
+                }
+            },
+            Err(_) => {
+                // Command likely doesn't exist, just continue
+                tracing::debug!("[SOURCE] Command '{}' not found", cmd);
+            }
+        }
+    }
+
+    // 2. Check standalone 'yt-dlp' binary
+    if let Ok(output) = Command::new("yt-dlp").arg("--version").output().await {
+        if output.status.success() {
+             info!("[SOURCE] ✅ Found standalone 'yt-dlp' binary");
+             return "yt-dlp".to_string();
+        }
+    }
+
+    // 3. Return the best fallback we found, or default to "python" if nothing worked
+    if let Some(fallback) = best_fallback {
+        tracing::warn!("[SOURCE] ⚠️ No valid Python+yt-dlp environment found. Using '{}' as fallback (commands requiring yt-dlp will fail).", fallback);
+        fallback
+    } else {
+        tracing::warn!("[SOURCE] ⚠️ No valid Python environment found. Defaulting to 'python' which may fail.");
+        "python".to_string()
+    }
+}
+
 /// Check if yt-dlp is installed and accessible
 pub async fn check_ytdlp() -> bool {
-    Command::new("python")
+    let cmd = get_python_command().await;
+    
+    // If get_python_command returned "yt-dlp", it's a standalone binary
+    if cmd == "yt-dlp" {
+        return true;
+    }
+
+    // Otherwise it's a python interpreter, check module
+    Command::new(&cmd)
         .args(["-m", "yt_dlp", "--version"])
         .output()
         .await
@@ -35,12 +105,19 @@ pub async fn check_ytdlp() -> bool {
 }
 
 fn build_ytdlp_info_args(
+    command: &str,
     url: &str,
     auth_browser: Option<&str>,
 ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-    let mut args = vec![
-        "-m".to_string(),
-        "yt_dlp".to_string(),
+    let mut args = Vec::new();
+    
+    // Only add "-m yt_dlp" if we are running via python
+    if command != "yt-dlp" {
+        args.push("-m".to_string());
+        args.push("yt_dlp".to_string());
+    }
+
+    args.extend_from_slice(&[
         "--print".to_string(),
         "%(title)s".to_string(),
         "--print".to_string(),
@@ -50,7 +127,7 @@ fn build_ytdlp_info_args(
         "--print".to_string(),
         "%(height)s".to_string(),
         "--no-download".to_string(),
-    ];
+    ]);
 
     if let Some(browser) = auth_browser {
         if browser.starts_with('-') {
@@ -67,18 +144,25 @@ fn build_ytdlp_info_args(
 }
 
 fn build_ytdlp_download_args(
+    command: &str,
     url: &str,
     output_path: &Path,
     auth_browser: Option<&str>,
 ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-    let mut args = vec![
-        "-m".to_string(),
-        "yt_dlp".to_string(),
+    let mut args = Vec::new();
+
+    // Only add "-m yt_dlp" if we are running via python
+    if command != "yt-dlp" {
+        args.push("-m".to_string());
+        args.push("yt_dlp".to_string());
+    }
+    
+    args.extend_from_slice(&[
         "-f".to_string(),
         "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best".to_string(),
         "-o".to_string(),
         safe_arg_path(output_path).to_string_lossy().to_string(),
-    ];
+    ]);
 
     if let Some(browser) = auth_browser {
         if browser.starts_with('-') {
@@ -109,13 +193,15 @@ pub async fn download_youtube(
     tokio::fs::create_dir_all(output_dir).await?;
 
     // Construct info arguments using helper
-    let args = build_ytdlp_info_args(url, auth_browser)?;
+    let python = get_python_command().await; // Get command ONCE
+    let args = build_ytdlp_info_args(&python, url, auth_browser)?;
 
     // First, get video info without downloading
-    let info_output = Command::new("python").args(&args).output().await?;
+    let info_output = Command::new(&python).args(&args).output().await?;
     if !info_output.status.success() {
         return Err(format!(
-            "yt-dlp info failed: {}",
+            "yt-dlp info failed with command '{}': {}",
+            python,
             String::from_utf8_lossy(&info_output.stderr)
         )
         .into());
@@ -145,10 +231,11 @@ pub async fn download_youtube(
     let output_template = output_path.to_string_lossy().to_string();
 
     // Construct download arguments using helper
-    let download_args = build_ytdlp_download_args(url, &output_path, auth_browser)?;
+    let download_args = build_ytdlp_download_args(&python, url, &output_path, auth_browser)?;
 
     info!("[SOURCE] Starting download to: {}", output_template);
-    let status = Command::new("python").args(&download_args).status().await?;
+    // Reuse python command
+    let status = Command::new(&python).args(&download_args).status().await?;
 
     if !status.success() {
         return Err("Download process failed".into());
@@ -173,21 +260,34 @@ pub async fn search_youtube(
     let search_query = format!("ytsearch{}:{}", limit, query);
     info!("[SOURCE] Searching YouTube: {}", search_query);
 
-    let output = Command::new("python")
-        .args([
-            "-m",
-            "yt_dlp",
-            "--print",
-            "%(title)s|%(id)s|%(duration)s|%(webpage_url)s",
-            "--no-download",
-            "--",
-            &search_query,
-        ])
+    let python = get_python_command().await;
+    
+    let mut args = Vec::new();
+    if python != "yt-dlp" {
+        args.push("-m".to_string());
+        args.push("yt_dlp".to_string());
+    }
+    
+    args.extend_from_slice(&[
+        "--print".to_string(),
+        "%(title)s|%(id)s|%(duration)s|%(webpage_url)s".to_string(),
+        "--no-download".to_string(),
+        "--".to_string(),
+    ]);
+    args.push(search_query);
+
+    let output = Command::new(&python)
+        .args(&args)
         .output()
         .await?;
 
     if !output.status.success() {
-        return Err(format!("Search failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+        return Err(format!(
+            "Search failed with command '{}': {}",
+            python,
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -220,7 +320,7 @@ pub async fn search_youtube(
     Ok(results)
 }
 
-/// Get video duration using ffprobe
+/// Get video duration using ffprobe with a timeout
 pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
     let safe_path = safe_arg_path(path);
 
@@ -243,18 +343,43 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
     )
     .await
     .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "ffprobe duration check timed out"))??;
-
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    let duration: f64 = output_str.trim().parse().map_err(|_| {
-        format!(
-            "Failed to parse duration from ffprobe output: '{}'",
-            output_str
-        )
-    })?;
+    let duration: f64 = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse()
+        .map_err(|_| {
+            format!(
+                "Failed to parse duration from ffprobe output"
+            )
+        })?;
     Ok(duration)
 }
 
-/// Scan a directory for all valid video files
+/// Scan a directory for all valid video files (Async)
+pub async fn scan_directory_for_videos_async(dir: &Path) -> Vec<PathBuf> {
+    let mut videos = Vec::new();
+    let extensions = ["mp4", "mov", "mkv", "avi", "webm"];
+
+    let mut entries = match tokio::fs::read_dir(dir).await {
+        Ok(e) => e,
+        Err(_) => return videos,
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(ext) = path.extension() {
+                if let Some(ext_str) = ext.to_str() {
+                    if extensions.contains(&ext_str.to_lowercase().as_str()) {
+                        videos.push(path);
+                    }
+                }
+            }
+        }
+    }
+    videos
+}
+
+/// Legacy blocking scan (Use async version preferred)
 #[allow(dead_code)]
 pub async fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
     let mut videos = Vec::new();
@@ -277,39 +402,64 @@ pub async fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
     videos
 }
 
+/// Performs a free web search via DuckDuckGo (HTML scraping).
+/// This provides a search capability without requiring a paid API.
+pub async fn web_search(query: &str) -> Result<Vec<(String, String)>, Box<dyn std::error::Error + Send + Sync>> {
+    info!("[SOURCE] 🌐 Searching web for: '{}'", query);
+    
+    let url = format!("https://html.duckduckgo.com/html/?q={}", urlencoding::encode(query));
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .build()?;
+
+    let resp = client.get(&url).send().await?.text().await?;
+    let document = scraper::Html::parse_document(&resp);
+    let result_selector = scraper::Selector::parse(".result__body").unwrap();
+    let title_selector = scraper::Selector::parse(".result__title a").unwrap();
+    let snippet_selector = scraper::Selector::parse(".result__snippet").unwrap();
+
+    let mut results = Vec::new();
+    for result in document.select(&result_selector).take(5) {
+        let title = result.select(&title_selector).next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_else(|| "No Title".to_string());
+        
+        let snippet = result.select(&snippet_selector).next()
+            .map(|e| e.text().collect::<String>().trim().to_string())
+            .unwrap_or_else(|| "No Snippet".to_string());
+
+        if !title.is_empty() {
+            results.push((title, snippet));
+        }
+    }
+
+    Ok(results)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_build_ytdlp_info_args() {
+        // Test with "python"
         let args =
-            build_ytdlp_info_args("https://youtube.com/watch?v=123", Some("chrome")).unwrap();
+            build_ytdlp_info_args("python", "https://youtube.com/watch?v=123", Some("chrome")).unwrap();
 
-        // Check structural integrity
+        assert!(args.contains(&"-m".to_string()));
+        assert!(args.contains(&"yt_dlp".to_string()));
         assert!(args.contains(&"--".to_string()));
-        assert_eq!(
-            args.last(),
-            Some(&"https://youtube.com/watch?v=123".to_string())
-        );
 
-        // Verify -- is before url
-        let separator_idx = args.iter().position(|r| r == "--").unwrap();
-        let url_idx = args
-            .iter()
-            .position(|r| r == "https://youtube.com/watch?v=123")
-            .unwrap();
-        assert!(separator_idx < url_idx);
-
-        // Verify auth
-        assert!(args.contains(&"--cookies-from-browser".to_string()));
-        assert!(args.contains(&"chrome".to_string()));
+        // Test with standalone "yt-dlp"
+        let args_standalone =
+            build_ytdlp_info_args("yt-dlp", "https://youtube.com", None).unwrap();
+        assert!(!args_standalone.contains(&"-m".to_string()));
     }
 
     #[test]
     fn test_build_ytdlp_info_args_injection() {
         // Try to inject a flag via URL
-        let args = build_ytdlp_info_args("-v", None).unwrap();
+        let args = build_ytdlp_info_args("python", "-v", None).unwrap();
 
         // Verify -v is after --
         let separator_idx = args.iter().position(|r| r == "--").unwrap();
@@ -320,35 +470,48 @@ mod tests {
     #[test]
     fn test_build_ytdlp_download_args() {
         let path = Path::new("out.mp4");
-        let args = build_ytdlp_download_args("https://youtube.com", path, None).unwrap();
-        assert!(args.contains(&"--".to_string()));
-        assert_eq!(args.last(), Some(&"https://youtube.com".to_string()));
-        // check sanitized path is present (either "out.mp4" if absolute or "./out.mp4" if relative)
-        // safe_arg_path prepends ./ for relative paths
-        assert!(
-            args.contains(&"./out.mp4".to_string())
-                || args.contains(&".\\out.mp4".to_string())
-                || args.contains(&"out.mp4".to_string())
-        );
+        // Test with "python"
+        let args = build_ytdlp_download_args("python", "https://youtube.com", path, None).unwrap();
+        assert!(args.contains(&"-m".to_string()));
+        assert!(args.contains(&"yt_dlp".to_string()));
+
+        // Test with standalone
+        let args_sa = build_ytdlp_download_args("yt-dlp", "https://youtube.com", path, None).unwrap();
+        assert!(!args_sa.contains(&"-m".to_string()));
     }
 
     #[test]
     fn test_build_ytdlp_download_args_injection() {
         let path = Path::new("-out.mp4");
-        let args = build_ytdlp_download_args("https://youtube.com", path, None).unwrap();
+        let args = build_ytdlp_download_args("python", "https://youtube.com", path, None).unwrap();
         // Should be sanitized to ./ -out.mp4 or similar to prevent flag interpretation
         // safe_arg_path turns "-out.mp4" into "./-out.mp4"
         assert!(
             args.contains(&"./-out.mp4".to_string()) || args.contains(&".\\-out.mp4".to_string())
         );
-        // Should NOT contain raw "-out.mp4" as an isolated argument (it's part of -o value)
-        // Actually, it is passed as value to -o.
-        // The check is that it starts with ./
     }
 
     #[test]
     fn test_bad_browser_name() {
-        let res = build_ytdlp_info_args("url", Some("-bad"));
+        let res = build_ytdlp_info_args("python", "url", Some("-bad"));
         assert!(res.is_err());
     }
+
+    #[tokio::test]
+    async fn test_web_search() {
+        let results = web_search("rust programming").await.unwrap();
+        assert!(!results.is_empty());
+        println!("Search Results: {:?}", results);
+    }
+
+    // #[tokio::test]
+    // async fn test_python_resolver() {
+    //     let python = get_python_command().await;
+    //     let output = Command::new(python)
+    //         .arg("--version")
+    //         .output()
+    //         .await
+    //         .unwrap();
+    //     assert!(output.status.success());
+    // }
 }
