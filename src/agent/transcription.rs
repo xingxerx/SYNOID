@@ -202,3 +202,23 @@ impl TranscriptionEngine {
         Ok(segments)
     }
 }
+
+pub fn generate_srt(segments: &[TranscriptSegment]) -> String {
+    let mut srt_out = String::new();
+    for (i, seg) in segments.iter().enumerate() {
+        let start = format_srt_time(seg.start);
+        let end = format_srt_time(seg.end);
+        srt_out.push_str(&format!("{}\n{} --> {}\n{}\n\n", i + 1, start, end, seg.text.trim()));
+    }
+    srt_out
+}
+
+fn format_srt_time(seconds: f64) -> String {
+    let hours = (seconds / 3600.0) as u32;
+    let mins = ((seconds % 3600.0) / 60.0) as u32;
+    let secs = (seconds % 60.0) as u32;
+    let millis = ((seconds.fract()) * 1000.0) as u32;
+    
+    format!("{:02}:{:02}:{:02},{:03}", hours, mins, secs, millis)
+}
+

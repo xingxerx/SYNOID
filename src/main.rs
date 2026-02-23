@@ -167,7 +167,7 @@ enum Commands {
 
     /// Multi-Agent Role Execution
     Agent {
-        /// Role to enact: director, critic, etc.
+        /// Role to enact: director
         #[arg(long)]
         role: String,
 
@@ -218,8 +218,7 @@ enum Commands {
     },
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv().ok();
     
     // Set default log level to suppress noisy internal crates (wgpu, naga, etc.)
@@ -237,6 +236,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         std::env::set_var("MESA_LOG_LEVEL", "fatal");
     }
 
+    async_main()
+}
+
+#[tokio::main]
+async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt::init();
 
     // Global panic handler: log panics instead of crashing silently
@@ -393,16 +397,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     if count == 0 {
                         println!("❌ No scenes detected. Video might be empty or corrupt.");
                     } else {
-                        let duration = if !scenes.is_empty() {
-                            scenes.last().unwrap().timestamp
-                        } else {
-                            0.0
-                        };
-                        let avg = if count > 0 {
-                            duration / count as f64
-                        } else {
-                            0.0
-                        };
+                        let duration = scenes.last().unwrap().timestamp;
+                        let avg = duration / count as f64;
                         println!("✅ Analysis Complete: {} scenes detected.", count);
                         println!("   Avg Shot Length: {:.2}s", avg);
 
@@ -465,14 +461,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         Err(e) => error!("Director failed: {}", e),
                     }
                 }
-                "critic" => {
-                    println!("🧐 Critic Agent analyzing request: '{}'", prompt_text);
-                    println!("   Critique: The concept is sound but needs more conflict. Try adding 'dramatic' to the intent.");
-                }
-                "editor" => {
-                    println!("✂️ Editor Agent ready. Please use 'embody' or 'process' commands for actual editing tasks.");
-                }
-                _ => println!("Unknown role: {}. Available: director, critic, editor", role),
+                _ => println!("Unknown role: {}. Available: director", role),
             }
         }
         Commands::Process {

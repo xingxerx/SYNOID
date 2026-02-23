@@ -54,7 +54,7 @@ use crate::agent::learning::LearningKernel;
 /// - **GpuContext**: CUDA/NVENC backend for hardware-accelerated encoding.
 ///   The neuroplasticity multiplier tunes GPU batch sizes and FFmpeg presets.
 pub struct Brain {
-    agent: Option<SynoidAgent>,
+    agent: SynoidAgent,
     api_url: String,
     pub hive_mind: HiveMind,
     pub learning_kernel: LearningKernel,
@@ -68,11 +68,17 @@ pub struct Brain {
 }
 
 impl Brain {
-    pub fn new(api_url: &str, _model: &str) -> Self {
+    pub fn new(api_url: &str, model: &str) -> Self {
+        let hive_mind = HiveMind::new(api_url);
+        let actual_model = if model.is_empty() {
+            hive_mind.get_reasoning_model()
+        } else {
+            model.to_string()
+        };
         Self {
-            agent: None,
+            agent: SynoidAgent::new(api_url, &actual_model),
             api_url: api_url.to_string(),
-            hive_mind: HiveMind::new(api_url),
+            hive_mind,
             learning_kernel: LearningKernel::new(),
             neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity::new(),
             gpu: None,
@@ -387,60 +393,32 @@ impl Brain {
             Intent::Orchestrate { goal, .. } => {
                  info!("[BRAIN] 🎼 Orchestrating creative goal: {}", goal);
                  // Use the LLM to reason about the orchestration
-                 if self.agent.is_none() {
-                    self.agent = Some(SynoidAgent::new(&self.api_url, &self.hive_mind.get_reasoning_model()));
-                 }
-                 if let Some(agent) = &self.agent {
-                    match agent.reason(&goal).await {
-                        Ok(resp) => Ok(format!("Orchestration Plan: {}", resp)),
-                        Err(e) => Err(format!("Orchestration failed: {}", e)),
-                    }
-                 } else {
-                    Err("Failed to initialize Cortex for orchestration".to_string())
+                 match self.agent.reason(&goal).await {
+                     Ok(resp) => Ok(format!("Orchestration Plan: {}", resp)),
+                     Err(e) => Err(format!("Orchestration failed: {}", e)),
                  }
             }
             Intent::CreateEdit { input, instruction } => {
                 // Similar to Orchestrate but simpler
                  info!("[BRAIN] 🎬 Planning edit for {}: {}", input, instruction);
-                 if self.agent.is_none() {
-                    self.agent = Some(SynoidAgent::new(&self.api_url, &self.hive_mind.get_reasoning_model()));
-                 }
-                 if let Some(agent) = &self.agent {
-                    match agent.reason(&instruction).await {
-                        Ok(resp) => Ok(format!("Edit Plan: {}", resp)),
-                        Err(e) => Err(format!("Planning failed: {}", e)),
-                    }
-                 } else {
-                     Err("Failed to initialize Cortex".to_string())
+                 match self.agent.reason(&instruction).await {
+                     Ok(resp) => Ok(format!("Edit Plan: {}", resp)),
+                     Err(e) => Err(format!("Planning failed: {}", e)),
                  }
             }
             Intent::Unknown { request } => {
                 info!("[BRAIN] 🧠 Complex request detected. Waking up Cortex (GPT-OSS)...");
-                // Lazy-load the heavy AI agent only now
-                if self.agent.is_none() {
-                    let best_model = self.hive_mind.get_reasoning_model();
-                    info!("[BRAIN] 🧠 Selected Reasoning Model: {}", best_model);
-                    self.agent = Some(SynoidAgent::new(&self.api_url, &best_model));
-                }
 
-                if let Some(agent) = &self.agent {
-                    // Check if model changed (neuroplasticity might upgrade us)
-                    let current_best = self.hive_mind.get_reasoning_model();
-                    if agent.model != current_best {
-                         info!("[BRAIN] 🔄 Upgrading Cortex to better model: {} -> {}", agent.model, current_best);
-                         self.agent = Some(SynoidAgent::new(&self.api_url, &current_best));
-                    }
-                    
-                    if let Some(agent) = &self.agent {
-                         match agent.reason(&request).await {
-                             Ok(resp) => Ok(format!("Cortex reasoned: {}", resp)),
-                             Err(e) => Err(format!("Cortex failed: {}", e)),
-                         }
-                    } else {
-                        Err("Failed to initialize Cortex".to_string())
-                    }
-                } else {
-                    Err("Failed to initialize Cortex".to_string())
+                // Check if model changed (neuroplasticity might upgrade us)
+                let current_best = self.hive_mind.get_reasoning_model();
+                if self.agent.model != current_best {
+                     info!("[BRAIN] 🔄 Upgrading Cortex to better model: {} -> {}", self.agent.model, current_best);
+                     self.agent = SynoidAgent::new(&self.api_url, &current_best);
+                }
+                
+                match self.agent.reason(&request).await {
+                     Ok(resp) => Ok(format!("Cortex reasoned: {}", resp)),
+                     Err(e) => Err(format!("Cortex failed: {}", e)),
                 }
             }
         }

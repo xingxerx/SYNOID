@@ -911,9 +911,192 @@ impl SynoidApp {
             }
         });
     }
+    fn render_editor_layout(&self, ctx: &egui::Context, state: &mut UiState) {
+        // Top Toolbar
+        egui::TopBottomPanel::top("editor_toolbar")
+            .exact_height(40.0)
+            .frame(
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(30, 30, 35))
+                    .inner_margin(egui::Margin::symmetric(16.0, 8.0)),
+            )
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("◀ Back").clicked() {
+                        // Action: Leave editor
+                    }
+                    ui.add_space(8.0);
+                    ui.label("↶ Undo");
+                    ui.label("↷ Redo");
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let btn = ui.button(egui::RichText::new("💾 Save").color(COLOR_BG_DARK).strong());
+                        // Color the button bg blue
+                        // Wait, egui buttons use Visuals. A simple colored button requires RichText + fill or custom Frame.
+                        
+                        ui.label("🔍 30%");
+                    });
+                });
+            });
+
+        // Left Vertical Tool Panel
+        egui::SidePanel::left("editor_left_toolbar")
+            .exact_width(80.0)
+            .frame(
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(20, 20, 24))
+                    .inner_margin(egui::Margin::same(8.0)),
+            )
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(16.0);
+                    let tools = [
+                        ("📁", "Templates"),
+                        ("🧊", "Elements"),
+                        ("📤", "Uploads"),
+                        ("▶️", "Videos"),
+                        ("🎵", "Audio"),
+                        ("🖼️", "Images"),
+                        ("T", "Text"),
+                        ("✨", "AI Magic"),
+                    ];
+                    
+                    for (icon, label) in tools {
+                        ui.add_space(16.0);
+                        ui.label(egui::RichText::new(icon).size(24.0));
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new(label).size(10.0).color(COLOR_TEXT_SECONDARY));
+                    }
+                });
+            });
+
+        // Bottom Timeline Panel
+        egui::TopBottomPanel::bottom("editor_timeline")
+            .exact_height(250.0)
+            .frame(
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(25, 25, 30))
+                    // .rounding(egui::Rounding { nw: 12.0, ne: 12.0, sw: 0.0, se: 0.0 }) // rounded top
+            )
+            .show(ctx, |ui| {
+                ui.add_space(8.0);
+                // Timeline Toolbar
+                ui.horizontal(|ui| {
+                    ui.add_space(16.0);
+                    ui.label("Settings");
+                    ui.label("⏸ Split Clip");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(16.0);
+                        if ui.button("+ Add Clip").clicked() {}
+                        ui.label("Fit View");
+                        ui.label("Timeline Scale - +");
+                        ui.label("0:10 / 0:30");
+                    });
+                });
+                ui.add_space(8.0);
+                ui.separator();
+                
+                // Track Area
+                egui::ScrollArea::both().show(ui, |ui| {
+                    let tracks_rect = ui.available_rect_before_wrap();
+                    
+                    // Draw Playhead track (Time indicators)
+                    let p = ui.painter();
+                    ui.add_space(20.0);
+                    
+                    // Draw Tracks
+                    let track_height = 40.0;
+                    let track_spacing = 8.0;
+                    let start_y = ui.cursor().min.y;
+                    
+                    let tracks = vec![
+                        ("Text", egui::Color32::from_rgb(60, 60, 65)),
+                        ("Video", egui::Color32::from_rgb(80, 80, 95)),
+                        ("Audio", egui::Color32::from_rgb(40, 40, 45)),
+                        ("Background", egui::Color32::from_rgb(50, 50, 60)),
+                    ];
+                    
+                    for (i, (name, color)) in tracks.iter().enumerate() {
+                        let y = start_y + (i as f32) * (track_height + track_spacing);
+                        let track_rect = egui::Rect::from_min_size(
+                            egui::pos2(ui.cursor().min.x + 10.0, y),
+                            egui::vec2(ui.available_width() - 20.0, track_height),
+                        );
+                        
+                        // Track Background
+                        p.rect_filled(track_rect, 6.0, *color);
+                        
+                        // Fake clip segment inside track
+                        let clip_rect = egui::Rect::from_min_size(
+                            egui::pos2(ui.cursor().min.x + 30.0 + (i as f32 * 50.0), y + 4.0),
+                            egui::vec2(200.0, track_height - 8.0),
+                        );
+                        p.rect_filled(clip_rect, 4.0, egui::Color32::from_rgb(100, 100, 120));
+                        
+                        // Label
+                        p.text(
+                            clip_rect.min + egui::vec2(8.0, 8.0),
+                            egui::Align2::LEFT_TOP,
+                            *name,
+                            egui::FontId::proportional(12.0),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                    
+                    // Playhead line
+                    let playhead_x = ui.cursor().min.x + 150.0;
+                    p.line_segment(
+                        [egui::pos2(playhead_x, start_y - 20.0), egui::pos2(playhead_x, start_y + 200.0)],
+                        egui::Stroke::new(2.0, COLOR_ACCENT_BLUE),
+                    );
+                    
+                    // Playhead nub
+                    p.circle_filled(egui::pos2(playhead_x, start_y - 10.0), 6.0, COLOR_ACCENT_BLUE);
+                    
+                    ui.add_space(200.0); // Reserve space for tracks
+                });
+            });
+
+        // Main preview area (CentralPanel for the remainder)
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(10, 10, 12))
+                    .inner_margin(egui::Margin::same(40.0)),
+            )
+            .show(ctx, |ui| {
+                // The Video Frame
+                let video_rect = ui.available_rect_before_wrap();
+                ui.painter().rect_filled(video_rect, 12.0, egui::Color32::BLACK);
+                
+                // Texture render if available
+                if let Some(texture) = &self.preview_texture {
+                    ui.painter().image(
+                        texture.id(),
+                        video_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        egui::Color32::WHITE,
+                    );
+                } else {
+                    // Placeholder play button
+                    let center = video_rect.center();
+                    ui.painter().circle_filled(center, 40.0, egui::Color32::from_white_alpha(50));
+                    
+                    // Play triangle
+                    ui.painter().polygon_filled(
+                        vec![
+                            center + egui::vec2(-10.0, -15.0),
+                            center + egui::vec2(-10.0, 15.0),
+                            center + egui::vec2(15.0, 0.0),
+                        ],
+                        egui::Color32::WHITE,
+                    );
+                }
+            });
+    }
+
 }
 
-impl eframe::App for SynoidApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.configure_style(ctx);
 

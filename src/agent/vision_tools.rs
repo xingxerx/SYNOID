@@ -103,17 +103,37 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
 /// Connects to the CUDA stream for real-time subject tracking
 /// Returns coordinates for Rule-of-Thirds framing (x_offset, y_offset, zoom_factor)
 pub fn track_subject_cuda(_device_id: usize, frame_path: &Path) -> (f64, f64, f64) {
-    // In a real implementation, this would:
-    // 1. Load the frame into GPU memory
-    // 2. Run a TensorRT or YOLO model to find the subject
-    // 3. Calculate the centroid
-    // 4. Return the pan/zoom needed to center the subject on the Rule of Thirds grid
-
     info!("[VISION-CUDA] Tracking subject in frame: {:?}", frame_path);
 
-    // Simulated "Cinematic" panning
-    // Returns a slight pan and 1.0 zoom (no zoom) for now
-    (0.0, 0.0, 1.0)
+    let img = match image::open(frame_path) {
+        Ok(i) => i.to_luma8(),
+        Err(_) => return (0.0, 0.0, 1.0),
+    };
+    
+    let (width, height) = img.dimensions();
+    let mut x_sum = 0.0;
+    let mut y_sum = 0.0;
+    let mut weight_sum = 0.0;
+    
+    for (x, y, pixel) in img.enumerate_pixels() {
+        let weight = (pixel[0] as f64) * (pixel[0] as f64); 
+        x_sum += x as f64 * weight;
+        y_sum += y as f64 * weight;
+        weight_sum += weight;
+    }
+    
+    if weight_sum > 0.0 {
+        let center_x = x_sum / weight_sum;
+        let center_y = y_sum / weight_sum;
+        
+        // Calculate offset from center (normalized -1.0 to 1.0)
+        let cx = (center_x / width as f64) * 2.0 - 1.0;
+        let cy = (center_y / height as f64) * 2.0 - 1.0;
+        
+        (cx * 0.2, cy * 0.2, 1.05)
+    } else {
+        (0.0, 0.0, 1.0)
+    }
 }
 
 /// Calculates a simple pixel-wise difference between two frames.

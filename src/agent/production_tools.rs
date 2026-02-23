@@ -358,31 +358,77 @@ pub async fn extract_audio_wav(
     input_video: &Path,
     output_wav: &Path,
 ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-    info!("[PROD] Extracting WAV for AI: {:?} -> {:?}", input_video, output_wav);
+    info!("[PRODUCTION] Extracting audio for Whisper: {:?}", input_video);
 
-    let safe_input = safe_arg_path(input_video);
-    let safe_output = safe_arg_path(output_wav);
-
-    let status = Command::new("ffmpeg")
+    let output = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
-        .arg(&safe_input)
-        .args([
-            "-vn",          // No video
-            "-acodec",
-            "pcm_s16le",    // PCM 16-bit
-            "-ar",
-            "16000",        // 16kHz sample rate
-            "-ac",
-            "1",            // Mono
-        ])
-        .arg(&safe_output)
-        .status()
+        .arg(safe_arg_path(input_video))
+        .arg("-vn") // No video
+        .arg("-acodec")
+        .arg("pcm_s16le") // 16-bit PCM
+        .arg("-ar")
+        .arg("16000") // 16kHz
+        .arg("-ac")
+        .arg("1") // Mono
+        .arg(safe_arg_path(output_wav))
+        .output()
         .await?;
 
-    if !status.success() {
-        return Err("FFmpeg audio extraction failed".into());
+    if !output.status.success() {
+        warn!("[PRODUCTION] FFmpeg audio extraction failed!");
+        let err = String::from_utf8_lossy(&output.stderr);
+        warn!("{}", err);
+        return Err(format!("FFmpeg error: {}", err).into());
     }
 
     Ok(output_wav.to_path_buf())
+}
+
+/// Burn subtitles onto a video using FFmpeg
+pub async fn burn_subtitles(
+    input_video: &Path,
+    input_srt: &Path,
+    output_video: &Path,
+) -> Result<ProductionResult, Box<dyn std::error::Error + Send + Sync>> {
+    info!("[PRODUCTION] Burning subtitles from {:?} onto {:?}", input_srt, input_video);
+
+    // FFmpeg subtitle filter is strict about paths. Drive letter colons must be escaped.
+    let mut srt_safe = safe_arg_path(input_srt).to_string_lossy().into_owned();
+    if cfg!(windows) {
+        srt_safe = srt_safe.replace(":", "\\:");
+    }
+
+    // Force a clean modern font
+    let filter = format!("subtitles='{}':force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2'", srt_safe);
+
+    let output = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-i")
+        .arg(safe_arg_path(input_video))
+        .arg("-vf")
+        .arg(&filter)
+        .arg("-c:a")
+        .arg("copy")
+        .arg("-c:v")
+        .arg("libx264")
+        .arg("-preset")
+        .arg("fast")
+        .arg(safe_arg_path(output_video))
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        warn!("[PRODUCTION] FFmpeg burn_subtitles failed!");
+        let err = String::from_utf8_lossy(&output.stderr);
+        warn!("{}", err);
+        return Err(format!("FFmpeg error: {}", err).into());
+    }
+
+    info!("[PRODUCTION] Subtitles burned successfully: {:?}", output_video);
+
+    Ok(ProductionResult {
+        output_path: output_video.to_path_buf(),
+        duration: get_video_duration(output_video).await.unwrap_or(0.0),
+    })
 }

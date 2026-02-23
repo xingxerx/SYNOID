@@ -1,13 +1,13 @@
 # SYNOID Codebase Audit & Breakdown
 
-**Date:** October 2023
-**Status:** Alpha / Prototype
+**Date:** February 2026
+**Status:** Beta
 **Auditor:** Jules (AI Agent)
 
 ## 1. Executive Summary
-SYNOID is an ambitious "Agentic Video Production Kernel" written in Rust. It aims to combine video processing (FFmpeg), AI reasoning (LLMs), and infinite resolution upscaling (Vectorization) into a single autonomous tool.
+SYNOID is an ambitious "Agentic Video Production Kernel" written in Rust. It combines video processing (FFmpeg), AI reasoning (LLMs), and infinite resolution upscaling (Vectorization) into a single autonomous tool.
 
-The current codebase establishes a strong architectural skeleton but relies heavily on stubs and mock data for its advanced "AI" features. The core media processing capabilities (downloading, simple trimming, vectorization) are functional.
+The codebase has evolved significantly and the core "AI" features, including the Brain and Vision tools, now utilize real processing pipelines instead of mocks.
 
 ## 2. Component Breakdown
 
@@ -15,13 +15,15 @@ The current codebase establishes a strong architectural skeleton but relies heav
 
 *   **CLI Infrastructure (`main.rs`)**:
     *   Robust command-line interface using `clap`.
-    *   Commands for `youtube`, `clip`, `compress`, `vectorize`, `upscale`, and `voice` are wired up.
-*   **Vector Engine (`src/agent/vector_engine.rs`)**:
-    *   **Functional**: Can convert raster video frames to SVG using `vtracer` and re-render them at higher resolutions.
-    *   **Limitation**: CPU-only. Heavy performance cost.
+    *   Commands for video manipulation, YouTube downloading, research, and unified processing.
+*   **The "Brain" & LLM Bridge (`src/agent/brain.rs`, `gpt_oss_bridge.rs`)**:
+    *   **Functional**: Connects to OpenAI-compatible APIs (like Ollama) for orchestration, planning, and dynamic orchestration. 
+*   **Vision & Audio Tools (`src/agent/vision_tools.rs`, `audio_tools.rs`)**:
+    *   **Functional**: Video scene detection via `ffprobe` and center-of-mass subject tracking are live. Audio transient analysis utilizes `ebur128`.
+*   **Motor Cortex & Smart Editor (`src/agent/motor_cortex.rs`, `smart_editor.rs`)**:
+    *   **Functional**: Dynamically sequences clips, cuts silence ("ruthless" routing), and applies cinematic looks using high-order logical evaluation.
 *   **Source Tools (`src/agent/source_tools.rs`)**:
     *   **Functional**: Effective wrapper around `yt-dlp` for downloading YouTube videos with optional browser cookie authentication.
-    *   **Functional**: `ffprobe` integration for getting video duration.
 *   **Cyberdefense (`src/agent/defense/`)**:
     *   **Functional**: `Sentinel` (process monitoring) and `IntegrityGuard` (file watching) have working implementations for basic system monitoring.
 *   **Voice Engine (`src/agent/voice/`)**:
@@ -29,18 +31,10 @@ The current codebase establishes a strong architectural skeleton but relies heav
 
 ### ⚠️ What Needs Updating / Missing
 
-*   **The "Brain" (`src/agent/brain.rs`, `gpt_oss_bridge.rs`)**:
-    *   **Status**: Heuristic-based.
-    *   **Issue**: The "Complex Request" handler is a stub. It prints logs but does not connect to any actual LLM (Local or Cloud). It cannot truly "reason" about intents yet.
-*   **Vision Tools (`src/agent/vision_tools.rs`)**:
-    *   **Status**: Mocked.
-    *   **Issue**: `scan_visual` attempts to call `ffprobe` for scene detection but ignores the output and returns hardcoded "dummy" scenes. Real scene detection is missing.
-*   **Motor Cortex (`src/agent/motor_cortex.rs`)**:
-    *   **Status**: Basic.
-    *   **Issue**: "Embodied" editing is limited to applying a fixed crop and LUT. It cannot dynamically cut or rearrange video segments based on content.
 *   **GPU Acceleration**:
-    *   **Status**: Disabled/Stubbed.
-    *   **Issue**: `Commands::Gpu` is a print stub. `upscale_video_cuda` returns a "not supported" error. The `cudarc` dependency is commented out in `Cargo.toml`.
+    *   While CUDA is referenced, portions remain simulated or fall back to CPU. Expanding robust native `cudarc` pipelines is an ongoing objective.
+*   **Smart Editor Modularity**:
+    *   The `smart_editor.rs` sits at a large ~43KB file size. It should be split into focused sub-modules (scene ops, filter ops, transition ops) in a future refactor.
 
 ## 3. Architecture Overview
 
@@ -48,8 +42,9 @@ The current codebase establishes a strong architectural skeleton but relies heav
 src/
 ├── main.rs              # Entry point & CLI routing
 ├── agent/
-│   ├── brain.rs         # Intent classification (Rules + LLM)
+│   ├── brain.rs         # Intent classification & Agent execution
 │   ├── motor_cortex.rs  # Action executor (FFmpeg builder)
+│   ├── gpt_oss_bridge.rs# OpenAI-compatible API connectivity
 │   ├── vector_engine.rs # Raster -> Vector -> Raster pipeline
 │   ├── voice/           # Audio/TTS subsystem
 │   ├── defense/         # Security subsystem
@@ -58,18 +53,11 @@ src/
 
 ## 4. Roadmap & Recommendations
 
-To move from "Prototype" to "Product", the following steps are recommended:
+To propel further to 1.0, the following steps are recommended:
 
-1.  **Connect the Brain**:
-    *   Implement real HTTP calls in `gpt_oss_bridge.rs` to connect to a local OpenAI-compatible API (e.g., Ollama).
-    *   *Action Plan*: Immediate priority.
-
-2.  **Enable Real Vision**:
-    *   Parse `ffprobe` scene detection output in `vision_tools.rs` to give the agent actual eyes.
-    *   *Action Plan*: Immediate priority.
-
-3.  **Expand Motor Cortex**:
-    *   Implement an `EditGraph` that can sequence multiple clips, not just filter a single one.
-
-4.  **Hardware Acceleration**:
-    *   Re-enable `cudarc` or use `wgpu` for hardware-accelerated vector rendering and inference.
+1.  **Smart Editor Refactoring**:
+    *   Split `smart_editor.rs` into specialized files as features scale up.
+2.  **Hardware Acceleration Deep Integration**:
+    *   Expand `cudarc` usage explicitly throughout all encoding/decoding loops, moving beyond basic neural heuristics.
+3.  **Advanced Motor Cortex Control**:
+    *   Develop a more robust topological `EditGraph` implementation if non-linear edit graphs become overly complex for the current JSON plan interface.

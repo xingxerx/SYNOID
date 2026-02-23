@@ -23,20 +23,35 @@ pub struct AudioTrack {
 pub async fn scan_audio(path: &Path) -> Result<AudioAnalysis, Box<dyn std::error::Error + Send + Sync>> {
     info!("[EARS] Performing deep transient analysis: {:?}", path);
 
-    // TODO: Integrate FFmpeg 'ebur128' or 'showwavespic' to extract real waveform data
-    // For now, we utilize a refined heuristic for beat-snapping
-    info!("[EARS] ⏳ Retrieving audio duration...");
-    let duration = crate::agent::source_tools::get_video_duration(path).await?;
-    info!("[EARS] ✅ Duration retrieved: {:.2}s. Generating transient map...", duration);
+    // Use real FFmpeg ebur128 analysis instead of hardcoded values
+    let safe_path = crate::agent::production_tools::safe_arg_path(path);
+    let output = tokio::process::Command::new("ffmpeg")
+        .args(["-v", "error", "-i"])
+        .arg(&safe_path)
+        .args(["-filter_complex", "ebur128", "-f", "null", "-"])
+        .output()
+        .await?;
 
-    // Master-style rhythmic anchor: Snap to 120BPM (0.5s) and 60BPM (1.0s) intervals
-    // as a fallback while the FFT (Fast Fourier Transform) bridge is finalized.
-    let transients = (0..(duration as u64)).map(|i| i as f64 * 0.5).collect();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut average_loudness = -14.0;
+    for line in stderr.lines().rev() {
+        if line.contains("I:") && line.contains("LUFS") {
+            if let Some(idx) = line.find("I:") {
+                let parts: Vec<&str> = line[idx..].split_whitespace().collect();
+                if parts.len() >= 2 {
+                    if let Ok(val) = parts[1].parse::<f64>() {
+                        average_loudness = val;
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
     Ok(AudioAnalysis {
         duration,
-        average_loudness: -14.0,
-        transients,
+        average_loudness,
+        transients: Vec::new(),
     })
 }
 

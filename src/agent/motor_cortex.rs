@@ -37,10 +37,6 @@ impl EditPlan {
 
 // MotorCortex defined below with impl block
 
-#[allow(dead_code)]
-pub struct EditGraph {
-    pub commands: Vec<String>,
-}
 
 #[derive(Debug, Clone)]
 pub enum TransitionType {
