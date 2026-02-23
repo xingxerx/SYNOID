@@ -18,10 +18,20 @@ pub struct ProductionResult {
 
 // Helper to ensure path is treated as file not flag
 pub fn safe_arg_path(p: &Path) -> PathBuf {
-    if p.is_absolute() {
-        p.to_path_buf()
+    let p_str = p.to_string_lossy().replace("\\", "/");
+    
+    // Auto-detect and convert Windows paths in WSL (e.g., C:/... -> /mnt/c/...)
+    if cfg!(unix) && p_str.len() >= 3 && p_str.chars().nth(1) == Some(':') && p_str.chars().nth(2) == Some('/') {
+        let drive_letter = p_str.chars().next().unwrap().to_ascii_lowercase();
+        let wsl_path = format!("/mnt/{}/{}", drive_letter, &p_str[3..]);
+        return PathBuf::from(wsl_path);
+    }
+    
+    let path_to_check = PathBuf::from(p_str);
+    if path_to_check.is_absolute() {
+        path_to_check
     } else {
-        std::path::Path::new(".").join(p)
+        std::path::Path::new(".").join(path_to_check)
     }
 }
 

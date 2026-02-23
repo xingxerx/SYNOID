@@ -253,7 +253,11 @@ impl AgentCore {
         };
 
         self.log(&format!("[CORE] ✅ Video acquired: {}", title));
-        let out_path = output.unwrap_or_else(|| PathBuf::from("output.mp4"));
+        let out_path = output.unwrap_or_else(|| PathBuf::from("Video/output.mp4"));
+        // Ensure the output directory exists
+        if let Some(parent) = out_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
 
         if !intent.is_empty() {
             self.set_status(&format!("🧠 Processing Intent: {}", intent));
@@ -418,27 +422,9 @@ impl AgentCore {
         self.set_status("🤖 Embodying...");
         self.log(&format!("[CORE] Embodied Agent Activating for: {}", intent));
 
-        use crate::agent::audio_tools;
-        use crate::agent::vision_tools;
-
-        // 1. Scan Context
-        self.log("[CORE] Scanning visual context...");
-        let _visual_data = match vision_tools::scan_visual(input).await {
-            Ok(d) => d,
-            Err(e) => {
-                self.log(&format!("[CORE] ❌ Vision scan failed: {}", e));
-                return Err(e.to_string().into());
-            }
-        };
-
-        self.log("[CORE] Scanning audio context...");
-        let _audio_data = match audio_tools::scan_audio(input).await {
-            Ok(d) => d,
-            Err(e) => {
-                self.log(&format!("[CORE] ❌ Audio scan failed: {}", e));
-                return Err(e.to_string().into());
-            }
-        };
+        // Note: We used to scan visual and audio context here, but that blocks the GUI thread
+        // for several minutes on large files. The Smart Editor handles its own scanning inside
+        // the asynchronous video editor queue job!
 
         // 2. Execute — Queue through VideoEditorQueue
         self.set_status("📥 Edit Queued");
@@ -534,14 +520,11 @@ impl AgentCore {
         self.set_status("💡 Generating Suggestions...");
         self.log(&format!("[CORE] Analyzing {:?} for creative suggestions...", input));
 
-        // 1. Scan Context (Quick look)
-        use crate::agent::vision_tools;
-        let scenes = vision_tools::scan_visual(input).await.unwrap_or_default();
-        
         let mut brain = self.brain.lock().await;
+        // Bypassing fully deep visual scan for speed, just use local path info
         let prompt = format!(
-            "Analyze this video context: {} scenes detected. Path: {:?}. Generate 3 short, punchy creative editing suggestions.",
-            scenes.len(), input
+            "Given this video file name: {:?}. Generate 3 short, punchy creative editing suggestions for it.",
+            input.file_name().unwrap_or_default()
         );
 
         match brain.process(&prompt).await {

@@ -30,22 +30,29 @@ fn is_wsl() -> bool {
 }
 
 fn get_default_videos_path() -> PathBuf {
+    // Prefer the project-local Video directory
+    let project_video = PathBuf::from("Video");
+    if project_video.exists() {
+        return project_video;
+    }
+
     if is_wsl() {
-        // Try to find the Windows user name from the WSL environment
+        // Try the project Video dir via absolute WSL path
+        let wsl_project_video = PathBuf::from("/mnt/d/SYNOID/Video");
+        if wsl_project_video.exists() {
+            return wsl_project_video;
+        }
+
+        // Fallback: Windows user Videos folder
         if let Ok(wsl_user) = std::env::var("USER") {
             let win_path = PathBuf::from(format!("/mnt/c/Users/{}/Videos", wsl_user));
             if win_path.exists() {
                 return win_path;
             }
         }
-        // Fallback to C:\Users\ (common if user name matches)
-        let fallback = PathBuf::from("/mnt/c/Users/xing/Videos");
-        if fallback.exists() {
-            return fallback;
-        }
     }
     
-    // Default to current directory if not WSL or path not found
+    // Final fallback: current directory
     PathBuf::from(".")
 }
 
@@ -55,6 +62,7 @@ enum ActiveCommand {
     // Media
     Clip,
     Compress,
+    Editor,
     // Visual
 
     // AI Core
@@ -82,7 +90,7 @@ pub struct TreeState {
 }
 
 /// Holds the temporary UI state (form inputs)
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct UiState {
     pub input_path: String,
     pub output_path: String,
@@ -106,6 +114,7 @@ pub struct UiState {
     pub preview_bytes: Option<Vec<u8>>,
     pub last_previewed_path: String,
     pub suggestions: Vec<String>,
+    pub video_player: Option<crate::agent::video_player::VideoPlayer>,
 }
 
 
@@ -121,7 +130,10 @@ pub struct SynoidApp {
 impl SynoidApp {
     pub fn new(core: Arc<AgentCore>) -> Self {
         let mut ui_state = UiState::default();
-        ui_state.output_path = "output.mp4".to_string();
+        if let Ok(saved_intent) = std::fs::read_to_string("synoid_intent.txt") {
+            ui_state.intent = saved_intent;
+        }
+        ui_state.output_path = "Video/output.mp4".to_string();
         ui_state.clip_start = "0.0".to_string();
         ui_state.clip_duration = "10.0".to_string();
         ui_state.compress_size = "25.0".to_string();
@@ -130,7 +142,7 @@ impl SynoidApp {
 
         // Start background poller for Hive Mind status
         let core_clone = core.clone();
-        let ui_state_clone = Arc::new(Mutex::new(ui_state.clone()));
+        let ui_state_clone = Arc::new(Mutex::new(ui_state));
         let return_state = ui_state_clone.clone();
 
         tokio::spawn(async move {
@@ -352,6 +364,21 @@ impl SynoidApp {
             ui.add_space(10.0);
             if !state.input_path.is_empty() {
                 ui.label(egui::RichText::new(&state.input_path).small().color(COLOR_TEXT_SECONDARY));
+                ui.add_space(5.0);
+                ui.horizontal(|ui| {
+                    if state.video_player.is_some() {
+                        if ui.button(egui::RichText::new("⏹ Stop").color(COLOR_ACCENT_RED)).clicked() {
+                            state.video_player = None;
+                        }
+                    } else {
+                        if ui.button(egui::RichText::new("▶ Play in Preview").color(COLOR_ACCENT_GREEN)).clicked() {
+                            match crate::agent::video_player::VideoPlayer::new(&state.input_path) {
+                                Ok(vp) => state.video_player = Some(vp),
+                                Err(e) => self.core.log(&format!("[GUI] ❌ Failed to start video player: {}", e)),
+                            }
+                        }
+                    }
+                });
             }
         });
     }
@@ -496,11 +523,13 @@ impl SynoidApp {
         ui.add_space(10.0);
 
         ui.label("Creative Intent:");
-        ui.add(
+        if ui.add(
             egui::TextEdit::multiline(&mut state.intent)
                 .desired_rows(3)
                 .desired_width(f32::INFINITY),
-        );
+        ).changed() {
+            let _ = std::fs::write("synoid_intent.txt", &state.intent);
+        }
         ui.add_space(5.0);
 
         ui.add_space(10.0);
@@ -916,12 +945,16 @@ impl eframe::App for SynoidApp {
                         let mut s = ui_ptr.lock().unwrap();
                         s.preview_bytes = Some(frame);
                     }
-                    // Suggestions
-                    if let Ok(suggs) = core.get_suggestions(&path).await {
-                        let mut s = ui_ptr.lock().unwrap();
-                        s.suggestions = suggs;
-                    }
                 });
+            }
+
+            // 3. Video player frame update
+            if let Some(player) = &mut state.video_player {
+                let size = [player.width as _, player.height as _];
+                if let Some(frame) = player.get_next_frame() {
+                    let color_image = egui::ColorImage::from_rgb(size, frame);
+                    self.preview_texture = Some(ctx.load_texture("video_frame", color_image, Default::default()));
+                }
             }
         }
 
@@ -990,6 +1023,7 @@ impl eframe::App for SynoidApp {
                     vec![
                         ("✂️", "Clip", ActiveCommand::Clip),
                         ("📦", "Compress", ActiveCommand::Compress),
+                        ("🎬", "Editor", ActiveCommand::Editor),
                     ],
                 ) {
                     new_cmd = Some(cmd);
@@ -1091,81 +1125,85 @@ impl eframe::App for SynoidApp {
                 });
             });
 
-        // Main Content Area
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::none()
-                    .fill(COLOR_PANEL_BG)
-                    .inner_margin(egui::Margin::same(20.0)),
-            )
-            .show(ctx, |ui| {
-                // Command Panel (top) - draw background first
-                let panel_rect = egui::Rect::from_min_size(
-                    ui.cursor().min,
-                    egui::vec2(ui.available_width(), 400.0),
-                );
-                ui.painter()
-                    .rect_filled(panel_rect, 8.0, egui::Color32::from_rgb(38, 38, 44));
+        if self.active_command == ActiveCommand::Editor {
+            let mut state = self.ui_state.lock().unwrap();
+            self.render_editor_layout(ctx, &mut state);
+        } else {
+            // Main Content Area
+            egui::CentralPanel::default()
+                .frame(
+                    egui::Frame::none()
+                        .fill(COLOR_PANEL_BG)
+                        .inner_margin(egui::Margin::same(20.0)),
+                )
+                .show(ctx, |ui| {
+                    // Command Panel (top) - draw background first
+                    let panel_rect = egui::Rect::from_min_size(
+                        ui.cursor().min,
+                        egui::vec2(ui.available_width(), 400.0),
+                    );
+                    ui.painter()
+                        .rect_filled(panel_rect, 8.0, egui::Color32::from_rgb(38, 38, 44));
 
-                ui.allocate_new_ui(
-                    egui::UiBuilder::new().max_rect(panel_rect.shrink(20.0)),
-                    |ui| {
-                        let mut state = self.ui_state.lock().unwrap();
-                        self.render_command_panel(ui, &mut state);
-                    },
-                );
+                    ui.allocate_new_ui(
+                        egui::UiBuilder::new().max_rect(panel_rect.shrink(20.0)),
+                        |ui| {
+                            let mut state = self.ui_state.lock().unwrap();
+                            self.render_command_panel(ui, &mut state);
+                        },
+                    );
 
-                ui.add_space(420.0); // Skip past the panel area
+                    ui.add_space(420.0); // Skip past the panel area
 
-                // Logs Panel (bottom)
-                ui.heading(
-                    egui::RichText::new("📜 Activity Log")
-                        .size(16.0)
-                        .color(COLOR_TEXT_SECONDARY),
-                );
-                ui.add_space(8.0);
+                    // Logs Panel (bottom)
+                    ui.heading(
+                        egui::RichText::new("📜 Activity Log")
+                            .size(16.0)
+                            .color(COLOR_TEXT_SECONDARY),
+                    );
+                    ui.add_space(8.0);
 
-                let logs = self.core.get_logs();
-                let logs_rect = egui::Rect::from_min_size(
-                    ui.cursor().min,
-                    egui::vec2(ui.available_width(), 200.0),
-                );
-                ui.painter().rect_filled(logs_rect, 6.0, COLOR_BG_DARK);
+                    let logs = self.core.get_logs();
+                    let logs_rect = egui::Rect::from_min_size(
+                        ui.cursor().min,
+                        egui::vec2(ui.available_width(), 200.0),
+                    );
+                    ui.painter().rect_filled(logs_rect, 6.0, COLOR_BG_DARK);
 
-                ui.allocate_new_ui(
-                    egui::UiBuilder::new().max_rect(logs_rect.shrink(12.0)),
-                    |ui| {
-                        egui::ScrollArea::vertical()
-                            .max_height(180.0)
-                            .stick_to_bottom(true)
-                            .show(ui, |ui| {
-                                for log in &logs {
-                                    ui.label(
-                                        egui::RichText::new(log)
-                                            .monospace()
-                                            .size(11.0)
-                                            .color(COLOR_TEXT_SECONDARY),
-                                    );
-                                }
-                            });
-                    },
-                );
-            });
+                    ui.allocate_new_ui(
+                        egui::UiBuilder::new().max_rect(logs_rect.shrink(12.0)),
+                        |ui| {
+                            egui::ScrollArea::vertical()
+                                .max_height(180.0)
+                                .stick_to_bottom(true)
+                                .show(ui, |ui| {
+                                    for log in &logs {
+                                        ui.label(
+                                            egui::RichText::new(log)
+                                                .monospace()
+                                                .size(11.0)
+                                                .color(COLOR_TEXT_SECONDARY),
+                                        );
+                                    }
+                                });
+                        },
+                    );
+                });
 
-        // Right Sidebar - Preview
-        egui::SidePanel::right("preview_panel")
-            .default_width(320.0)
-            .resizable(true)
-            .frame(
-                egui::Frame::none()
-                    .fill(COLOR_SIDEBAR_BG)
-                    .inner_margin(egui::Margin::same(12.0)),
-            )
-            .show(ctx, |ui| {
-                let mut state = self.ui_state.lock().unwrap();
-                self.render_preview_panel(ui, &mut state);
-            });
-
+            // Right Sidebar - Preview
+            egui::SidePanel::right("preview_panel")
+                .default_width(500.0)
+                .resizable(true)
+                .frame(
+                    egui::Frame::none()
+                        .fill(COLOR_SIDEBAR_BG)
+                        .inner_margin(egui::Margin::same(12.0)),
+                )
+                .show(ctx, |ui| {
+                    let mut state = self.ui_state.lock().unwrap();
+                    self.render_preview_panel(ui, &mut state);
+                });
+        }
 
         // Always request repaint to show log updates from background threads
         ctx.request_repaint();
@@ -1173,12 +1211,26 @@ impl eframe::App for SynoidApp {
 }
 
 pub fn run_gui(core: Arc<AgentCore>) -> Result<(), eframe::Error> {
+    // WSLg's Wayland compositor silently fails to forward eframe/winit windows
+    // to the Windows desktop. Force X11 (via XWayland) which reliably works.
+    if is_wsl() {
+        // 1. Remove WAYLAND_DISPLAY so winit won't attempt the Wayland backend
+        std::env::remove_var("WAYLAND_DISPLAY");
+        // 2. Ensure DISPLAY is set for X11 (WSLg default is :0)
+        if std::env::var("DISPLAY").is_err() {
+            std::env::set_var("DISPLAY", ":0");
+        }
+        // 3. Explicitly tell winit to use the X11 backend
+        std::env::set_var("WINIT_UNIX_BACKEND", "x11");
+        tracing::info!("[GUI] WSL detected → forced X11 backend (DISPLAY={:?})", std::env::var("DISPLAY").ok());
+    }
+
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
             .with_title("SYNOID Command Center")
             .with_decorations(true),
-        renderer: eframe::Renderer::Wgpu,
+        renderer: if is_wsl() { eframe::Renderer::Glow } else { eframe::Renderer::Wgpu },
         ..Default::default()
     };
 

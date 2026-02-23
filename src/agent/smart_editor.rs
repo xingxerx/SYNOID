@@ -698,8 +698,26 @@ pub async fn smart_edit(
         log(&format!("[SMART] Using pre-scanned transcript ({} segments)", t.len()));
         Some(t)
     } else if use_enhanced_audio {
+        let whisper_audio_path = work_dir.join("synoid_audio_whisper.wav");
+        
+        // Extract 16kHz mono specifically for Whisper from the enhanced audio
+        log("[SMART] 🎧 Extracting 16kHz mono audio for Whisper...");
+        let audio_for_whisper = match production_tools::extract_audio_wav(&enhanced_audio_path, &whisper_audio_path).await {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("[SMART] Failed to downsample to 16kHz mono: {}. Using enhanced instead.", e);
+                enhanced_audio_path.clone()
+            }
+        };
+
         let engine = TranscriptionEngine::new(None).await.map_err(|e| e.to_string())?;
-        match engine.transcribe(&enhanced_audio_path).await {
+        let res = engine.transcribe(&audio_for_whisper).await;
+        
+        if audio_for_whisper == whisper_audio_path {
+            let _ = fs::remove_file(&whisper_audio_path);
+        }
+
+        match res {
             Ok(t) => {
                 log(&format!(
                     "[SMART] Transcription complete: {} segments",
@@ -882,59 +900,82 @@ pub async fn smart_edit(
     let mut segment_durations = Vec::new();
 
     let total_segments = scenes_to_keep.len();
+    let max_concurrency = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 6);
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrency));
+    let mut tasks = Vec::with_capacity(total_segments);
+
     for (i, scene) in scenes_to_keep.iter().enumerate() {
         let seg_path = segments_dir.join(format!("seg_{:04}.mp4", i));
+        let scene_duration = scene.duration;
+        let scene_start = scene.start_time;
+        
+        // Clone for move into task
+        let input_path = input.to_path_buf();
+        let enhanced_path = enhanced_audio_path.clone();
+        let permit = semaphore.clone().acquire_owned().await.unwrap();
 
-        let mut cmd = Command::new("ffmpeg");
-        cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
+        let handle = tokio::spawn(async move {
+            let mut cmd = tokio::process::Command::new("ffmpeg");
+            cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
 
-        // Accurate input-seeking (-ss and -t before -i) prevents frame doubling and lag
-        cmd.arg("-ss").arg(&scene.start_time.to_string());
-        cmd.arg("-t").arg(&scene.duration.to_string());
-        cmd.arg("-i").arg(production_tools::safe_arg_path(input));
+            // Accurate input-seeking (-ss and -t before -i) prevents frame doubling and lag
+            cmd.arg("-ss").arg(&scene_start.to_string());
+            cmd.arg("-t").arg(&scene_duration.to_string());
+            cmd.arg("-i").arg(production_tools::safe_arg_path(&input_path));
 
-        if use_enhanced_audio {
-            cmd.arg("-ss").arg(&scene.start_time.to_string());
-            cmd.arg("-t").arg(&scene.duration.to_string());
-            cmd.arg("-i").arg(production_tools::safe_arg_path(&enhanced_audio_path));
+            if use_enhanced_audio {
+                cmd.arg("-ss").arg(&scene_start.to_string());
+                cmd.arg("-t").arg(&scene_duration.to_string());
+                cmd.arg("-i").arg(production_tools::safe_arg_path(&enhanced_path));
+            }
+
+            // Mapping
+            cmd.arg("-map").arg("0:v"); // Video from input 0
+
+            if use_enhanced_audio {
+                cmd.arg("-map").arg("1:a:0"); // Audio from input 1 (enhanced)
+            } else {
+                cmd.arg("-map").arg("0:a:0"); // Original audio
+            }
+
+            // CRF 23 is a good balance for quality/size. Preset faster for speed.
+            cmd.arg("-c:v")
+                .arg("libx264")
+                .arg("-preset")
+                .arg("ultrafast")
+                .arg("-crf")
+                .arg("23");
+
+            // Always re-encode audio to AAC to ensure format consistency
+            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
+
+            cmd.arg("-avoid_negative_ts").arg("make_zero");
+            cmd.arg(production_tools::safe_arg_path(&seg_path));
+
+            let status = cmd.status().await;
+            drop(permit); // Release concurrency slot
+
+            if let Ok(s) = status {
+                if s.success() {
+                    return Some((seg_path, scene_duration));
+                }
+            }
+            None
+        });
+        
+        tasks.push(handle);
+    }
+
+    // Await all parallel tasks and process results
+    for (i, handle) in tasks.into_iter().enumerate() {
+        if let Ok(Some((path, dur))) = handle.await {
+            segment_files.push(path);
+            segment_durations.push(dur);
         }
-
-        // Mapping
-        // Always re-encode for frame accuracy (Fixes "doubling" issue)
-        cmd.arg("-map").arg("0:v"); // Video from input 0
-
-        if use_enhanced_audio {
-            cmd.arg("-map").arg("1:a:0"); // Audio from input 1 (enhanced)
-        } else {
-            cmd.arg("-map").arg("0:a:0"); // Original audio
-        }
-
-        // CRF 23 is a good balance for quality/size. Preset faster for speed.
-        cmd.arg("-c:v")
-            .arg("libx264")
-            .arg("-preset")
-            .arg("ultrafast")
-            .arg("-crf")
-            .arg("23");
-
-        // Always re-encode audio to AAC to ensure format consistency
-        cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
-
-        cmd.arg("-avoid_negative_ts").arg("make_zero");
-        cmd.arg(production_tools::safe_arg_path(&seg_path));
-
-        let status = cmd.status().await?;
-
-        if !status.success() {
-            continue;
-        }
-
-        segment_files.push(seg_path);
-        segment_durations.push(scene.duration);
 
         if i < 3 || i % 10 == 0 || i == total_segments - 1 {
             log(&format!(
-                "[SMART] ⏳ Segment {}/{} processed",
+                "[SMART] ⏳ Segment {}/{} processed in parallel",
                 i + 1,
                 total_segments
             ));

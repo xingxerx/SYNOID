@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{info, warn};
+use tracing::info;
 use reqwest::Client;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -48,8 +48,11 @@ impl HiveMind {
 
     /// Connect to Ollama and discover all available intelligence
     pub async fn refresh_models(&mut self) -> Result<(), String> {
-        let url = format!("{}/api/tags", self.api_url.trim_end_matches('/'));
-        info!("[HIVE_MIND] 📡 Scanning neural network at {}...", url);
+        // Strip /v1 suffix if present — Ollama's native API doesn't use it
+        // (The /v1 prefix is only for OpenAI-compatible chat/completions endpoint)
+        let base_url = self.api_url.trim_end_matches('/').trim_end_matches("/v1");
+        let url = format!("{}/api/tags", base_url);
+        tracing::debug!("[HIVE_MIND] 📡 Scanning neural network at {}...", url);
 
         match self.client.get(&url).send().await {
             Ok(resp) => {
@@ -102,7 +105,7 @@ impl HiveMind {
                 }
             }
             Err(e) => {
-                info!("[HIVE_MIND] 📡 Ollama not detected at {}. Continuing with local defaults.", self.api_url);
+                tracing::debug!("[HIVE_MIND] 📡 Ollama not detected at {}. Continuing with local defaults.", self.api_url);
                 tracing::debug!("[HIVE_MIND] Connection error: {}", e);
                 Err(e.to_string())
             }
@@ -127,7 +130,7 @@ impl HiveMind {
 
         // 2. Reasoning vs Grunt Isolation (Size-based)
         // > 14GB usually implies > 13B parameters (FP16/Q4), good for reasoning
-        if size_gb > 14.0 || lower.contains("70b") || lower.contains("mixtral") || lower.contains("deepseek-r1") {
+        if size_gb > 14.0 || lower.contains("70b") || lower.contains("mixtral") || lower.contains("deepseek-r1") || lower.contains("gpt-oss") {
             return ModelRole::Reasoning;
         }
 

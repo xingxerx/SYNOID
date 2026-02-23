@@ -225,7 +225,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Set default log level to suppress noisy internal crates (wgpu, naga, etc.)
     // unless explicitly overridden by the user.
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info,wgpu_core=error,wgpu_hal=error,naga=error,winit=error,symphonia=error");
+        std::env::set_var("RUST_LOG", "info,wgpu_core=error,wgpu_hal=error,naga=error,winit=error,symphonia=error,sctk_adwaita=off,egui_wgpu=error");
+    }
+
+    // Suppress noisy C library warnings from Mesa / EGL / Zink on WSL2
+    // These are C-level outputs not controllable via Rust tracing.
+    if std::env::var("EGL_LOG_LEVEL").is_err() {
+        std::env::set_var("EGL_LOG_LEVEL", "fatal");
+    }
+    if std::env::var("MESA_LOG_LEVEL").is_err() {
+        std::env::set_var("MESA_LOG_LEVEL", "fatal");
     }
 
     tracing_subscriber::fmt::init();
@@ -252,7 +261,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Check external dependencies
     let missing_deps = synoid_core::agent::health::check_dependencies();
     if !missing_deps.is_empty() {
-        tracing::warn!("⚠️ Missing dependencies: {:?}. Some features may not work.", missing_deps);
+        tracing::debug!("⚠️ Missing dependencies: {:?}. Some features may not work.", missing_deps);
     }
 
     let api_url = std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
@@ -270,8 +279,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match core_for_hive.initialize_hive_mind().await {
             Ok(_) => info!("🐝 Hive Mind Active: Connected to Ollama Neural Network"),
             Err(e) => {
-                tracing::warn!("⚠️ Hive Mind Offline: {}", e);
-                info!("⚠️ Continuing in degraded mode (Brain defaults only)");
+                tracing::debug!("⚠️ Hive Mind Offline: {}", e);
+                tracing::debug!("⚠️ Continuing in degraded mode (Brain defaults only)");
             }
         }
     });
@@ -301,13 +310,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
             // Launch GUI (Blocking) — pass AgentCore
             info!("🖥️ Launching GUI Command Center...");
-            if let Err(e) = window::run_gui(core) {
+            let res = tokio::task::block_in_place(|| window::run_gui(core));
+            if let Err(e) = res {
                 error!("GUI Error: {}", e);
             }
 
             // Cleanup
             health.stop();
             info!("{}", health.status_report());
+            info!("🛑 GUI closed. Shutting down all background tasks...");
+
+            // Force-exit to kill all spawned tokio tasks (server, hive mind poller, editor queue).
+            // Without this, background tasks keep the process alive as a ghost.
+            std::process::exit(0);
         }
         Commands::Youtube {
             url,

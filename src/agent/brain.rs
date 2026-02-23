@@ -131,7 +131,7 @@ impl Brain {
         }
 
         // 2. Visual Scan Heuristics
-        if req_lower.contains("scan") || req_lower.contains("analyze") {
+        if req_lower.len() < 100 && (req_lower.contains("scan") || req_lower.contains("analyze")) {
             return Intent::ScanVideo {
                 path: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
             };
@@ -289,7 +289,7 @@ impl Brain {
                 info!("[BRAIN] ⚡ Fast-path activated: YouTube Download");
                 // Activate Source Tools ONLY
                 use crate::agent::source_tools;
-                let output_dir = std::path::Path::new("downloads");
+                let output_dir = std::path::Path::new("D:\\SYNOID\\Download");
                 // Brain fast-path doesn't support auth yet
                 match source_tools::download_youtube(&url, output_dir, None).await {
                     Ok(info) => {

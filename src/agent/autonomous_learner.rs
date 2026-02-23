@@ -176,7 +176,7 @@ impl AutonomousLearner {
 
                                 info!("[LEARNER] 📥 Acquiring candidate: {}", source.title);
 
-                                let download_dir = std::path::Path::new("downloads");
+                                let download_dir = std::path::Path::new("D:\\SYNOID\\Download");
                                 let _ = std::fs::create_dir_all(download_dir);
 
                                 let download_result = source_tools::download_youtube(

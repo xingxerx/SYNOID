@@ -48,7 +48,7 @@ impl Default for TaskState {
     fn default() -> Self {
         Self {
             input_path: String::new(),
-            output_path: "output.mp4".to_string(),
+            output_path: "Video/output.mp4".to_string(),
             intent: String::new(),
             youtube_url: String::new(),
             status: "⚡ System Ready".to_string(),

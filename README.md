@@ -105,7 +105,7 @@ cargo run --release -- gui
 > "Upscale this old 480p clip by 4x using the vector engine. Clean up the audio noise and stabilize the frame. This operation falls under the Video Production module, specifically utilizing the Vector Engine for upscaling and Production Tools for audio enhancement."
 
 **Automated Journalism:**
-> "Research 'Quantum Computing breakthroughs 2024', find top 5 relevant videos, and generate a summary script."
+> "Research 'Universal Editing tips on trick 2026', find top 5 relevant videos, and generate a summary script."
 
 ---
 

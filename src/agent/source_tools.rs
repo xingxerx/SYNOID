@@ -28,7 +28,61 @@ pub struct SourceInfo {
 /// Prioritizes a command that has yt-dlp installed, but falls back to a valid python
 /// interpreter if none have yt-dlp, so we don't get "No such file or directory".
 pub async fn get_python_command() -> String {
-    // 1. Candidate commands to try (in order of preference for Linux/WSL then Windows)
+    // 1. Check standalone 'yt-dlp' binary first
+    let standalone_candidates = ["yt-dlp", "/usr/bin/yt-dlp", "/usr/local/bin/yt-dlp", "~/.local/bin/yt-dlp"];
+    for &bin in &standalone_candidates {
+        // Toki's Command on Windows might fail to execute python scripts with shebangs if running in some mixed WSL setups.
+        // First try it natively.
+        match Command::new(bin).arg("--version").output().await {
+            Ok(output) => {
+                if output.status.success() {
+                     tracing::info!("[SOURCE] ✅ Found standalone 'yt-dlp' binary at '{}'", bin);
+                     return bin.to_string();
+                } else {
+                     tracing::warn!("[SOURCE] '{}' binary exists but --version failed: {}", bin, String::from_utf8_lossy(&output.stderr));
+                }
+            },
+            Err(e) => {
+                 tracing::warn!("[SOURCE] Command '{}' failed to execute directly: {}", bin, e);
+                 // If execution failed (e.g., Exec format error or not found), try explicitly with python3
+                 if e.kind() != std::io::ErrorKind::NotFound {
+                     tracing::info!("[SOURCE] Trying to execute '{}' via python3...", bin);
+                     if let Ok(py_out) = Command::new("python3").arg(bin).arg("--version").output().await {
+                         if py_out.status.success() {
+                             tracing::info!("[SOURCE] ✅ Found standalone 'yt-dlp' binary via python3 at '{}'", bin);
+                             // Return special syntax for our command builder later
+                             return format!("python3|{}", bin);
+                         }
+                     }
+                 }
+            }
+        }
+    }
+
+    // 1.5 Try to find yt-dlp using 'which'
+    if let Ok(output) = Command::new("which").arg("yt-dlp").output().await {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                // Test the found path
+                match Command::new(&path).arg("--version").output().await {
+                    Ok(out) => {
+                        if out.status.success() {
+                            tracing::info!("[SOURCE] ✅ Found standalone 'yt-dlp' via 'which' at '{}'", path);
+                            return path;
+                        } else {
+                            tracing::warn!("[SOURCE] '{}' via which exists but --version failed: {}", path, String::from_utf8_lossy(&out.stderr));
+                        }
+                    },
+                    Err(e) => {
+                        tracing::warn!("[SOURCE] Command '{}' (from which) failed to execute: {}", path, e);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Candidate python commands to try (in order of preference for Linux/WSL then Windows)
     let candidates = ["python3", "python", "py"]; // 'python3' first for WSL
     
     let mut best_fallback = None;
@@ -49,7 +103,7 @@ pub async fn get_python_command() -> String {
                     match Command::new(cmd).args(&module_args).output().await {
                         Ok(mod_out) => {
                             if mod_out.status.success() {
-                                info!("[SOURCE] ✅ Found valid Python with yt-dlp: '{}'", cmd);
+                                tracing::info!("[SOURCE] ✅ Found valid Python with yt-dlp module: '{}'", cmd);
                                 return cmd.to_string();
                             } else {
                                 tracing::debug!("[SOURCE] '{}' exists but yt-dlp missing: {}", cmd, String::from_utf8_lossy(&mod_out.stderr));
@@ -68,14 +122,6 @@ pub async fn get_python_command() -> String {
         }
     }
 
-    // 2. Check standalone 'yt-dlp' binary
-    if let Ok(output) = Command::new("yt-dlp").arg("--version").output().await {
-        if output.status.success() {
-             info!("[SOURCE] ✅ Found standalone 'yt-dlp' binary");
-             return "yt-dlp".to_string();
-        }
-    }
-
     // 3. Return the best fallback we found, or default to "python" if nothing worked
     if let Some(fallback) = best_fallback {
         tracing::warn!("[SOURCE] ⚠️ No valid Python+yt-dlp environment found. Using '{}' as fallback (commands requiring yt-dlp will fail).", fallback);
@@ -90,8 +136,8 @@ pub async fn get_python_command() -> String {
 pub async fn check_ytdlp() -> bool {
     let cmd = get_python_command().await;
     
-    // If get_python_command returned "yt-dlp", it's a standalone binary
-    if cmd == "yt-dlp" {
+    // If get_python_command returned "yt-dlp" or an absolute path to it, it's a standalone binary
+    if cmd.ends_with("yt-dlp") {
         return true;
     }
 
@@ -112,7 +158,7 @@ fn build_ytdlp_info_args(
     let mut args = Vec::new();
     
     // Only add "-m yt_dlp" if we are running via python
-    if command != "yt-dlp" {
+    if !command.ends_with("yt-dlp") {
         args.push("-m".to_string());
         args.push("yt_dlp".to_string());
     }
@@ -152,7 +198,7 @@ fn build_ytdlp_download_args(
     let mut args = Vec::new();
 
     // Only add "-m yt_dlp" if we are running via python
-    if command != "yt-dlp" {
+    if !command.ends_with("yt-dlp") {
         args.push("-m".to_string());
         args.push("yt_dlp".to_string());
     }
@@ -263,7 +309,7 @@ pub async fn search_youtube(
     let python = get_python_command().await;
     
     let mut args = Vec::new();
-    if python != "yt-dlp" {
+    if !python.ends_with("yt-dlp") {
         args.push("-m".to_string());
         args.push("yt_dlp".to_string());
     }

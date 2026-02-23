@@ -65,6 +65,10 @@ impl HealthMonitor {
         tokio::spawn(async move {
             info!("[HEALTH] Watchdog started (interval: {:?})", interval);
 
+            // Track previous state to only log on transitions (like PressureWatcher)
+            let mut prev_mem_ok = true;
+            let mut prev_disk_ok = true;
+
             while is_running.load(Ordering::Relaxed) {
                 tokio::time::sleep(interval).await;
 
@@ -75,15 +79,27 @@ impl HealthMonitor {
                 // Check disk space
                 let disk_ok = check_disk_health();
 
-                if !mem_ok {
+                // Only log on state transitions to prevent log spam
+                if !mem_ok && prev_mem_ok {
                     warn!(
                         "[HEALTH] ⚠️ Memory pressure detected (heartbeat #{})",
                         count
                     );
+                } else if mem_ok && !prev_mem_ok {
+                    info!(
+                        "[HEALTH] ✅ Memory pressure resolved (heartbeat #{})",
+                        count
+                    );
                 }
-                if !disk_ok {
+
+                if !disk_ok && prev_disk_ok {
                     warn!("[HEALTH] ⚠️ Low disk space detected (heartbeat #{})", count);
+                } else if disk_ok && !prev_disk_ok {
+                    info!("[HEALTH] ✅ Disk space restored (heartbeat #{})", count);
                 }
+
+                prev_mem_ok = mem_ok;
+                prev_disk_ok = disk_ok;
 
                 if count % 60 == 0 {
                     // Log a summary every ~60 heartbeats
@@ -165,42 +181,79 @@ fn check_disk_health() -> bool {
     }
 }
 
-/// Check for required external dependencies
+/// Check for required external dependencies.
+/// Only returns truly required tools (ffmpeg, python).
+/// Optional tools (yt-dlp, ollama) are checked but not reported as missing.
 pub fn check_dependencies() -> Vec<String> {
     let mut missing = Vec::new();
-    let deps = vec![
+
+    // Required dependencies — the app cannot function well without these
+    let required = vec![
         ("ffmpeg", "-version"),
         ("python", "--version"),
-        ("yt-dlp", "--version"),
-        ("ollama", "--version"),
     ];
 
-    for (dep, flag) in deps {
-        let mut found = std::process::Command::new(dep).arg(flag).output().is_ok();
+    for (dep, flag) in required {
+        let mut found = std::process::Command::new(dep)
+            .arg(flag)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
         
         // Special fallbacks for common developer environments
-        if !found {
-            if dep == "python" {
-                found = std::process::Command::new("python3").arg(flag).output().is_ok();
-            } else if dep == "yt-dlp" {
-                // Check if available as a python module
-                for py_cmd in ["python3", "python", "py"] {
-                    if std::process::Command::new(py_cmd)
-                        .args(["-m", "yt_dlp", "--version"])
-                        .output()
-                        .map(|o| o.status.success())
-                        .unwrap_or(false) 
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-            }
+        if !found && dep == "python" {
+            found = std::process::Command::new("python3")
+                .arg(flag)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
         }
 
         if !found {
             missing.push(dep.to_string());
         }
     }
+
+    // Optional dependencies — features degrade gracefully without these
+    let optional = vec![
+        ("yt-dlp", "--version"),
+        ("ollama", "--version"),
+    ];
+
+    for (dep, flag) in optional {
+        let mut found = std::process::Command::new(dep)
+            .arg(flag)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+        if !found && dep == "yt-dlp" {
+            // Check if available as a python module
+            for py_cmd in ["python3", "python", "py"] {
+                if std::process::Command::new(py_cmd)
+                    .args(["-m", "yt_dlp", "--version"])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false) 
+                {
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if !found {
+            tracing::trace!("Optional dependency '{}' not found — related features will be unavailable.", dep);
+        }
+    }
+
     missing
 }

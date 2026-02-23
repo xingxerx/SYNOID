@@ -173,7 +173,7 @@ impl SuperEngine {
         match intent {
             Intent::DownloadYoutube { url } => {
                 use crate::agent::source_tools;
-                let output_dir = self.work_dir.join("downloads");
+                let output_dir = Path::new("D:\\SYNOID\\Download");
                 if !output_dir.exists() {
                     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
                 }

@@ -89,11 +89,21 @@ impl LearningKernel {
 
         if let Some(pattern) = self.patterns.get(key) {
             info!("[KERNEL] 🧠 Fallback heuristic pattern for '{}': {:?}", key, pattern);
-            pattern.clone()
-        } else {
-            info!("[KERNEL] New context encountered. Using default heuristics.");
-            EditingPattern::default()
+            return pattern.clone();
+        } 
+        
+        // 4. Ultimate Fallback: The highest rated learned pattern
+        // This ensures the agent "applies what it learns to any video we provide it with"
+        if let Some((best_key, best_pattern)) = self.patterns.iter()
+            .filter(|(_, p)| p.intent_tag != "general" && p.success_rating >= 4)
+            .max_by_key(|(_, p)| p.success_rating) {
+            
+            info!("[KERNEL] 🧠 Applying generalized learned knowledge from '{}' to this video.", best_key);
+            return best_pattern.clone();
         }
+
+        info!("[KERNEL] New context encountered. Using default heuristics.");
+        EditingPattern::default()
     }
 
     /// Store a successful editing decision to long-term memory

@@ -33,5 +33,6 @@ pub mod video_stitcher;
 pub mod vision_tools;
 pub mod transcription;
 pub mod video_editing_agent;
+pub mod video_player;
 
 pub mod core; // Exposed Core Logic

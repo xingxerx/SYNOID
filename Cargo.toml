@@ -23,7 +23,7 @@ walkdir = "2.3"  # Efficient directory traversal
 num_cpus = "1.0"
 
 # Transcription Engine (Whisper)
-whisper-rs = { version = "0.11.1" } # Native Whisper implementation (CPU mode for compatibility)
+whisper-rs = { version = "0.11.1", features = ["cuda"] } # Native Whisper implementation (GPU accelerated)
 hf-hub = "0.3"    # HuggingFace model downloads
 hound = "3.5"     # WAV file writing
 dirs = "5.0"      # Platform cache directories

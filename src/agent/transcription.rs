@@ -107,30 +107,55 @@ impl TranscriptionEngine {
         // Read audio
         let mut reader = hound::WavReader::open(audio_path).context("Open WAV")?;
         let spec = reader.spec();
-        let samples: Vec<i16> = reader.samples().filter_map(|s| s.ok()).collect();
-
-        // Manual conversion and resampling
-        let mut pcm_data: Vec<f32> = Vec::new();
-        let channels = spec.channels as usize;
-
-        // Convert to float and mix to mono
-        for chunk in samples.chunks(channels) {
-            let sum: f32 = chunk.iter().map(|&s| s as f32).sum();
-            pcm_data.push((sum / channels as f32) / 32768.0);
-        }
-
-        // Resample if needed (Naive linear)
-        if spec.sample_rate != 16000 {
-            let ratio = 16000.0 / spec.sample_rate as f32;
-            let new_len = (pcm_data.len() as f32 * ratio) as usize;
-            let mut resampled = Vec::with_capacity(new_len);
-            for i in 0..new_len {
-                let src_idx = (i as f32 / ratio) as usize;
-                if src_idx < pcm_data.len() {
-                    resampled.push(pcm_data[src_idx]);
+        
+        let mut pcm_data: Vec<f32>;
+        
+        let is_16k_mono = spec.sample_rate == 16000 && spec.channels == 1;
+        
+        if is_16k_mono {
+            info!("[SOVEREIGN] 🎧 Native 16kHz mono detected. Fast-path memory loading...");
+            // Pre-allocate for exactly the number of samples
+            pcm_data = Vec::with_capacity(reader.duration() as usize);
+            
+            // Read directly into f32 vec
+            for sample in reader.samples::<i16>() {
+                if let Ok(s) = sample {
+                    pcm_data.push((s as f32) / 32768.0);
                 }
             }
-            pcm_data = resampled;
+        } else {
+            info!("[SOVEREIGN] 🐌 Downmixing/resampling in memory. (Channels: {}, Rate: {}). This uses significant RAM.", spec.channels, spec.sample_rate);
+            
+            // Manual conversion and downmix to mono simultaneously
+            let channels = spec.channels as usize;
+            let mut f32_samples = Vec::with_capacity((reader.duration() as usize) / channels);
+            let mut sample_iter = reader.samples::<i16>();
+            
+            while let Some(Ok(first_sample)) = sample_iter.next() {
+                let mut sum = first_sample as f32;
+                // Accumulate other channels
+                for _ in 1..channels {
+                    if let Some(Ok(s)) = sample_iter.next() {
+                        sum += s as f32;
+                    }
+                }
+                f32_samples.push((sum / channels as f32) / 32768.0);
+            }
+            
+            // Resample if needed (Naive linear)
+            if spec.sample_rate != 16000 {
+                let ratio = 16000.0 / spec.sample_rate as f32;
+                let new_len = (f32_samples.len() as f32 * ratio) as usize;
+                pcm_data = Vec::with_capacity(new_len);
+                for i in 0..new_len {
+                    let src_idx = (i as f32 / ratio) as usize;
+                    if src_idx < f32_samples.len() {
+                        pcm_data.push(f32_samples[src_idx]);
+                    }
+                }
+            } else {
+                pcm_data = f32_samples;
+            }
         }
 
         // Initialize Whisper with GPU parameters if requested
@@ -146,9 +171,14 @@ impl TranscriptionEngine {
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_print_special(false);
-        params.set_print_progress(false);
-        params.set_print_realtime(false);
-        params.set_print_timestamps(false);
+        // Enable progress logging so the user doesn't think the app is frozen
+        params.set_print_progress(true);
+        params.set_print_realtime(true);
+        params.set_print_timestamps(true);
+
+        // Maximize CPU threads (Even with GPU, parts of Whisper run on CPU)
+        let num_threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4) as i32;
+        params.set_n_threads(num_threads);
 
         // Run
         state.full(params, &pcm_data).context("Running inference")?;

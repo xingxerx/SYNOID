@@ -89,8 +89,8 @@ pub fn create_router(state: Arc<KernelState>) -> Router {
 
 pub async fn start_server(port: u16, state: Arc<KernelState>) {
     if std::env::var("SYNOID_API_KEY").is_err() {
-        warn!("💡 TIP: SYNOID_API_KEY is not set. Using default developer key for local access.");
-        warn!("To secure your dashboard, set the SYNOID_API_KEY environment variable.");
+        tracing::debug!("💡 TIP: SYNOID_API_KEY is not set. Using default developer key for local access.");
+        tracing::debug!("To secure your dashboard, set the SYNOID_API_KEY environment variable.");
     }
 
     let app = create_router(state);
