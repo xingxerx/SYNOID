@@ -49,16 +49,25 @@ fn is_safe_media_path(path: &std::path::Path) -> bool {
 
 
 fn validate_stream_path(raw_path: &str) -> Result<PathBuf, String> {
+    if raw_path.is_empty() {
+        return Err("Access denied: Empty path".to_string());
+    }
+
     let path = PathBuf::from(raw_path);
 
-    // 1. Prevent Directory Traversal
+    // 1. Reject absolute paths — only relative paths pointing into the media library are allowed
+    if path.is_absolute() {
+        return Err("Access denied: Absolute paths are not permitted".to_string());
+    }
+
+    // 2. Prevent directory traversal via ".." components
     for component in path.components() {
         if let Component::ParentDir = component {
             return Err("Access denied: Path traversal detected".to_string());
         }
     }
 
-    // 2. Validate Extension
+    // 3. Validate extension
     let allowed_extensions = [
         "mp4", "mkv", "avi", "mov", "webm", // Video
         "mp3", "wav", "flac", "ogg", "m4a"  // Audio
@@ -263,5 +272,8 @@ mod tests {
         assert!(validate_stream_path("script.sh").is_err()); // Invalid extension
         assert!(validate_stream_path("..").is_err());
         assert!(validate_stream_path("").is_err());
+        // Absolute paths must be rejected even with a valid extension
+        assert!(validate_stream_path("/etc/media.mp4").is_err());
+        assert!(validate_stream_path("/absolute/path/video.mkv").is_err());
     }
 }

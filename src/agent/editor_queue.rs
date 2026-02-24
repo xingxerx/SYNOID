@@ -40,7 +40,6 @@ pub struct EditJob {
 pub struct VideoEditorQueue {
     jobs: Arc<Mutex<Vec<EditJob>>>,
     tx: mpsc::UnboundedSender<Uuid>,
-    _brain: Arc<Mutex<Brain>>,
 }
 
 impl VideoEditorQueue {
@@ -107,7 +106,7 @@ impl VideoEditorQueue {
             }
         });
 
-        Self { jobs, tx, _brain: brain }
+        Self { jobs, tx }
     }
 
     pub async fn add_job(&self, job: EditJob) -> Uuid {
