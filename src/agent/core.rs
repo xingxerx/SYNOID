@@ -218,7 +218,7 @@ impl AgentCore {
                 }
                 
                 if let Some(found) = video_file {
-                    self.log(&format!("[CORE] 🎯 Automatically selected video: {:?}", found.file_name().unwrap()));
+                    self.log(&format!("[CORE] 🎯 Automatically selected video: {:?}", found.file_name().unwrap_or_default()));
                     found
                 } else {
                     let msg = format!("[CORE] ❌ No video files found in directory: {:?}", path_obj);
@@ -256,7 +256,9 @@ impl AgentCore {
         let out_path = output.unwrap_or_else(|| PathBuf::from("Video/output.mp4"));
         // Ensure the output directory exists
         if let Some(parent) = out_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                self.log(&format!("[CORE] ⚠️ Could not create output directory {:?}: {}", parent, e));
+            }
         }
 
         if !intent.is_empty() {
@@ -350,7 +352,7 @@ impl AgentCore {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("✂️ Clipping...");
         let out_path = output.unwrap_or_else(|| {
-            let stem = input.file_stem().unwrap().to_string_lossy();
+            let stem = input.file_stem().unwrap_or_default().to_string_lossy();
             input.with_file_name(format!("{}_clip.mp4", stem))
         });
 
@@ -378,7 +380,7 @@ impl AgentCore {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("📦 Compressing...");
         let out_path = output.unwrap_or_else(|| {
-            let stem = input.file_stem().unwrap().to_string_lossy();
+            let stem = input.file_stem().unwrap_or_default().to_string_lossy();
             input.with_file_name(format!("{}_compressed.mp4", stem))
         });
 
@@ -587,7 +589,7 @@ impl AgentCore {
             self.log("[CORE] Initializing GPU Pipeline...");
             *pipeline_guard = Some(UnifiedPipeline::new().await);
         }
-        let pipeline = pipeline_guard.as_ref().unwrap();
+        let pipeline = pipeline_guard.as_ref().expect("[CORE] Pipeline should be initialized at this point");
 
         // Config
         let self_clone = self.clone();
