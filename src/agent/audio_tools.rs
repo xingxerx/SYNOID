@@ -23,6 +23,8 @@ pub struct AudioTrack {
 pub async fn scan_audio(path: &Path) -> Result<AudioAnalysis, Box<dyn std::error::Error + Send + Sync>> {
     info!("[EARS] Performing deep transient analysis: {:?}", path);
 
+    let duration = crate::agent::source_tools::get_video_duration(path).await.unwrap_or(0.0);
+
     // Use real FFmpeg ebur128 analysis instead of hardcoded values
     let safe_path = crate::agent::production_tools::safe_arg_path(path);
     let output = tokio::process::Command::new("ffmpeg")

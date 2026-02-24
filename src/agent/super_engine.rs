@@ -7,7 +7,7 @@ use crate::agent::gpt_oss_bridge::SynoidAgent;
 use crate::agent::multi_agent::DirectorAgent;
 
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tracing::{info, warn};
 
 /// The Super Engine is the high-level controller for all Synoid capabilities.
@@ -17,9 +17,7 @@ use tracing::{info, warn};
 pub struct SuperEngine {
     brain: Brain,
     gpt_brain: Option<SynoidAgent>,
-
     api_url: String,
-    work_dir: PathBuf,
 }
 
 impl SuperEngine {
@@ -32,17 +30,11 @@ impl SuperEngine {
         let gpt_brain = Some(SynoidAgent::new(api_url, "llama3:latest"));
 
 
-        let work_dir = std::env::current_dir()?.join("synoid_workspace");
-        if !work_dir.exists() {
-            std::fs::create_dir_all(&work_dir)?;
-        }
-
         info!("[SUPER_ENGINE] Systems Online.");
         Ok(Self {
             brain,
             gpt_brain,
             api_url: api_url.to_string(),
-            work_dir,
         })
     }
 

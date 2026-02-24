@@ -72,7 +72,7 @@ impl EditingStrategy {
 }
 
 /// Represents an intent extracted from user input
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditIntent {
     pub remove_boring: bool,
     pub keep_action: bool,
@@ -82,9 +82,55 @@ pub struct EditIntent {
     pub density: EditDensity,
     pub custom_keywords: Vec<String>,
     pub target_duration: Option<(f64, f64)>,
+    #[serde(default)]
+    pub censor_profanity: bool,
+    #[serde(default)]
+    pub profanity_replacement: Option<String>,
 }
 
 impl EditIntent {
+    /// Parse natural language intent into structured intent using LLM
+    pub async fn from_llm(text: &str) -> Self {
+        use crate::agent::gpt_oss_bridge::SynoidAgent;
+        let api_url = std::env::var("OLLAMA_API_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+        // Llama3:latest serves as our standard fast JSON intent parser
+        let agent = SynoidAgent::new(&api_url, "llama3:latest");
+        
+        let prompt = format!(
+            r#"You are a video editing AI assistant. Convert the user's natural language request into a JSON configuration for the EditIntent struct.
+The JSON must strictly follow this structure and include nothing else:
+{{
+    "remove_boring": bool,
+    "keep_action": bool,
+    "remove_silence": bool,
+    "keep_speech": bool,
+    "ruthless": bool,
+    "density": "Highlights" | "Balanced" | "Full",
+    "custom_keywords": [string],
+    "target_duration": null or [min_secs_float, max_secs_float],
+    "censor_profanity": bool,
+    "profanity_replacement": null or string (e.g. "boing.wav")
+}}
+
+User Request: "{}"
+"#, text);
+
+        match agent.reason(&prompt).await {
+            Ok(response) => {
+                let clean_json = response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+                if let Ok(intent) = serde_json::from_str::<EditIntent>(clean_json) {
+                    tracing::info!("[SMART] Successfully parsed EditIntent from LLM");
+                    return intent;
+                } else {
+                    tracing::warn!("[SMART] LLM intent JSON deserialization failed, falling back to heuristic parsing. Raw: {}", clean_json);
+                }
+            }
+            Err(e) => tracing::warn!("[SMART] LLM intent parsing failed: {}, falling back to heuristic parsing", e),
+        }
+        
+        Self::from_text(text)
+    }
+
     /// Parse natural language intent into structured intent
     pub fn from_text(text: &str) -> Self {
         let lower = text.to_lowercase();
@@ -131,6 +177,8 @@ impl EditIntent {
             density,
             custom_keywords: vec![],
             target_duration: Self::parse_duration_range(&lower),
+            censor_profanity: false,
+            profanity_replacement: None,
         }
     }
 
@@ -236,9 +284,10 @@ pub async fn detect_scenes(
         ])
         .output();
 
-    let output = match tokio::time::timeout(std::time::Duration::from_secs(300), child).await {
+    // Add 30-minute timeout for large files
+    let output = match tokio::time::timeout(std::time::Duration::from_secs(1800), child).await {
         Ok(res) => res?,
-        Err(_) => return Err("FFmpeg scene detection timed out after 5 minutes".into()),
+        Err(_) => return Err("FFmpeg scene detection timed out after 30 minutes".into()),
     };
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -735,15 +784,45 @@ pub async fn smart_edit(
     };
 
     // 1. Parse intent
-    // 1. Parse intent
-    let intent = EditIntent::from_text(intent_text);
-    // REMOVED: Implicit override that protected all speech.
-    // User intent (e.g. "ruthless") should now override transcript protection if desired.
+    let intent = EditIntent::from_llm(intent_text).await;
 
     log(&format!(
-        "[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}, remove_silence={}, ruthless={}, density={:?}",
-        intent.remove_boring, intent.keep_action, intent.keep_speech, intent.remove_silence, intent.ruthless, intent.density
+        "[SMART] Intent: remove_boring={}, keep_action={}, keep_speech={}, remove_silence={}, ruthless={}, density={:?}, censor_profanity={}",
+        intent.remove_boring, intent.keep_action, intent.keep_speech, intent.remove_silence, intent.ruthless, intent.density, intent.censor_profanity
     ));
+
+    // 1.5. Apply Audio Censorship if requested
+    let mut final_enhanced_audio_path = enhanced_audio_path.clone();
+    if intent.censor_profanity {
+        if let Some(t) = &transcript {
+            log("[SMART] 🤬 Applying audio censorship pass based on transcript...");
+            let censored_path = work_dir.join("synoid_audio_censored.wav");
+            
+            // Extract profanity timestamps
+            let profanity_words = ["fuck", "shit", "bitch", "ass", "damn", "cunt", "dick"];
+            let mut censor_timestamps = Vec::new();
+            
+            for seg in t {
+                let text_lower = seg.text.to_lowercase();
+                if profanity_words.iter().any(|&w| text_lower.contains(w)) {
+                    // Mute the whole segment
+                    censor_timestamps.push((seg.start, seg.end));
+                }
+            }
+            
+            if !censor_timestamps.is_empty() {
+                match production_tools::apply_audio_censor(&final_enhanced_audio_path, &censored_path, &censor_timestamps, intent.profanity_replacement.as_deref()).await {
+                    Ok(_) => {
+                         log(&format!("[SMART] Successfully censored {} segments.", censor_timestamps.len()));
+                         final_enhanced_audio_path = censored_path;
+                    }
+                    Err(e) => warn!("[SMART] Audio censorship failed: {}, using original enhanced audio.", e),
+                }
+            } else {
+                log("[SMART] No profanity detected in transcript.");
+            }
+        }
+    }
 
     // 2. Detect scenes
     log("[SMART] 🔍 Analyzing video scenes...");
@@ -911,7 +990,7 @@ pub async fn smart_edit(
         
         // Clone for move into task
         let input_path = input.to_path_buf();
-        let enhanced_path = enhanced_audio_path.clone();
+        let enhanced_path = final_enhanced_audio_path.clone();
         let permit = semaphore.clone().acquire_owned().await.unwrap();
 
         let handle = tokio::spawn(async move {

@@ -7,7 +7,6 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use sysinfo::SystemExt;
 use tracing::{error, info, warn};
 
 /// Health status of a subsystem

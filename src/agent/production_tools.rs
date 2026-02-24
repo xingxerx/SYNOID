@@ -14,6 +14,7 @@ use tracing::{info, warn};
 pub struct ProductionResult {
     pub output_path: PathBuf,
     pub size_mb: f64,
+    pub duration: f64,
 }
 
 // Helper to ensure path is treated as file not flag
@@ -86,6 +87,7 @@ pub async fn trim_video(
     Ok(ProductionResult {
         output_path: output.to_path_buf(),
         size_mb,
+        duration: get_video_duration(output).await.unwrap_or(0.0),
     })
 }
 
@@ -181,6 +183,7 @@ pub async fn compress_video(
     Ok(ProductionResult {
         output_path: output.to_path_buf(),
         size_mb,
+        duration: get_video_duration(output).await.unwrap_or(0.0),
     })
 }
 
@@ -280,6 +283,7 @@ pub async fn combine_av(
     Ok(ProductionResult {
         output_path: output_path.to_path_buf(),
         size_mb,
+        duration: get_video_duration(output_path).await.unwrap_or(0.0),
     })
 }
 
@@ -429,6 +433,76 @@ pub async fn burn_subtitles(
 
     Ok(ProductionResult {
         output_path: output_video.to_path_buf(),
+        size_mb: tokio::fs::metadata(output_video).await.map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0),
         duration: get_video_duration(output_video).await.unwrap_or(0.0),
     })
+}
+
+/// Apply audio censorship to specified timestamps using FFmpeg volume attenuation or sound effect overlay.
+pub async fn apply_audio_censor(
+    input_audio: &Path,
+    output_audio: &Path,
+    censor_timestamps: &[(f64, f64)],
+    replacement_sfx: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    info!("[PROD] Applying audio censorship to {} segments", censor_timestamps.len());
+
+    let safe_input = safe_arg_path(input_audio);
+    let safe_output = safe_arg_path(output_audio);
+
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-y").arg("-i").arg(&safe_input);
+
+    let mut filter_complex = String::new();
+
+    if let Some(sfx) = replacement_sfx {
+        let safe_sfx = safe_arg_path(Path::new(sfx));
+        cmd.arg("-i").arg(&safe_sfx);
+
+        // Mute original audio over those timestamps
+        let mut volume_filter = String::new();
+        for (i, (start, end)) in censor_timestamps.iter().enumerate() {
+            if i > 0 { volume_filter.push_str(", "); }
+            volume_filter.push_str(&format!("volume=0:enable='between(t,{},{})'", start, end));
+        }
+        
+        filter_complex.push_str(&format!("[0:a]{}[muted];", volume_filter));
+
+        // Delay the sfx for each timestamp and mix them all
+        let mut delayed_inputs = Vec::new();
+        for (i, (start, _end)) in censor_timestamps.iter().enumerate() {
+            let delay_ms = (start * 1000.0) as i64;
+            let tag = format!("[sfx{}]", i);
+            filter_complex.push_str(&format!("[1:a]adelay={}|{}[sfx{}];", delay_ms, delay_ms, i));
+            delayed_inputs.push(tag);
+        }
+
+        filter_complex.push_str("[muted]");
+        for tag in delayed_inputs {
+            filter_complex.push_str(&tag);
+        }
+        filter_complex.push_str(&format!("amix=inputs={}:duration=first:dropout_transition=0[out]", censor_timestamps.len() + 1));
+
+        cmd.arg("-filter_complex").arg(&filter_complex);
+        cmd.arg("-map").arg("[out]");
+    } else {
+        // Just mute
+        let mut volume_filter = String::new();
+        for (i, (start, end)) in censor_timestamps.iter().enumerate() {
+            if i > 0 { volume_filter.push_str(", "); }
+            volume_filter.push_str(&format!("volume=0:enable='between(t,{},{})'", start, end));
+        }
+        cmd.arg("-af").arg(&volume_filter);
+    }
+
+    cmd.arg("-c:a").arg("pcm_s16le");
+    cmd.arg(&safe_output);
+
+    let status = cmd.status().await?;
+
+    if !status.success() {
+        return Err("Audio censorship failed".into());
+    }
+
+    Ok(())
 }

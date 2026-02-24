@@ -33,17 +33,20 @@ impl Animator {
 
         // Running Remotion requires local node_modules
         // npx remotion render src/index.ts <CompositionName> <Output> --props <Payload>
-        let output = Command::new("npx")
-            .current_dir(&self.engine_dir)
-            .arg("remotion")
-            .arg("render")
-            .arg("src/index.ts")
-            .arg(composition_name)
-            .arg(output_video)
-            .arg("--props")
-            .arg(payload_json_path)
-            .output()
-            .await?;
+        let mut cmd = if cfg!(windows) {
+            Command::new("cmd")
+        } else {
+            Command::new("sh")
+        };
+        
+        let output = if cfg!(windows) {
+            cmd.arg("/C").arg(format!("npx remotion render src/index.ts {} {} --props {}", composition_name, output_video.to_string_lossy(), payload_json_path.to_string_lossy()))
+        } else {
+            cmd.arg("-c").arg(format!("npx remotion render src/index.ts \"{}\" \"{}\" --props \"{}\"", composition_name, output_video.to_string_lossy(), payload_json_path.to_string_lossy()))
+        }
+        .current_dir(&self.engine_dir)
+        .output()
+        .await?;
 
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr);

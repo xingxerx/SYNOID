@@ -12,16 +12,17 @@ pub struct VideoPlayer {
     pub fps: f64,
     last_frame_time: Option<Instant>,
     current_frame: Option<Vec<u8>>,
-    playing: bool,
+    pub playing: bool,
 }
 
 impl VideoPlayer {
-    pub fn new(path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn new(path: &str, timestamp: f64) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let width = 640;
         let height = 360;
         let fps = 30.0;
 
         let mut child = Command::new("ffmpeg")
+            .arg("-ss").arg(format!("{:.3}", timestamp))
             .arg("-i").arg(path)
             .arg("-f").arg("image2pipe")
             .arg("-pix_fmt").arg("rgb24")
@@ -30,13 +31,28 @@ impl VideoPlayer {
             .arg("-r").arg(fps.to_string())
             .arg("-")
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()?;
 
         let mut stdout = child.stdout.take().expect("Failed to grab stdout");
+        let stderr = child.stderr.take().expect("Failed to grab stderr");
         let (tx, rx) = sync_channel(5);
 
         let frame_size = width * height * 3;
+
+        // Thread to read stderr for logging
+        thread::spawn(move || {
+            use std::io::BufRead;
+            let mut err_reader = std::io::BufReader::new(stderr);
+            let mut line = String::new();
+            while let Ok(n) = err_reader.read_line(&mut line) {
+                if n == 0 { break; }
+                if line.contains("Error") || line.contains("fatal") || line.contains("Can't") {
+                    tracing::error!("[ffmpeg] {}", line.trim());
+                }
+                line.clear();
+            }
+        });
 
         thread::spawn(move || {
             let mut buffer = vec![0u8; frame_size];
@@ -56,6 +72,7 @@ impl VideoPlayer {
         let _audio_process = Command::new("ffplay")
             .arg("-nodisp")
             .arg("-autoexit")
+            .arg("-ss").arg(format!("{:.3}", timestamp))
             .arg(path)
             .stdout(Stdio::null())
             .stderr(Stdio::null())

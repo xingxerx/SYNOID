@@ -1,9 +1,7 @@
 // SYNOID MCP Server Bridge
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use crate::agent::multi_agent::NativeTimelineEngine;
 use serde_json::json;
-use std::sync::Arc;
 use tracing::{info, warn};
 
 pub struct SynoidAgent {
@@ -40,7 +38,12 @@ impl SynoidAgent {
             "temperature": 0.7
         });
 
-        let endpoint = format!("{}/chat/completions", self.api_url.trim_end_matches('/'));
+        let base = self.api_url.trim_end_matches('/');
+        let endpoint = if base.ends_with("/v1") {
+            format!("{}/chat/completions", base)
+        } else {
+            format!("{}/v1/chat/completions", base)
+        };
 
         match self.client.post(&endpoint).json(&payload).send().await {
             Ok(resp) => {

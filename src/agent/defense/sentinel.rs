@@ -1,6 +1,6 @@
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use std::collections::HashMap;
-use sysinfo::{CpuExt, ProcessExt, System, SystemExt};
+use sysinfo::System;
 use tracing::{error, info, warn};
 
 /// The Sentinel monitors system state for anomalies

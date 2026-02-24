@@ -56,6 +56,13 @@ fn get_default_videos_path() -> PathBuf {
     PathBuf::from(".")
 }
 
+fn format_time(seconds: f64) -> String {
+    let hrs = (seconds / 3600.0) as u32;
+    let mins = ((seconds % 3600.0) / 60.0) as u32;
+    let secs = (seconds % 60.0) as u32;
+    format!("{:02}:{:02}:{:02}", hrs, mins, secs)
+}
+
 #[derive(PartialEq, Clone, Copy, Debug)]
 enum ActiveCommand {
     None,
@@ -112,9 +119,14 @@ pub struct UiState {
     pub detected_tracks: Vec<crate::agent::audio_tools::AudioTrack>,
     pub hive_mind_status: String,
     pub preview_bytes: Option<Vec<u8>>,
+    pub preview_image: Option<egui::ColorImage>,
     pub last_previewed_path: String,
     pub suggestions: Vec<String>,
     pub video_player: Option<crate::agent::video_player::VideoPlayer>,
+    pub active_editor_tab: String,
+    pub video_duration: f64,
+    pub video_position: f64,
+    pub is_transcribing: bool,
 }
 
 
@@ -138,6 +150,7 @@ impl SynoidApp {
         ui_state.clip_duration = "10.0".to_string();
         ui_state.compress_size = "25.0".to_string();
         ui_state.scale_factor = "2.0".to_string();
+        ui_state.active_editor_tab = "Media".to_string();
         ui_state.guard_mode = "all".to_string();
 
         // Start background poller for Hive Mind status
@@ -166,7 +179,7 @@ impl SynoidApp {
                 research_expanded: false,
                 audio_expanded: true,
             },
-            active_command: ActiveCommand::None,
+            active_command: ActiveCommand::Editor,
             preview_texture: None,
         }
     }
@@ -300,6 +313,7 @@ impl SynoidApp {
             ActiveCommand::Research => self.render_research_panel(ui, state),
             ActiveCommand::AudioMixer => self.render_audio_mixer_panel(ui, state),
             ActiveCommand::Betterment => self.render_betterment_panel(ui, state),
+            ActiveCommand::Editor => (), // Editor has its own panel layout handled elsewhere
         }
     }
 
@@ -372,7 +386,7 @@ impl SynoidApp {
                         }
                     } else {
                         if ui.button(egui::RichText::new("▶ Play in Preview").color(COLOR_ACCENT_GREEN)).clicked() {
-                            match crate::agent::video_player::VideoPlayer::new(&state.input_path) {
+                            match crate::agent::video_player::VideoPlayer::new(&state.input_path, state.video_position) {
                                 Ok(vp) => state.video_player = Some(vp),
                                 Err(e) => self.core.log(&format!("[GUI] ❌ Failed to start video player: {}", e)),
                             }
@@ -911,192 +925,372 @@ impl SynoidApp {
             }
         });
     }
-    fn render_editor_layout(&self, ctx: &egui::Context, state: &mut UiState) {
-        // Top Toolbar
+    fn render_editor_layout(&mut self, ctx: &egui::Context, _state: &mut UiState) {
+        let color_bg_darkest = egui::Color32::from_rgb(17, 17, 17); // #111111
+        let color_panel_bg = egui::Color32::from_rgb(26, 26, 26);   // #1A1A1A
+        let color_gold = egui::Color32::from_rgb(217, 178, 77);     // #D9B24D
+        let color_text_light = egui::Color32::from_rgb(230, 230, 230);
+        let color_text_dim = egui::Color32::from_rgb(120, 120, 120);
+
+        // 1. Top Navbar
         egui::TopBottomPanel::top("editor_toolbar")
-            .exact_height(40.0)
-            .frame(
-                egui::Frame::none()
-                    .fill(egui::Color32::from_rgb(30, 30, 35))
-                    .inner_margin(egui::Margin::symmetric(16.0, 8.0)),
-            )
+            .exact_height(50.0)
+            .frame(egui::Frame::none().fill(color_panel_bg).inner_margin(egui::Margin::symmetric(16.0, 10.0)))
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("◀ Back").clicked() {
-                        // Action: Leave editor
+                ui.horizontal_centered(|ui| {
+                    if ui.add(egui::Button::new(egui::RichText::new("◀  SYNOID").color(color_gold).strong()).fill(egui::Color32::TRANSPARENT)).clicked() {
+                        self.active_command = ActiveCommand::None;
                     }
-                    ui.add_space(8.0);
-                    ui.label("↶ Undo");
-                    ui.label("↷ Redo");
+                    
+                    ui.add_space(20.0);
+                    if ui.add(egui::Button::new("↶").fill(egui::Color32::TRANSPARENT)).clicked() {}
+                    if ui.add(egui::Button::new("↷").fill(egui::Color32::TRANSPARENT)).clicked() {}
+
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_cross_align(egui::Align::Center), |ui| {
+                         ui.add_space(ui.available_width() / 2.0 - 100.0); // Rough center
+                         ui.label(egui::RichText::new("● My Project / ").color(color_text_dim));
+                         let display_name = if _state.input_path.is_empty() { 
+                             "New File".to_string() 
+                         } else { 
+                             std::path::Path::new(&_state.input_path)
+                                 .file_name()
+                                 .map(|n| n.to_string_lossy().to_string())
+                                 .unwrap_or_else(|| "Unknown File".to_string())
+                         };
+                         ui.label(egui::RichText::new(display_name).color(color_text_light));
+                    });
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let btn = ui.button(egui::RichText::new("💾 Save").color(COLOR_BG_DARK).strong());
-                        // Color the button bg blue
-                        // Wait, egui buttons use Visuals. A simple colored button requires RichText + fill or custom Frame.
+                        // Export Button
+                        let export_btn = egui::Button::new(egui::RichText::new("  🎬 Export  ").color(egui::Color32::BLACK).strong())
+                            .fill(color_gold)
+                            .rounding(egui::Rounding::same(16.0));
+
+                        if ui.add(export_btn).clicked() {
+                            println!("[GUI] Export clicked! Starting production pipeline...");
+                        }
                         
-                        ui.label("🔍 30%");
+                        ui.add_space(16.0);
+                        ui.label(egui::RichText::new("👤").size(20.0)); // Profile icon
+                        ui.add_space(8.0);
+                        ui.label(egui::RichText::new("❓").size(20.0)); // Help icon
                     });
                 });
             });
 
-        // Left Vertical Tool Panel
-        egui::SidePanel::left("editor_left_toolbar")
-            .exact_width(80.0)
-            .frame(
-                egui::Frame::none()
-                    .fill(egui::Color32::from_rgb(20, 20, 24))
-                    .inner_margin(egui::Margin::same(8.0)),
-            )
+        // 2. Left Icon Nav (Slim)
+        egui::SidePanel::left("editor_icon_nav")
+            .exact_width(70.0)
+            .frame(egui::Frame::none().fill(color_bg_darkest).inner_margin(egui::Margin::symmetric(0.0, 16.0)))
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.add_space(16.0);
-                    let tools = [
-                        ("📁", "Templates"),
-                        ("🧊", "Elements"),
-                        ("📤", "Uploads"),
-                        ("▶️", "Videos"),
+                    let nav_items = [
+                        ("📁", "Media"),
+                        ("▶️", "Video"),
+                        ("🖼️", "Photo"),
                         ("🎵", "Audio"),
-                        ("🖼️", "Images"),
                         ("T", "Text"),
+                        ("💬", "Subtitles"),
                         ("✨", "AI Magic"),
                     ];
                     
-                    for (icon, label) in tools {
-                        ui.add_space(16.0);
-                        ui.label(egui::RichText::new(icon).size(24.0));
-                        ui.add_space(4.0);
-                        ui.label(egui::RichText::new(label).size(10.0).color(COLOR_TEXT_SECONDARY));
+                    for (icon, label) in nav_items {
+                        let is_active = _state.active_editor_tab == label;
+                        let text_color = if is_active { color_gold } else { color_text_dim };
+                        let bg_color = if is_active { egui::Color32::from_rgb(30, 26, 17) } else { egui::Color32::TRANSPARENT };
+                        
+                        let btn_text = if label == "Text" && _state.is_transcribing { format!("⌛\nTranscribing...") } else { format!("{}\n{}", icon, label) };
+                        let btn = ui.add_sized(
+                            [60.0, 56.0], 
+                            egui::Button::new(egui::RichText::new(btn_text).size(11.0).color(text_color))
+                            .fill(bg_color)
+                            .rounding(egui::Rounding::same(8.0))
+                        );
+                        
+                        // Wiring functional bits based on clicks
+                        if btn.clicked() {
+                            _state.active_editor_tab = label.to_string();
+                            match label {
+                                "Text" | "Subtitles" => { 
+                                    let input_path = _state.input_path.clone();
+                                    if !input_path.is_empty() && !_state.is_transcribing {
+                                        _state.is_transcribing = true;
+                                        let ui_ptr = self.ui_state.clone();
+                                        tokio::spawn(async move {
+                                            tracing::info!("[GUI] Triggering transcription for {}", input_path);
+                                            if let Ok(engine) = crate::agent::transcription::TranscriptionEngine::new(None).await {
+                                                if let Ok(segments) = engine.transcribe(std::path::Path::new(&input_path)).await {
+                                                    let srt_content = crate::agent::transcription::generate_srt(&segments);
+                                                    let out_srt = std::path::Path::new(&input_path).with_extension("srt");
+                                                    let _ = tokio::fs::write(&out_srt, srt_content).await;
+                                                    tracing::info!("[GUI] Transcription complete! Saved to {:?}", out_srt);
+                                                }
+                                            }
+                                            if let Ok(mut s) = ui_ptr.lock() {
+                                                s.is_transcribing = false;
+                                            }
+                                        });
+                                    }
+                                }
+                                "AI Magic" => {
+                                    let output_path = if _state.output_path.is_empty() { "output_animation.mp4".to_string() } else { _state.output_path.clone() };
+                                    tokio::spawn(async move {
+                                        tracing::info!("[GUI] Triggering Remotion Animator...");
+                                        let payload = r#"{"text": "Auto-AI Animation Generated!"}"#;
+                                        let _ = tokio::fs::write("payload.json", payload).await;
+                                        let animator = crate::agent::animator::Animator::new(std::path::Path::new("."));
+                                        let _ = animator.render_animation("MyComposition", std::path::Path::new("payload.json"), std::path::Path::new(&output_path)).await;
+                                    });
+                                }
+                                _ => {}
+                            }
+                        }
+                        ui.add_space(8.0);
                     }
                 });
             });
 
-        // Bottom Timeline Panel
-        egui::TopBottomPanel::bottom("editor_timeline")
-            .exact_height(250.0)
+        // 3. Asset Browser Panel
+        egui::SidePanel::left("editor_asset_browser")
+            .exact_width(280.0)
             .frame(
                 egui::Frame::none()
-                    .fill(egui::Color32::from_rgb(25, 25, 30))
-                    // .rounding(egui::Rounding { nw: 12.0, ne: 12.0, sw: 0.0, se: 0.0 }) // rounded top
+                    .fill(color_panel_bg)
+                    .inner_margin(egui::Margin::same(16.0))
             )
             .show(ctx, |ui| {
-                ui.add_space(8.0);
-                // Timeline Toolbar
                 ui.horizontal(|ui| {
-                    ui.add_space(16.0);
-                    ui.label("Settings");
-                    ui.label("⏸ Split Clip");
+                     ui.label(egui::RichText::new(&_state.active_editor_tab).color(color_text_light).strong());
+                     ui.add_space(20.0);
+                     ui.label(egui::RichText::new("Cloud").color(color_text_dim));
+                });
+                ui.add_space(16.0);
+                
+                if _state.active_editor_tab == "Media" {
+                    // Current Selection
+                    if !_state.input_path.is_empty() {
+                        ui.group(|ui| {
+                            ui.label(egui::RichText::new("Active Asset").color(color_gold).small());
+                            ui.label(egui::RichText::new(std::path::Path::new(&_state.input_path).file_name().unwrap_or_default().to_string_lossy()).size(12.0).strong());
+                            if ui.button("🗑 Remove").clicked() {
+                                _state.input_path = String::new();
+                            }
+                        });
+                        ui.add_space(12.0);
+                    }
+
+                    // Big Upload Button
+                    if ui.add_sized(
+                        [ui.available_width(), 48.0],
+                        egui::Button::new(egui::RichText::new("☁  Upload Asset").color(color_gold).strong())
+                            .fill(egui::Color32::from_rgb(30, 26, 17))
+                            .stroke(egui::Stroke::new(1.0, color_gold))
+                            .rounding(egui::Rounding::same(8.0))
+                    ).clicked() {
+                        tracing::info!("[GUI] Upload clicked, opening file dialog...");
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Video", &["mp4", "mkv", "avi", "mov"])
+                            .set_directory(get_default_videos_path())
+                            .pick_file() {
+                            let path_str = path.to_string_lossy().to_string();
+                            tracing::info!("[GUI] Selected file: {}", path_str);
+                            _state.input_path = path_str;
+                        } else {
+                            tracing::warn!("[GUI] No file selected or dialog cancelled.");
+                        }
+                    }
+                    
+                    ui.add_space(20.0);
+                    
+                    // Asset Grid Placholder View
+                    ui.columns(2, |cols| {
+                         for i in 0..6 {
+                             let col = if i % 2 == 0 { &mut cols[0] } else { &mut cols[1] };
+                             let rect = col.available_rect_before_wrap();
+                             let padded = rect.shrink(4.0);
+                             
+                             let item_rect = col.allocate_exact_size(egui::vec2(padded.width(), 80.0), egui::Sense::hover()).0;
+                             col.painter().rect_filled(item_rect, 6.0, egui::Color32::from_rgb(40, 40, 40));
+                             
+                             col.painter().text(
+                                 item_rect.min + egui::vec2(8.0, 60.0),
+                                 egui::Align2::LEFT_TOP,
+                                 &format!("00:1{}", i),
+                                 egui::FontId::proportional(10.0),
+                                 egui::Color32::WHITE,
+                             );
+                             col.add_space(8.0);
+                         }
+                    });
+                } else {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(40.0);
+                        ui.label(egui::RichText::new(format!("{} tools not implemented yet.", _state.active_editor_tab)).color(color_text_dim));
+                        ui.label(egui::RichText::new("Placeholder for cloud assets").size(10.0).color(color_text_dim));
+                    });
+                }
+            });
+
+        // 4. Bottom Timeline
+        egui::TopBottomPanel::bottom("editor_timeline")
+            .exact_height(280.0)
+            .frame(egui::Frame::none().fill(color_panel_bg).inner_margin(egui::Margin::same(16.0)))
+            .show(ctx, |ui| {
+                // Toolbar strip
+                ui.horizontal(|ui| {
+                    // Left tools
+                    if ui.add(egui::Button::new(egui::RichText::new("⎌").size(16.0).color(color_text_dim)).fill(egui::Color32::TRANSPARENT)).clicked() {
+                        println!("[GUI] Undo clicked");
+                    }
+                    if ui.add(egui::Button::new(egui::RichText::new("⎍").size(16.0).color(color_text_dim)).fill(egui::Color32::TRANSPARENT)).clicked() {
+                        println!("[GUI] Redo clicked");
+                    }
+                    if ui.add(egui::Button::new(egui::RichText::new("✂").size(16.0).color(color_text_dim)).fill(egui::Color32::TRANSPARENT)).clicked() {
+                        println!("[GUI] Cut clicked");
+                    }
+                    if ui.add(egui::Button::new(egui::RichText::new("🗑").size(16.0).color(color_text_dim)).fill(egui::Color32::TRANSPARENT)).clicked() {
+                        println!("[GUI] Delete clicked");
+                    }
+
+                    // Center Playback
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_cross_align(egui::Align::Center), |ui| {
+                         ui.add_space(ui.available_width() / 2.0 - 150.0); // Rough center
+                         if ui.add(egui::Button::new("⏮").fill(egui::Color32::TRANSPARENT)).clicked() {}
+                         
+                         let is_playing = _state.video_player.as_ref().map_or(false, |p| p.playing);
+                         if ui.add(egui::Button::new(egui::RichText::new(if is_playing { "⏸" } else { "▶" }).size(20.0).color(color_gold)).fill(egui::Color32::TRANSPARENT)).clicked() {
+                             if let Some(player) = &mut _state.video_player {
+                                 player.stop();
+                                 _state.video_player = None;
+                             } else if !_state.input_path.is_empty() {
+                                 if let Ok(player) = crate::agent::video_player::VideoPlayer::new(&_state.input_path, _state.video_position) {
+                                     _state.video_player = Some(player);
+                                 }
+                             }
+                         }
+                         if ui.add(egui::Button::new("⏭").fill(egui::Color32::TRANSPARENT)).clicked() {}
+                         
+                         ui.add_space(16.0);
+                         let pos_text = format_time(_state.video_position);
+                         let dur_text = format_time(_state.video_duration);
+                         ui.label(egui::RichText::new(format!("{} / {}", pos_text, dur_text)).color(color_text_light));
+                    });
+
+                    // Right tools
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(16.0);
-                        if ui.button("+ Add Clip").clicked() {}
-                        ui.label("Fit View");
-                        ui.label("Timeline Scale - +");
-                        ui.label("0:10 / 0:30");
+                        ui.label("🔍 +");
+                        let mut zoom = 0.5f32;
+                        ui.add(egui::Slider::new(&mut zoom, 0.0..=1.0).show_value(false));
+                        ui.label("-");
                     });
                 });
-                ui.add_space(8.0);
-                ui.separator();
+                
+                ui.add_space(12.0);
                 
                 // Track Area
                 egui::ScrollArea::both().show(ui, |ui| {
-                    let tracks_rect = ui.available_rect_before_wrap();
-                    
-                    // Draw Playhead track (Time indicators)
-                    let p = ui.painter();
-                    ui.add_space(20.0);
-                    
-                    // Draw Tracks
-                    let track_height = 40.0;
-                    let track_spacing = 8.0;
                     let start_y = ui.cursor().min.y;
                     
-                    let tracks = vec![
-                        ("Text", egui::Color32::from_rgb(60, 60, 65)),
-                        ("Video", egui::Color32::from_rgb(80, 80, 95)),
-                        ("Audio", egui::Color32::from_rgb(40, 40, 45)),
-                        ("Background", egui::Color32::from_rgb(50, 50, 60)),
-                    ];
-                    
-                    for (i, (name, color)) in tracks.iter().enumerate() {
-                        let y = start_y + (i as f32) * (track_height + track_spacing);
-                        let track_rect = egui::Rect::from_min_size(
-                            egui::pos2(ui.cursor().min.x + 10.0, y),
-                            egui::vec2(ui.available_width() - 20.0, track_height),
-                        );
+                    // Ruler
+                    {
+                        let p = ui.painter();
+                        let total_width = (_state.video_duration.max(60.0) as f32) * 10.0; // 10px per second
+                        let ruler_rect = egui::Rect::from_min_size(egui::pos2(ui.cursor().min.x, start_y), egui::vec2(total_width, 20.0));
+                        p.rect_filled(ruler_rect, 0.0, color_panel_bg);
                         
-                        // Track Background
-                        p.rect_filled(track_rect, 6.0, *color);
-                        
-                        // Fake clip segment inside track
-                        let clip_rect = egui::Rect::from_min_size(
-                            egui::pos2(ui.cursor().min.x + 30.0 + (i as f32 * 50.0), y + 4.0),
-                            egui::vec2(200.0, track_height - 8.0),
-                        );
-                        p.rect_filled(clip_rect, 4.0, egui::Color32::from_rgb(100, 100, 120));
-                        
-                        // Label
-                        p.text(
-                            clip_rect.min + egui::vec2(8.0, 8.0),
-                            egui::Align2::LEFT_TOP,
-                            *name,
-                            egui::FontId::proportional(12.0),
-                            egui::Color32::WHITE,
-                        );
+                        let steps = (_state.video_duration / 10.0) as i32 + 1;
+                        for i in 0..steps.max(20) {
+                            let x = ui.cursor().min.x + (i as f32) * 100.0; // 100px per 10s
+                            p.text(egui::pos2(x, start_y + 4.0), egui::Align2::LEFT_TOP, format!("{}s", i * 10), egui::FontId::proportional(10.0), color_text_dim);
+                            p.line_segment([egui::pos2(x, start_y + 15.0), egui::pos2(x, start_y + 20.0)], egui::Stroke::new(1.0, color_text_dim));
+                        }
                     }
                     
-                    // Playhead line
-                    let playhead_x = ui.cursor().min.x + 150.0;
-                    p.line_segment(
-                        [egui::pos2(playhead_x, start_y - 20.0), egui::pos2(playhead_x, start_y + 200.0)],
-                        egui::Stroke::new(2.0, COLOR_ACCENT_BLUE),
-                    );
+                    ui.add_space(24.0);
                     
-                    // Playhead nub
-                    p.circle_filled(egui::pos2(playhead_x, start_y - 10.0), 6.0, COLOR_ACCENT_BLUE);
+                    let tracks = vec![
+                        ("Video", egui::Color32::from_rgb(117, 72, 196), 0.0),
+                        ("Effects", egui::Color32::from_rgb(220, 90, 150), 40.0),
+                        ("Audio", egui::Color32::from_rgb(45, 140, 110), 80.0),
+                    ];
                     
-                    ui.add_space(200.0); // Reserve space for tracks
+                    {
+                        let p = ui.painter();
+                        for (i, (name, accent_color, y_offset)) in tracks.iter().enumerate() {
+                            let track_y = start_y + 30.0 + y_offset;
+                            
+                            // Left label area
+                            let label_rect = egui::Rect::from_min_size(egui::pos2(ui.cursor().min.x, track_y), egui::vec2(60.0, 32.0));
+                            p.rect_filled(label_rect, 0.0, color_bg_darkest);
+                            p.text(label_rect.center(), egui::Align2::CENTER_CENTER, *name, egui::FontId::proportional(11.0), color_text_dim);
+                            
+                            // Track background line
+                            p.line_segment(
+                                [egui::pos2(ui.cursor().min.x + 60.0, track_y + 16.0), egui::pos2(ui.cursor().min.x + 1000.0, track_y + 16.0)],
+                                egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 40, 40))
+                            );
+                            
+                            // Clip Segment
+                            let clip_rect = egui::Rect::from_min_size(egui::pos2(ui.cursor().min.x + 80.0 + (i as f32 * 20.0), track_y + 2.0), egui::vec2(300.0, 28.0));
+                            p.rect_filled(clip_rect, 6.0, *accent_color);
+                        }
+                        
+                        // Playhead
+                        let playhead_x = ui.cursor().min.x + 180.0;
+                        p.line_segment([egui::pos2(playhead_x, start_y), egui::pos2(playhead_x, start_y + 150.0)], egui::Stroke::new(2.0, color_gold));
+                        p.circle_filled(egui::pos2(playhead_x, start_y + 10.0), 6.0, color_gold);
+                    }
+                    
+                    ui.add_space(180.0);
                 });
             });
 
-        // Main preview area (CentralPanel for the remainder)
+        // 5. Main Preview Window
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::none()
-                    .fill(egui::Color32::from_rgb(10, 10, 12))
-                    .inner_margin(egui::Margin::same(40.0)),
-            )
+            .frame(egui::Frame::none().fill(color_bg_darkest).inner_margin(egui::Margin::same(32.0)))
             .show(ctx, |ui| {
-                // The Video Frame
-                let video_rect = ui.available_rect_before_wrap();
-                ui.painter().rect_filled(video_rect, 12.0, egui::Color32::BLACK);
-                
-                // Texture render if available
-                if let Some(texture) = &self.preview_texture {
-                    ui.painter().image(
-                        texture.id(),
-                        video_rect,
-                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                        egui::Color32::WHITE,
-                    );
-                } else {
-                    // Placeholder play button
-                    let center = video_rect.center();
-                    ui.painter().circle_filled(center, 40.0, egui::Color32::from_white_alpha(50));
-                    
-                    // Play triangle
-                    ui.painter().polygon_filled(
-                        vec![
-                            center + egui::vec2(-10.0, -15.0),
-                            center + egui::vec2(-10.0, 15.0),
-                            center + egui::vec2(15.0, 0.0),
-                        ],
-                        egui::Color32::WHITE,
-                    );
-                }
+                // Floating tools on right
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                     ui.vertical(|ui| {
+                         ui.add(egui::Button::new("🪄").fill(color_panel_bg).rounding(4.0));
+                         ui.add_space(4.0);
+                         ui.add(egui::Button::new("🔳").fill(color_panel_bg).rounding(4.0));
+                         ui.add_space(4.0);
+                         ui.add(egui::Button::new("◓").fill(color_panel_bg).rounding(4.0));
+                     });
+                     
+                     // The Video Frame
+                     let video_rect = ui.available_rect_before_wrap();
+                     ui.painter().rect_filled(video_rect, 12.0, egui::Color32::from_rgb(0, 0, 0)); // Pure black
+                     
+                     // Texture render if available
+                     if let Some(texture) = &self.preview_texture {
+                         ui.painter().image(
+                             texture.id(),
+                             video_rect,
+                             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                             egui::Color32::WHITE,
+                         );
+                     } else {
+                         // Placeholder Play button
+                         let center = video_rect.center();
+                         ui.painter().circle_filled(center, 40.0, egui::Color32::from_white_alpha(30));
+                         ui.painter().add(egui::Shape::convex_polygon(
+                             vec![
+                                 center + egui::vec2(-10.0, -15.0),
+                                 center + egui::vec2(-10.0, 15.0),
+                                 center + egui::vec2(15.0, 0.0),
+                             ],
+                             color_gold,
+                             egui::Stroke::NONE,
+                         ));
+                     }
+                });
             });
     }
-
 }
 
+impl eframe::App for SynoidApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.configure_style(ctx);
 
@@ -1105,14 +1299,8 @@ impl SynoidApp {
             let mut state = self.ui_state.lock().unwrap();
             
             // 1. Texture conversion
-            if let Some(bytes) = state.preview_bytes.take() {
-                if let Ok(image) = image::load_from_memory(&bytes) {
-                    let size = [image.width() as _, image.height() as _];
-                    let image_buffer = image.to_rgba8();
-                    let color_image = egui::ColorImage::from_rgba_unmultiplied(size, image_buffer.as_raw());
-                    self.preview_texture = Some(ctx.load_texture("preview_frame", color_image, Default::default()));
-
-                }
+            if let Some(color_image) = state.preview_image.take() {
+                self.preview_texture = Some(ctx.load_texture("preview_frame", color_image, Default::default()));
             }
 
             // 2. Auto-preview and auto-suggest when path changes
@@ -1121,12 +1309,41 @@ impl SynoidApp {
                 let core = self.core.clone();
                 let ui_ptr = self.ui_state.clone();
                 let path = std::path::PathBuf::from(&state.input_path);
+                tracing::info!("[GUI] Auto-previewing changed input path: {:?}", path);
                 
+                let ctx_clone = ctx.clone();
                 tokio::spawn(async move {
-                    // Preview Frame
-                    if let Ok(frame) = core.get_video_frame(&path, 0.0).await {
-                        let mut s = ui_ptr.lock().unwrap();
-                        s.preview_bytes = Some(frame);
+                    // 1. Duration & Info
+                    if let Ok(duration) = crate::agent::source_tools::get_video_duration(&path).await {
+                        if let Ok(mut s) = ui_ptr.lock() {
+                            s.video_duration = duration;
+                            s.video_position = 0.0;
+                            ctx_clone.request_repaint();
+                        }
+                    }
+
+                    // 2. Preview Frame
+                    match core.get_video_frame(&path, 0.0).await {
+                        Ok(frame) => {
+                            if frame.is_empty() {
+                                tracing::warn!("[GUI] get_video_frame returned 0 bytes.");
+                            } else {
+                                match image::load_from_memory(&frame) {
+                                    Ok(img) => {
+                                        let size = [img.width() as _, img.height() as _];
+                                        let buffer = img.to_rgba8();
+                                        let color_img = egui::ColorImage::from_rgba_unmultiplied(size, buffer.as_raw());
+                                        
+                                        if let Ok(mut s) = ui_ptr.lock() {
+                                            s.preview_image = Some(color_img);
+                                            ctx_clone.request_repaint();
+                                        }
+                                    }
+                                    Err(e) => tracing::error!("[GUI] Failed to decode preview frame: {}", e),
+                                }
+                            }
+                        }
+                        Err(e) => tracing::error!("[GUI] get_video_frame failed: {}", e),
                     }
                 });
             }
@@ -1137,150 +1354,160 @@ impl SynoidApp {
                 if let Some(frame) = player.get_next_frame() {
                     let color_image = egui::ColorImage::from_rgb(size, frame);
                     self.preview_texture = Some(ctx.load_texture("video_frame", color_image, Default::default()));
+                    
+                    // Update position roughly based on FPS
+                    state.video_position += 1.0 / player.fps;
+                    if state.video_position > state.video_duration {
+                        state.video_position = state.video_duration;
+                    }
+                    
+                    ctx.request_repaint();
                 }
             }
         }
 
 
-        // Left Sidebar - Command Tree
-        egui::SidePanel::left("command_tree")
-            .default_width(240.0)
-            .resizable(true)
-            .frame(
-                egui::Frame::none()
-                    .fill(COLOR_SIDEBAR_BG)
-                    .inner_margin(egui::Margin::same(12.0)),
-            )
-            .show(ctx, |ui| {
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
+        if self.active_command != ActiveCommand::Editor {
+            // Left Sidebar - Command Tree
+            egui::SidePanel::left("command_tree")
+                .default_width(240.0)
+                .resizable(true)
+                .frame(
+                    egui::Frame::none()
+                        .fill(COLOR_SIDEBAR_BG)
+                        .inner_margin(egui::Margin::same(12.0)),
+                )
+                .show(ctx, |ui| {
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("SYNOID")
+                                .size(20.0)
+                                .color(COLOR_ACCENT_ORANGE)
+                                .strong(),
+                        );
+                    });
+                    ui.add_space(4.0);
                     ui.label(
-                        egui::RichText::new("SYNOID")
-                            .size(20.0)
-                            .color(COLOR_ACCENT_ORANGE)
-                            .strong(),
+                        egui::RichText::new("Command Center")
+                            .size(11.0)
+                            .color(COLOR_TEXT_SECONDARY),
                     );
+                    
+                    ui.add_space(8.0);
+                    // Hive Mind Status Display
+                    let hive_status = {
+                        let state = self.ui_state.lock().unwrap();
+                        state.hive_mind_status.clone()
+                    };
+                    
+                    if !hive_status.is_empty() {
+                         ui.group(|ui| {
+                             ui.label(egui::RichText::new("🐝 Hive Mind").color(COLOR_ACCENT_ORANGE).strong());
+                             ui.label(egui::RichText::new(hive_status).size(10.0));
+                         });
+                    }
+
+                    ui.add_space(16.0);
+                    ui.separator();
+                    ui.add_space(12.0);
+
+                    // Clone expanded states for mutable borrow
+                    let mut media_exp = self.tree_state.media_expanded;
+                    let visual_exp = self.tree_state.visual_expanded;
+                    let mut ai_exp = self.tree_state.ai_core_expanded;
+                    let mut security_exp = self.tree_state.security_expanded;
+                    let mut research_exp = self.tree_state.research_expanded;
+                    let mut audio_exp = self.tree_state.audio_expanded;
+
+                    let mut new_cmd: Option<ActiveCommand> = None;
+
+                    // Media
+                    if let Some(cmd) = self.render_tree_category(
+                        ui,
+                        "Media",
+                        "📹",
+                        COLOR_ACCENT_ORANGE,
+                        &mut media_exp,
+                        vec![
+                            ("✂️", "Clip", ActiveCommand::Clip),
+                            ("📦", "Compress", ActiveCommand::Compress),
+                            ("🎬", "Editor", ActiveCommand::Editor),
+                        ],
+                    ) {
+                        new_cmd = Some(cmd);
+                    }
+
+
+
+                    // AI Core
+                    if let Some(cmd) = self.render_tree_category(
+                        ui,
+                        "AI Core",
+                        "🧠",
+                        COLOR_ACCENT_BLUE,
+                        &mut ai_exp,
+                        vec![
+                            ("💬", "Brain", ActiveCommand::Brain),
+                            ("🤖", "Embody", ActiveCommand::Embody),
+                            ("🎓", "Learn", ActiveCommand::Learn),
+                            ("⚡", "Betterment", ActiveCommand::Betterment),
+                            ("💡", "Suggest", ActiveCommand::Suggest),
+                        ],
+                    ) {
+                        new_cmd = Some(cmd);
+                    }
+
+
+                    // Security
+                    if let Some(cmd) = self.render_tree_category(
+                        ui,
+                        "Security",
+                        "🛡️",
+                        COLOR_ACCENT_RED,
+                        &mut security_exp,
+                        vec![("👁️", "Defense", ActiveCommand::Guard)],
+                    ) {
+                        new_cmd = Some(cmd);
+                    }
+
+                    if let Some(cmd) = self.render_tree_category(
+                        ui,
+                        "Research",
+                        "🔍",
+                        COLOR_TEXT_PRIMARY,
+                        &mut research_exp,
+                        vec![("📚", "Research", ActiveCommand::Research)],
+                    ) {
+                        new_cmd = Some(cmd);
+                    }
+
+                    // Audio
+                    if let Some(cmd) = self.render_tree_category(
+                        ui,
+                        "Audio",
+                        "🔊",
+                        COLOR_ACCENT_ORANGE,
+                        &mut audio_exp,
+                        vec![("🎚️", "Mixer", ActiveCommand::AudioMixer)],
+                    ) {
+                        new_cmd = Some(cmd);
+                    }
+
+                    // Update tree state
+                    self.tree_state.media_expanded = media_exp;
+                    self.tree_state.visual_expanded = visual_exp;
+                    self.tree_state.ai_core_expanded = ai_exp;
+                    self.tree_state.security_expanded = security_exp;
+                    self.tree_state.research_expanded = research_exp;
+                    self.tree_state.audio_expanded = audio_exp;
+
+                    // Apply command selection
+                    if let Some(cmd) = new_cmd {
+                        self.active_command = cmd;
+                    }
                 });
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new("Command Center")
-                        .size(11.0)
-                        .color(COLOR_TEXT_SECONDARY),
-                );
-                
-                ui.add_space(8.0);
-                // Hive Mind Status Display
-                let hive_status = {
-                    let state = self.ui_state.lock().unwrap();
-                    state.hive_mind_status.clone()
-                };
-                
-                if !hive_status.is_empty() {
-                     ui.group(|ui| {
-                         ui.label(egui::RichText::new("🐝 Hive Mind").color(COLOR_ACCENT_ORANGE).strong());
-                         ui.label(egui::RichText::new(hive_status).size(10.0));
-                     });
-                }
-
-                ui.add_space(16.0);
-                ui.separator();
-                ui.add_space(12.0);
-
-                // Clone expanded states for mutable borrow
-                let mut media_exp = self.tree_state.media_expanded;
-                let visual_exp = self.tree_state.visual_expanded;
-                let mut ai_exp = self.tree_state.ai_core_expanded;
-                let mut security_exp = self.tree_state.security_expanded;
-                let mut research_exp = self.tree_state.research_expanded;
-                let mut audio_exp = self.tree_state.audio_expanded;
-
-                let mut new_cmd: Option<ActiveCommand> = None;
-
-                // Media
-                if let Some(cmd) = self.render_tree_category(
-                    ui,
-                    "Media",
-                    "📹",
-                    COLOR_ACCENT_ORANGE,
-                    &mut media_exp,
-                    vec![
-                        ("✂️", "Clip", ActiveCommand::Clip),
-                        ("📦", "Compress", ActiveCommand::Compress),
-                        ("🎬", "Editor", ActiveCommand::Editor),
-                    ],
-                ) {
-                    new_cmd = Some(cmd);
-                }
-
-
-
-                // AI Core
-                if let Some(cmd) = self.render_tree_category(
-                    ui,
-                    "AI Core",
-                    "🧠",
-                    COLOR_ACCENT_BLUE,
-                    &mut ai_exp,
-                    vec![
-                        ("💬", "Brain", ActiveCommand::Brain),
-                        ("🤖", "Embody", ActiveCommand::Embody),
-                        ("🎓", "Learn", ActiveCommand::Learn),
-                        ("⚡", "Betterment", ActiveCommand::Betterment),
-                        ("💡", "Suggest", ActiveCommand::Suggest),
-                    ],
-                ) {
-                    new_cmd = Some(cmd);
-                }
-
-
-                // Security
-                if let Some(cmd) = self.render_tree_category(
-                    ui,
-                    "Security",
-                    "🛡️",
-                    COLOR_ACCENT_RED,
-                    &mut security_exp,
-                    vec![("👁️", "Defense", ActiveCommand::Guard)],
-                ) {
-                    new_cmd = Some(cmd);
-                }
-
-                if let Some(cmd) = self.render_tree_category(
-                    ui,
-                    "Research",
-                    "🔍",
-                    COLOR_TEXT_PRIMARY,
-                    &mut research_exp,
-                    vec![("📚", "Research", ActiveCommand::Research)],
-                ) {
-                    new_cmd = Some(cmd);
-                }
-
-                // Audio
-                if let Some(cmd) = self.render_tree_category(
-                    ui,
-                    "Audio",
-                    "🔊",
-                    COLOR_ACCENT_ORANGE,
-                    &mut audio_exp,
-                    vec![("🎚️", "Mixer", ActiveCommand::AudioMixer)],
-                ) {
-                    new_cmd = Some(cmd);
-                }
-
-                // Update tree state
-                self.tree_state.media_expanded = media_exp;
-                self.tree_state.visual_expanded = visual_exp;
-                self.tree_state.ai_core_expanded = ai_exp;
-                self.tree_state.security_expanded = security_exp;
-                self.tree_state.research_expanded = research_exp;
-                self.tree_state.audio_expanded = audio_exp;
-
-                // Apply command selection
-                if let Some(cmd) = new_cmd {
-                    self.active_command = cmd;
-                }
-            });
+        }
 
         // Bottom Status Bar
         egui::TopBottomPanel::bottom("status_bar")
@@ -1309,7 +1536,8 @@ impl SynoidApp {
             });
 
         if self.active_command == ActiveCommand::Editor {
-            let mut state = self.ui_state.lock().unwrap();
+            let ui_state_arc = self.ui_state.clone();
+            let mut state = ui_state_arc.lock().unwrap();
             self.render_editor_layout(ctx, &mut state);
         } else {
             // Main Content Area

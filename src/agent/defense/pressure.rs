@@ -5,7 +5,7 @@
 // PressureLevel (Green/Yellow/Red) that the Supervisor and GUI consume.
 
 use std::sync::{Arc, RwLock};
-use sysinfo::{System, SystemExt};
+use sysinfo::System;
 use tracing::{info, warn};
 
 /// System stress level, used to gate throughput and trigger Atomic Stops.
