@@ -168,7 +168,9 @@ fn check_disk_health() -> bool {
             let test_path = dir.join(".synoid_health_check");
             match std::fs::write(&test_path, b"ok") {
                 Ok(_) => {
-                    let _ = std::fs::remove_file(&test_path);
+                    if let Err(e) = std::fs::remove_file(&test_path) {
+                        warn!("[HEALTH] Could not remove disk check temp file: {}", e);
+                    }
                     true
                 }
                 Err(e) => {
