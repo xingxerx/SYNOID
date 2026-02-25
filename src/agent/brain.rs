@@ -354,6 +354,7 @@ impl Brain {
                             music_sync_strictness: 0.8, // Assume high sync for learned styles
                             color_grade_style: "learned".to_string(),
                             success_rating: 5, // User explicitly asked to learn this, so we rate it high
+                            source_video: Some(input.clone()),
                         };
 
                         // Removed extra closing brace

@@ -351,6 +351,7 @@ impl AutonomousLearner {
                                 music_sync_strictness: 0.0,
                                 color_grade_style: "algorithmic".to_string(),
                                 success_rating: 5,
+                                source_video: Some(repo_url.clone()),
                             };
                             brain_lock.learning_kernel.memorize(&format!("algo_{}", concept.file_type), pattern);
                             brain_lock.neuroplasticity.record_success();

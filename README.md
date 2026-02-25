@@ -101,9 +101,6 @@ cargo run --release -- gui
 **Viral Clip Generation:**
 > Take this raw footage and apply ruthless editing to remove all silence. Enhance the audio for podcast quality and make it punchy. Ensure the final cut maintains a rhythm suitable for a 40-50 minute duration. This operation falls under the Video Production module, specifically utilizing the Smart Editor for semantic intent processing and Production Tools for audio enhancement. Remove any curse words or inappropiate languages and replace it with a funny sound effect.
 
-**Legacy Restoration:**
-> "Upscale this old 480p clip by 4x using the vector engine. Clean up the audio noise and stabilize the frame. This operation falls under the Video Production module, specifically utilizing the Vector Engine for upscaling and Production Tools for audio enhancement."
-
 **Automated Journalism:**
 > "Research 'Universal Editing tips on trick 2026', find top 5 relevant videos, and generate a summary script."
 
