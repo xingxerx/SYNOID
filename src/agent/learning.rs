@@ -21,6 +21,7 @@ pub struct EditingPattern {
     pub music_sync_strictness: f64, // 0.0 to 1.0
     pub color_grade_style: String,
     pub success_rating: u32, // 1-5 stars
+    pub source_video: Option<String>,
 }
 
 impl Default for EditingPattern {
@@ -32,6 +33,7 @@ impl Default for EditingPattern {
             music_sync_strictness: 0.5,
             color_grade_style: "neutral".to_string(),
             success_rating: 3,
+            source_video: None,
         }
     }
 }
@@ -113,8 +115,25 @@ impl LearningKernel {
         let key = intent.to_lowercase().replace(" ", "_");
         
         info!("[KERNEL] 💾 Memorizing pattern for '{}'", key);
-        self.patterns.insert(key, pattern);
+        self.patterns.insert(key.clone(), pattern.clone());
         self.save();
+        self.log_learned_style_to_markdown(&key, &pattern);
+    }
+
+    fn log_learned_style_to_markdown(&self, key: &str, pattern: &EditingPattern) {
+        let md_path = PathBuf::from("cortex_cache/learned_styles.md");
+        let _ = fs::create_dir_all("cortex_cache");
+        let source_str = pattern.source_video.clone().unwrap_or_else(|| "Unknown/Generated".to_string());
+        let entry = format!(
+            "### {}\n- **Source Video**: {}\n- **Avg Scene Duration**: {:.2}s\n- **Transition Speed**: {:.2}\n- **Music Sync Strictness**: {:.2}\n- **Color Grade Style**: {}\n- **Success Rating**: {}\n\n",
+            key, source_str, pattern.avg_scene_duration, pattern.transition_speed, pattern.music_sync_strictness, pattern.color_grade_style, pattern.success_rating
+        );
+        
+        // Append to file
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&md_path) {
+            let _ = file.write_all(entry.as_bytes());
+        }
     }
 
     fn save(&self) {

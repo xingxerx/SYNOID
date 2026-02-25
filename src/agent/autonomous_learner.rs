@@ -277,6 +277,7 @@ impl AutonomousLearner {
                                             music_sync_strictness: if wpm > 150.0 { 0.8 } else { 0.4 },
                                             color_grade_style: "analyzed_style".to_string(),
                                             success_rating: 5, // Self-reward for successful analysis
+                                            source_video: Some(downloaded.local_path.to_string_lossy().to_string()),
                                         };
                                         brain_lock.learning_kernel.memorize(topic, pattern);
 
@@ -393,6 +394,7 @@ impl AutonomousLearner {
                                         music_sync_strictness: 0.0,
                                         color_grade_style: "theoretical".to_string(),
                                         success_rating: 5,
+                                        source_video: Some(wiki_url.clone()),
                                     };
                                     brain_lock
                                         .learning_kernel
@@ -420,14 +422,15 @@ impl AutonomousLearner {
                                 // Synthesize knowledge from snippet
                                 let mut brain_lock = brain.lock().await;
                                 let tag = format!("web_{}", res_title.replace(" ", "_").to_lowercase());
-                                let pattern = crate::agent::learning::EditingPattern {
-                                    intent_tag: tag.clone(),
-                                    avg_scene_duration: 0.0,
-                                    transition_speed: 1.0,
-                                    music_sync_strictness: 0.0,
-                                    color_grade_style: "learned_from_web".to_string(),
-                                    success_rating: 4,
-                                };
+                                    let pattern = crate::agent::learning::EditingPattern {
+                                        intent_tag: tag.clone(),
+                                        avg_scene_duration: 0.0,
+                                        transition_speed: 1.0,
+                                        music_sync_strictness: 0.0,
+                                        color_grade_style: "learned_from_web".to_string(),
+                                        success_rating: 4,
+                                        source_video: Some(res_title.clone()),
+                                    };
                                 brain_lock.learning_kernel.memorize(&tag, pattern);
                                 brain_lock.neuroplasticity.record_success();
                             }
@@ -486,6 +489,7 @@ impl AutonomousLearner {
             music_sync_strictness: 0.6,
             color_grade_style: "feedback_learned".to_string(),
             success_rating: 5,
+            source_video: Some(input_path.to_string_lossy().to_string()),
         };
         
         brain_lock.learning_kernel.memorize(intent, pattern);

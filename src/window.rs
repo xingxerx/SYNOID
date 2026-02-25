@@ -83,7 +83,6 @@ enum ActiveCommand {
     Research,
     // Audio
     AudioMixer,
-    Betterment,
 }
 
 #[derive(Default, Clone)]
@@ -312,7 +311,6 @@ impl SynoidApp {
             ActiveCommand::Guard => self.render_guard_panel(ui, state),
             ActiveCommand::Research => self.render_research_panel(ui, state),
             ActiveCommand::AudioMixer => self.render_audio_mixer_panel(ui, state),
-            ActiveCommand::Betterment => self.render_betterment_panel(ui, state),
             ActiveCommand::Editor => (), // Editor has its own panel layout handled elsewhere
         }
     }
@@ -936,52 +934,6 @@ impl SynoidApp {
         }
     }
 
-    fn render_betterment_panel(&self, ui: &mut egui::Ui, _state: &mut UiState) {
-        ui.heading(egui::RichText::new("⚡ Video Editing Agent - Betterment").color(COLOR_ACCENT_ORANGE));
-        ui.separator();
-        ui.add_space(10.0);
-
-        ui.label("The Video Editing Agent autonomously scouts for high-quality benchmarks and adapts its editing style based on world-class cinematography.");
-        ui.add_space(10.0);
-
-        ui.group(|ui| {
-            ui.label(egui::RichText::new("🚀 Betterment Cycle").strong());
-            ui.label("Trigger a focused learning cycle on a specific cinematic topic.");
-            ui.add_space(8.0);
-            
-            ui.horizontal(|ui| {
-                ui.label("Topic:");
-                let mut topic = "Award winning travel cinematography".to_string();
-                ui.text_edit_singleline(&mut topic);
-                
-                if ui.button("🔥 Start Betterment").clicked() {
-                    let core = self.core.clone();
-                    let topic_name = topic.clone();
-                    tokio::spawn(async move {
-                        core.ensure_video_editing_agent();
-                        let vea_opt = {
-                            let vea_guard = core.video_editing_agent.lock().ok();
-                            vea_guard.and_then(|g| g.clone())
-                        };
-                        
-                        if let Some(vea) = vea_opt {
-                            let _ = vea.run_betterment_cycle(&topic_name).await;
-                        }
-                    });
-                }
-            });
-        });
-
-        ui.add_space(20.0);
-        ui.heading("📊 Learned Models");
-        ui.label("Current active styles learned through betterment cycles:");
-        ui.add_space(5.0);
-        
-        // Mocked/Future list
-        ui.label("• cinematic_pacing: v2.3 (Optimized)");
-        ui.label("• travel_vlog_storytelling: v1.1 (Developing)");
-    }
-
     // --- Helper renders ---
 
     fn render_input_file_picker(&self, ui: &mut egui::Ui, state: &mut UiState) {
@@ -1119,16 +1071,6 @@ impl SynoidApp {
                                         });
                                     }
                                 }
-                                "AI Magic" => {
-                                    let output_path = if _state.output_path.is_empty() { "output_animation.mp4".to_string() } else { _state.output_path.clone() };
-                                    tokio::spawn(async move {
-                                        tracing::info!("[GUI] Triggering Remotion Animator...");
-                                        let payload = r#"{"text": "Auto-AI Animation Generated!"}"#;
-                                        let _ = tokio::fs::write("payload.json", payload).await;
-                                        let animator = crate::agent::animator::Animator::new(std::path::Path::new("."));
-                                        let _ = animator.render_animation("MyComposition", std::path::Path::new("payload.json"), std::path::Path::new(&output_path)).await;
-                                    });
-                                }
                                 _ => {}
                             }
                         }
@@ -1208,6 +1150,43 @@ impl SynoidApp {
                              );
                              col.add_space(8.0);
                          }
+                    });
+                } else if _state.active_editor_tab == "AI Magic" {
+                    ui.vertical(|ui| {
+                        ui.add_space(10.0);
+                        ui.label(egui::RichText::new("✨ Prompt-Based Edits").color(color_gold).strong());
+                        ui.label(egui::RichText::new("Describe how you want to edit the active asset.").color(color_text_dim).small());
+                        
+                        ui.add_space(15.0);
+                        ui.label("Your Prompt:");
+                        ui.add(egui::TextEdit::multiline(&mut _state.intent).desired_rows(4).desired_width(ui.available_width()));
+                        
+                        ui.add_space(20.0);
+                        let disabled = _state.input_path.is_empty() || _state.intent.trim().is_empty();
+                        
+                        let btn = egui::Button::new(egui::RichText::new("🪄 Execute AI Magic").strong().color(egui::Color32::BLACK))
+                            .fill(if disabled { egui::Color32::from_rgb(100, 100, 100) } else { color_gold })
+                            .rounding(egui::Rounding::same(8.0));
+                            
+                        if ui.add_sized([ui.available_width(), 40.0], btn).clicked() && !disabled {
+                            let core = self.core.clone();
+                            let input = _state.input_path.clone();
+                            let output = if !_state.output_path.is_empty() {
+                                Some(PathBuf::from(&_state.output_path))
+                            } else {
+                                Some(PathBuf::from("Video/magic_edit.mp4"))
+                            };
+                            let intent = _state.intent.clone();
+                            tokio::spawn(async move {
+                                tracing::info!("[GUI] Executing AI Magic Edit...");
+                                let _ = core.process_youtube_intent(&input, &intent, output, None, false, 0).await;
+                            });
+                        }
+                        
+                        if disabled {
+                            ui.add_space(5.0);
+                            ui.label(egui::RichText::new("⚠️ Please select an asset and enter a prompt.").color(COLOR_ACCENT_RED).small());
+                        }
                     });
                 } else {
                     ui.vertical_centered(|ui| {
@@ -1538,7 +1517,6 @@ impl eframe::App for SynoidApp {
                             ("💬", "Brain", ActiveCommand::Brain),
                             ("🤖", "Embody", ActiveCommand::Embody),
                             ("🎓", "Learn", ActiveCommand::Learn),
-                            ("⚡", "Betterment", ActiveCommand::Betterment),
                             ("💡", "Suggest", ActiveCommand::Suggest),
                         ],
                     ) {
