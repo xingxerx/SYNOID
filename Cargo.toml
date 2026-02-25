@@ -3,6 +3,11 @@ name = "synoid-core"
 version = "0.1.1"
 edition = "2021"
 
+[features]
+# Enable CUDA-accelerated Whisper. Requires the CUDA SDK at compile time.
+# Not enabled by default so CI builds succeed on standard runners.
+cuda = ["whisper-rs/cuda"]
+
 [dependencies]
 tokio = { version = "1.32", features = ["full"] }
 clap = { version = "4.4", features = ["derive"] }
@@ -23,7 +28,7 @@ walkdir = "2.3"  # Efficient directory traversal
 num_cpus = "1.0"
 
 # Transcription Engine (Whisper)
-whisper-rs = { version = "0.11.1", features = ["cuda"] } # Native Whisper implementation (GPU accelerated)
+whisper-rs = { version = "0.11.1" } # GPU accel enabled via --features cuda
 hf-hub = "0.3"    # HuggingFace model downloads
 hound = "3.5"     # WAV file writing
 dirs = "5.0"      # Platform cache directories
