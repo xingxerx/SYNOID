@@ -355,6 +355,93 @@ impl SynoidApp {
                 }
             });
         }
+
+        // ── Human Control Index ──────────────────────────────────────────────
+        ui.add_space(20.0);
+        self.render_hci_panel(ui);
+    }
+
+    /// HCI (Human Control Index) authorship score panel.
+    fn render_hci_panel(&self, ui: &mut egui::Ui) {
+        let score = self.core.hci_score();
+        let display = self.core.hci_display();
+        let hci = &self.core.hci;
+        let director = hci.director_decisions.load(std::sync::atomic::Ordering::Relaxed);
+        let ai = hci.ai_decisions.load(std::sync::atomic::Ordering::Relaxed);
+        let authorship_pct = hci.authorship_percent() as u32;
+
+        // Colour gradient: green (human-dominated) → yellow (balanced) → orange (AI-dominated)
+        let bar_color = if score >= 1.5 {
+            COLOR_ACCENT_GREEN
+        } else if score >= 0.75 {
+            egui::Color32::from_rgb(220, 200, 60)
+        } else {
+            COLOR_ACCENT_ORANGE
+        };
+
+        ui.group(|ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new("Authorship Score")
+                        .size(14.0)
+                        .color(COLOR_ACCENT_PURPLE)
+                        .strong(),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(
+                        egui::RichText::new(format!("HCI {:.2}", score))
+                            .size(14.0)
+                            .color(bar_color)
+                            .strong(),
+                    );
+                });
+            });
+
+            ui.add_space(4.0);
+
+            // Progress bar: authorship percentage
+            let bar_pct = (authorship_pct as f32 / 100.0).clamp(0.0, 1.0);
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), 14.0),
+                egui::Sense::hover(),
+            );
+            let painter = ui.painter();
+            // Background track
+            painter.rect_filled(rect, 4.0, egui::Color32::from_rgb(50, 50, 60));
+            // Filled portion
+            let fill_rect = egui::Rect::from_min_size(
+                rect.min,
+                egui::vec2(rect.width() * bar_pct, rect.height()),
+            );
+            painter.rect_filled(fill_rect, 4.0, bar_color);
+
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(format!("Human {}%", authorship_pct))
+                        .size(12.0)
+                        .color(COLOR_ACCENT_GREEN),
+                );
+                ui.label(
+                    egui::RichText::new(format!("   Director: {}  |  AI: {}", director, ai))
+                        .size(12.0)
+                        .color(COLOR_TEXT_SECONDARY),
+                );
+            });
+
+            // Interpretation label
+            let interp = if score >= 2.0 {
+                "Strong human authorship"
+            } else if score >= 1.0 {
+                "Balanced human-AI collaboration"
+            } else if score >= 0.5 {
+                "AI-assisted creation"
+            } else {
+                "Predominantly AI-generated"
+            };
+            ui.label(egui::RichText::new(interp).size(11.0).color(COLOR_TEXT_SECONDARY));
+            ui.label(egui::RichText::new(&display).size(10.0).monospace().color(COLOR_TEXT_SECONDARY));
+        });
     }
 
     fn render_preview_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {

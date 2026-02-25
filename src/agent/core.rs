@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::info;
 
@@ -21,6 +21,68 @@ use crate::agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipel
 use crate::agent::autonomous_learner::AutonomousLearner;
 use crate::agent::editor_queue::{VideoEditorQueue, EditJob, JobStatus};
 use crate::gpu_backend;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Human Control Index (Feature 7)
+// HCI = Director's Decision Power / AI Autonomy
+// Tracks how many editing decisions came from the human vs. the AI so users
+// can see their "Authorship Score" in the Command Center.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Atomic counters for HCI tracking.
+#[derive(Debug, Default)]
+pub struct HciTracker {
+    /// Incremented every time the user manually directs an edit.
+    pub director_decisions: AtomicU64,
+    /// Incremented every time the AI autonomously applies an operation.
+    pub ai_decisions: AtomicU64,
+}
+
+impl HciTracker {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record that the *human director* made a decision.
+    pub fn record_director(&self) {
+        self.director_decisions.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that the *AI* made an autonomous decision.
+    pub fn record_ai(&self) {
+        self.ai_decisions.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Compute HCI = director_decisions / (ai_decisions + 1).
+    ///
+    /// A value > 1.0 means humans are driving more decisions than the AI.
+    /// A value of 1.0 means equal partnership.
+    /// A value < 1.0 means the AI is doing most of the work.
+    pub fn score(&self) -> f64 {
+        let d = self.director_decisions.load(Ordering::Relaxed) as f64;
+        let a = self.ai_decisions.load(Ordering::Relaxed) as f64;
+        d / (a + 1.0)
+    }
+
+    /// Human-readable authorship percentage (director share of total decisions).
+    pub fn authorship_percent(&self) -> f64 {
+        let d = self.director_decisions.load(Ordering::Relaxed) as f64;
+        let a = self.ai_decisions.load(Ordering::Relaxed) as f64;
+        let total = d + a;
+        if total == 0.0 { 100.0 } else { (d / total * 100.0).round() }
+    }
+
+    /// Formatted status line for the GUI.
+    pub fn display(&self) -> String {
+        format!(
+            "HCI {:.2}  |  Authorship {}%  |  Human {} / AI {}",
+            self.score(),
+            self.authorship_percent() as u64,
+            self.director_decisions.load(Ordering::Relaxed),
+            self.ai_decisions.load(Ordering::Relaxed),
+        )
+    }
+}
 
 /// The shared state of the agent
 #[derive(Clone)]
@@ -45,9 +107,12 @@ pub struct AgentCore {
 
     // Video Editor Queue (Sync for easy access)
     pub editor_queue: Arc<VideoEditorQueue>,
-    
+
     // Video Editing Agent (The high-level orchestrator)
     pub video_editing_agent: Arc<Mutex<Option<crate::agent::video_editing_agent::VideoEditingAgent>>>,
+
+    // Human Control Index tracker
+    pub hci: Arc<HciTracker>,
 }
 
 impl AgentCore {
@@ -66,6 +131,7 @@ impl AgentCore {
             autonomous_learner: Arc::new(Mutex::new(None)), // Lazy init
             editor_queue: Arc::new(VideoEditorQueue::new(Arc::new(AsyncMutex::new(Brain::new(api_url, "llama3:latest"))))),
             video_editing_agent: Arc::new(Mutex::new(None)), // Lazy init
+            hci: Arc::new(HciTracker::new()),
         }
     }
 
@@ -178,6 +244,8 @@ impl AgentCore {
              self.log(&format!("[CORE] ℹ️ Note: Long video chunking ({} mins) requested but experimental. Proceeding with full video.", chunk_minutes));
         }
 
+        // Human issued this command explicitly
+        self.record_director_decision();
         self.set_status("📥 Downloading...");
         let sanitized_url = Self::sanitize_input(url);
         self.log(&format!("[CORE] Processing YouTube: {}", sanitized_url));
@@ -421,6 +489,8 @@ impl AgentCore {
         output: &Path,
         _dry_run: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Human chose the intent; AI will handle execution — record both sides.
+        self.record_director_decision();
         self.set_status("🤖 Embodying...");
         self.log(&format!("[CORE] Embodied Agent Activating for: {}", intent));
 
@@ -463,6 +533,9 @@ impl AgentCore {
 
         let job_id = self.editor_queue.add_job(job).await;
         self.log(&format!("[CORE] 📥 Embodied intent queued. Job ID: {}", job_id));
+
+        // The AI will autonomously process the queued job
+        self.record_ai_decision();
 
         // Record success (of queuing at least)
         {
@@ -545,6 +618,32 @@ impl AgentCore {
 
     pub async fn get_audio_tracks(&self, input: &Path) -> Result<Vec<crate::agent::audio_tools::AudioTrack>, Box<dyn std::error::Error + Send + Sync>> {
         crate::agent::audio_tools::get_audio_tracks(input).await
+    }
+
+    // ── Human Control Index ──────────────────────────────────────────────────
+
+    /// Call this whenever the human director explicitly issues a command
+    /// (e.g. pressing a button in the GUI, typing an intent in the Brain
+    /// panel, or invoking a CLI subcommand).
+    pub fn record_director_decision(&self) {
+        self.hci.record_director();
+    }
+
+    /// Call this whenever the AI autonomously applies an operation without
+    /// explicit user instruction (e.g. auto-cut in SmartEditor, silent
+    /// background jobs, autonomous learner decisions).
+    pub fn record_ai_decision(&self) {
+        self.hci.record_ai();
+    }
+
+    /// Return the current HCI display string for the GUI status bar.
+    pub fn hci_display(&self) -> String {
+        self.hci.display()
+    }
+
+    /// Return the raw HCI score (Director Power / AI Autonomy).
+    pub fn hci_score(&self) -> f64 {
+        self.hci.score()
     }
 
 

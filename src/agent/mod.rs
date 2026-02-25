@@ -36,4 +36,8 @@ pub mod video_editing_agent;
 pub mod video_player;
 pub mod animator;
 
+// AI Video Feature Modules (Feature Set v2)
+pub mod multicam;       // AI Multicam Sync & SmartSwitch
+pub mod upscale_engine; // SeedVR2 / Real-ESRGAN / Lanczos upscaling
+
 pub mod core; // Exposed Core Logic

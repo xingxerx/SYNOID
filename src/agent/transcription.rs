@@ -218,7 +218,148 @@ fn format_srt_time(seconds: f64) -> String {
     let mins = ((seconds % 3600.0) / 60.0) as u32;
     let secs = (seconds % 60.0) as u32;
     let millis = ((seconds.fract()) * 1000.0) as u32;
-    
+
     format!("{:02}:{:02}:{:02},{:03}", hours, mins, secs, millis)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Script-Based Editing (Feature 1)
+// Users delete sentences from the transcript; SYNOID converts those removals
+// into precise FFmpeg cut-points, mimicking Descript / DaVinci IntelliScript.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A user-editable view of the transcript that tracks which segments have been
+/// marked for removal.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScriptEditor {
+    /// All original segments, with their keep/delete flag.
+    pub segments: Vec<EditableSegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EditableSegment {
+    pub segment: TranscriptSegment,
+    /// When `true` this segment will be cut out of the video.
+    pub deleted: bool,
+}
+
+impl ScriptEditor {
+    /// Build a ScriptEditor from a raw transcript.
+    pub fn from_transcript(segments: Vec<TranscriptSegment>) -> Self {
+        Self {
+            segments: segments
+                .into_iter()
+                .map(|s| EditableSegment { segment: s, deleted: false })
+                .collect(),
+        }
+    }
+
+    /// Mark a segment as deleted by index.
+    pub fn delete_segment(&mut self, index: usize) {
+        if let Some(seg) = self.segments.get_mut(index) {
+            seg.deleted = true;
+        }
+    }
+
+    /// Restore a previously deleted segment.
+    pub fn restore_segment(&mut self, index: usize) {
+        if let Some(seg) = self.segments.get_mut(index) {
+            seg.deleted = false;
+        }
+    }
+
+    /// Collect the time-ranges that should be *kept* (inverse of deletions).
+    /// Each entry is `(start_secs, end_secs)`.
+    pub fn kept_ranges(&self) -> Vec<(f64, f64)> {
+        let mut ranges: Vec<(f64, f64)> = Vec::new();
+
+        for seg in &self.segments {
+            if seg.deleted {
+                continue;
+            }
+            let s = seg.segment.start;
+            let e = seg.segment.end;
+            // Merge with previous range if contiguous (gap < 0.05 s)
+            if let Some(last) = ranges.last_mut() {
+                if s - last.1 < 0.05 {
+                    last.1 = e;
+                    continue;
+                }
+            }
+            ranges.push((s, e));
+        }
+
+        ranges
+    }
+
+    /// Build an FFmpeg concat-demuxer script that keeps only the un-deleted
+    /// segments.  Returns the script text.
+    pub fn build_ffmpeg_concat_script(&self, input_path: &std::path::Path) -> String {
+        let mut script = String::new();
+        for (start, end) in self.kept_ranges() {
+            script.push_str(&format!(
+                "file '{}'\ninpoint {:.6}\noutpoint {:.6}\n",
+                input_path.display(),
+                start,
+                end,
+            ));
+        }
+        script
+    }
+
+    /// Execute the script-driven edit: writes a temp concat file, runs FFmpeg,
+    /// and saves the result to `output_path`.
+    pub async fn apply_edits(
+        &self,
+        input_path: &std::path::Path,
+        output_path: &std::path::Path,
+    ) -> Result<()> {
+        use tokio::process::Command;
+
+        let concat_script = self.build_ffmpeg_concat_script(input_path);
+        if concat_script.is_empty() {
+            anyhow::bail!("All segments are deleted – nothing to keep.");
+        }
+
+        // Write the concat script to a temp file
+        let tmp_dir = std::env::temp_dir();
+        let concat_file = tmp_dir.join(format!("synoid_concat_{}.txt", uuid_simple()));
+        std::fs::write(&concat_file, &concat_script)
+            .context("Writing concat script")?;
+
+        info!(
+            "[SCRIPT-EDITOR] Applying {} kept ranges → {:?}",
+            self.kept_ranges().len(),
+            output_path
+        );
+
+        let status = Command::new("ffmpeg")
+            .args(["-y", "-f", "concat", "-safe", "0", "-i"])
+            .arg(&concat_file)
+            .args(["-c", "copy"])
+            .arg(output_path)
+            .status()
+            .await
+            .context("Launching FFmpeg for script edit")?;
+
+        let _ = std::fs::remove_file(&concat_file);
+
+        if !status.success() {
+            anyhow::bail!("FFmpeg script-edit failed with status: {}", status);
+        }
+
+        info!("[SCRIPT-EDITOR] Script-based edit complete: {:?}", output_path);
+        Ok(())
+    }
+}
+
+/// Generate a short random hex string for temp file names (no external crate needed).
+fn uuid_simple() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos();
+    format!("{:x}", t)
 }
 
