@@ -16,23 +16,25 @@ impl Animator {
     /// Check if the remotion engine is initialized
     pub async fn is_initialized(&self) -> bool {
         self.engine_dir.join("package.json").exists()
+            && self.engine_dir.join("node_modules").exists()
     }
 
-    /// Renders a lower third or animation via Remotion
+    /// Renders a composition via Remotion (DynamicAnimation by default)
     pub async fn render_animation(
         &self,
         composition_name: &str,
         payload_json_path: &Path,
         output_video: &Path,
     ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
-        info!("[ANIMATOR] Rendering composition '{}' via Remotion...", composition_name);
+        // Default to DynamicAnimation if no composition specified
+        let comp = if composition_name.is_empty() { "DynamicAnimation" } else { composition_name };
+        info!("[ANIMATOR] Rendering composition '{}' via Remotion...", comp);
 
         if !self.is_initialized().await {
-            return Err("Remotion engine is not initialized. Please run npm install in remotion-engine.".into());
+            return Err("Remotion engine is not initialized. Run npm install in remotion-engine/.".into());
         }
 
-        // Running Remotion requires local node_modules
-        // npx remotion render src/index.ts <CompositionName> <Output> --props <Payload>
+        // npx remotion render src/index.tsx <CompositionName> <Output> --props <Payload>
         let mut cmd = if cfg!(windows) {
             Command::new("cmd")
         } else {
@@ -40,9 +42,9 @@ impl Animator {
         };
         
         let output = if cfg!(windows) {
-            cmd.arg("/C").arg(format!("npx remotion render src/index.ts {} {} --props {}", composition_name, output_video.to_string_lossy(), payload_json_path.to_string_lossy()))
+            cmd.arg("/C").arg(format!("npx remotion render src/index.tsx {} {} --props {}", comp, output_video.to_string_lossy(), payload_json_path.to_string_lossy()))
         } else {
-            cmd.arg("-c").arg(format!("npx remotion render src/index.ts \"{}\" \"{}\" --props \"{}\"", composition_name, output_video.to_string_lossy(), payload_json_path.to_string_lossy()))
+            cmd.arg("-c").arg(format!("npx remotion render src/index.tsx \"{}\" \"{}\" --props \"{}\"", comp, output_video.to_string_lossy(), payload_json_path.to_string_lossy()))
         }
         .current_dir(&self.engine_dir)
         .output()
