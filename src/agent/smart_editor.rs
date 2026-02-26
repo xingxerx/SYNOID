@@ -117,7 +117,22 @@ User Request: "{}"
 
         match agent.reason(&prompt).await {
             Ok(response) => {
-                let clean_json = response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+                // Extract the JSON object from the LLM response.
+                // Llama3 often prefixes its answer with prose like "Here is the JSON configuration:"
+                // so we search for the first {...} block instead of relying on the full string being JSON.
+                let extracted = if let Some(mat) = regex::Regex::new(r"(?s)\{.*\}")
+                    .ok()
+                    .and_then(|re| re.find(response.trim()))
+                {
+                    mat.as_str()
+                } else {
+                    response.trim()
+                };
+                let clean_json = extracted
+                    .trim_start_matches("```json")
+                    .trim_start_matches("```")
+                    .trim_end_matches("```")
+                    .trim();
                 if let Ok(intent) = serde_json::from_str::<EditIntent>(clean_json) {
                     tracing::info!("[SMART] Successfully parsed EditIntent from LLM");
                     return intent;
@@ -177,8 +192,21 @@ User Request: "{}"
             density,
             custom_keywords: vec![],
             target_duration: Self::parse_duration_range(&lower),
-            censor_profanity: false,
-            profanity_replacement: None,
+            censor_profanity: lower.contains("censor")
+                || lower.contains("bleep")
+                || lower.contains("curse")
+                || lower.contains("swear")
+                || lower.contains("profan")
+                || lower.contains("inappropriate")
+                || lower.contains("funny sound effect")
+                || lower.contains("sound effect"),
+            profanity_replacement: if lower.contains("boing") {
+                Some("boing.wav".to_string())
+            } else if lower.contains("funny sound") || lower.contains("sound effect") {
+                Some("boing.wav".to_string())
+            } else {
+                None
+            },
         }
     }
 
@@ -1183,10 +1211,108 @@ pub async fn smart_edit(
         "✅ Smart edit complete! Removed {} boring segments. Output: {:.2} MB",
         removed, size_mb
     );
-
     log(&format!("[SMART] {}", summary));
 
+    // 8. Subtitle Generation & Burning
+    // Only attempt if we have a transcript to work with
+    if let Some(ref t) = transcript {
+        if !t.is_empty() {
+            log("[SMART] 📝 Generating remapped subtitles for edited video...");
+            let srt_content = generate_srt_for_kept_scenes(t, &scenes_to_keep);
+
+            if !srt_content.trim().is_empty() {
+                let srt_path = work_dir.join("synoid_subtitles.srt");
+                match fs::write(&srt_path, &srt_content) {
+                    Ok(_) => {
+                        log(&format!("[SMART] 📄 SRT written: {} entries", srt_content.lines().filter(|l| l.contains(" --> ")).count()));
+
+                        // Burn subtitles into a new output file, then replace the original
+                        let sub_output = output.with_extension("sub.mp4");
+                        log("[SMART] 🔥 Burning subtitles into video...");
+                        match production_tools::burn_subtitles(output, &srt_path, &sub_output).await {
+                            Ok(_) => {
+                                // Replace the original output with the subtitled version
+                                if let Err(e) = fs::rename(&sub_output, output) {
+                                    warn!("[SMART] Could not replace output with subtitled version: {}", e);
+                                } else {
+                                    log("[SMART] ✅ Subtitles burned into final video.");
+                                }
+                            }
+                            Err(e) => warn!("[SMART] Subtitle burning failed (non-fatal): {}", e),
+                        }
+
+                        // Also keep the raw SRT alongside the output for reference
+                        let output_srt = output.with_extension("srt");
+                        let _ = fs::copy(&srt_path, &output_srt);
+                        let _ = fs::remove_file(&srt_path);
+                    }
+                    Err(e) => warn!("[SMART] Failed to write SRT file: {}", e),
+                }
+            } else {
+                log("[SMART] ⚠️ No subtitle entries generated (empty transcript after remapping).");
+            }
+        }
+    }
+
     Ok(summary)
+}
+
+/// Generate a properly time-remapped SRT subtitle file from a transcript and the kept scenes.
+/// The kept scenes list maps original timestamps -> output timeline positions.
+/// Returns the full SRT file content as a String.
+pub fn generate_srt_for_kept_scenes(
+    transcript: &[crate::agent::transcription::TranscriptSegment],
+    kept_scenes: &[Scene],
+) -> String {
+    let mut srt = String::new();
+    let mut counter = 1u32;
+
+    // Build a time remapping: for each kept scene, compute its start position in the output video.
+    // Output start = sum of durations of all previous kept scenes.
+    let mut output_offsets: Vec<(f64, f64, f64)> = Vec::new(); // (src_start, src_end, out_start)
+    let mut cursor = 0.0_f64;
+    for scene in kept_scenes {
+        output_offsets.push((scene.start_time, scene.end_time, cursor));
+        cursor += scene.duration;
+    }
+
+    for seg in transcript {
+        // Find which kept scene this segment falls inside
+        for &(src_start, src_end, out_start) in &output_offsets {
+            // Clip the segment to the scene boundary
+            let clip_start = seg.start.max(src_start);
+            let clip_end = seg.end.min(src_end);
+            if clip_end <= clip_start {
+                continue;
+            }
+
+            // Remap to output timeline
+            let new_start = out_start + (clip_start - src_start);
+            let new_end = out_start + (clip_end - src_start);
+
+            // Format timestamps as SRT HH:MM:SS,mmm
+            let fmt = |secs: f64| -> String {
+                let total_ms = (secs * 1000.0) as u64;
+                let ms = total_ms % 1000;
+                let s = (total_ms / 1000) % 60;
+                let m = (total_ms / 60_000) % 60;
+                let h = total_ms / 3_600_000;
+                format!("{:02}:{:02}:{:02},{:03}", h, m, s, ms)
+            };
+
+            srt.push_str(&format!(
+                "{}\n{} --> {}\n{}\n\n",
+                counter,
+                fmt(new_start),
+                fmt(new_end),
+                seg.text.trim()
+            ));
+            counter += 1;
+            break; // Each segment only belongs to one scene window
+        }
+    }
+
+    srt
 }
 
 #[cfg(test)]

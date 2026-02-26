@@ -70,11 +70,24 @@ Transform raw footage into high-retention content automatically:
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Rust** 1.70+
-- **FFmpeg** (in PATH)
+- **Rust** 1.70+ — [rustup.rs](https://rustup.rs)
+- **FFmpeg** (in PATH) — [ffmpeg.org](https://ffmpeg.org/download.html)
+- **Node.js 18+** and **npm** — [nodejs.org](https://nodejs.org) *(required for the Remotion animation engine)*
 - **yt-dlp** (for YouTube features)
 - **Python 3** (for Voice/TTS features)
-- **Ollama** (running `deepseek-r1:14b` or similar)
+- **Ollama** (running `llama3:latest` or similar) — [ollama.com](https://ollama.com)
+
+### First-time Setup
+
+Before building, install the Remotion animation engine dependencies **once**:
+
+```bash
+cd remotion-engine
+npm install
+cd ..
+```
+
+> **Note:** If you skip this step, `cargo build` will show a warning but will not open a terminal or fail. Remotion-based animations simply won't render until `npm install` is run.
 
 ### Build
 ```bash
