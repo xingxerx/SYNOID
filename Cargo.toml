@@ -38,7 +38,8 @@ url = "2.5.8"
 # cudarc = { version = "0.18.2", features = ["cuda-version-from-build-system", "driver"] }
 
 # Web Server & Dashboard API
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.7", features = ["macros", "multipart"] }
+mime_guess = "2.0"
 tower-http = { version = "0.5", features = ["fs", "cors"] }
 tower = { version = "0.4", features = ["util"] }
 petgraph = "0.8.3"

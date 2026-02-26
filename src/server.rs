@@ -16,6 +16,7 @@ use tracing::{error, info};
 use std::path::{PathBuf, Component};
 
 use crate::state::{DashboardStatus, DashboardTask, KernelState, TasksStatus};
+use crate::editor_api;
 
 pub type AppState = Arc<KernelState>;
 
@@ -85,8 +86,17 @@ fn validate_stream_path(raw_path: &str) -> Result<PathBuf, String> {
 }
 
 pub fn create_router(state: Arc<KernelState>) -> Router {
+    // Editor API — mounts without auth so the React editor can talk to it freely
+    let editor_router = editor_api::router(state.core.clone());
+
     Router::new()
+        // React editor UI (served from editor/dist)
+        .nest_service("/editor", ServeDir::new("editor/dist"))
+        // Dashboard (legacy)
         .nest_service("/", ServeDir::new("dashboard"))
+        // Editor REST API (no auth — runs on localhost only)
+        .nest("/api/editor", editor_router)
+        // Existing dashboard/legacy API (with auth)
         .route("/api/status", get(get_status))
         .route("/api/tasks", get(get_tasks))
         .route("/api/chat", post(handle_chat))
