@@ -397,10 +397,10 @@ pub async fn burn_subtitles(
 ) -> Result<ProductionResult, Box<dyn std::error::Error + Send + Sync>> {
     info!("[PRODUCTION] Burning subtitles from {:?} onto {:?}", input_srt, input_video);
 
-    // FFmpeg subtitle filter is strict about paths. Drive letter colons must be escaped.
+    // FFmpeg subtitle filter is strict about paths. Drive letter colons must be escaped, and slashes must be forward.
     let mut srt_safe = safe_arg_path(input_srt).to_string_lossy().into_owned();
     if cfg!(windows) {
-        srt_safe = srt_safe.replace(":", "\\:");
+        srt_safe = srt_safe.replace("\\", "/").replace(":", "\\:");
     }
 
     // Force a clean modern font

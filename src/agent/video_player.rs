@@ -101,9 +101,9 @@ impl VideoPlayer {
         let _ = Command::new("taskkill").arg("/F").arg("/IM").arg("ffplay.exe").spawn();
     }
 
-    pub fn get_next_frame(&mut self) -> Option<&Vec<u8>> {
+    pub fn get_next_frame(&mut self) -> Option<(bool, &Vec<u8>)> {
         if !self.playing {
-            return self.current_frame.as_ref();
+            return self.current_frame.as_ref().map(|f| (false, f));
         }
 
         let now = Instant::now();
@@ -111,7 +111,7 @@ impl VideoPlayer {
 
         if let Some(last) = self.last_frame_time {
             if now.duration_since(last) < frame_duration {
-                return self.current_frame.as_ref();
+                return self.current_frame.as_ref().map(|f| (false, f));
             }
         }
 
@@ -119,15 +119,15 @@ impl VideoPlayer {
             Ok(frame) => {
                 self.current_frame = Some(frame);
                 self.last_frame_time = Some(now);
-                self.current_frame.as_ref()
+                self.current_frame.as_ref().map(|f| (true, f))
             }
             Err(TryRecvError::Empty) => {
                 // Wait for ffmpeg to catch up
-                self.current_frame.as_ref()
+                self.current_frame.as_ref().map(|f| (false, f))
             }
             Err(TryRecvError::Disconnected) => {
                 self.playing = false;
-                self.current_frame.as_ref()
+                self.current_frame.as_ref().map(|f| (false, f))
             }
         }
     }

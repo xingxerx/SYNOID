@@ -1109,7 +1109,9 @@ impl SynoidApp {
 
         // 3. Asset Browser Panel
         egui::SidePanel::left("editor_asset_browser")
-            .exact_width(280.0)
+            .resizable(true)
+            .default_width(280.0)
+            .width_range(150.0..=600.0)
             .frame(
                 egui::Frame::none()
                     .fill(color_panel_bg)
@@ -1253,6 +1255,79 @@ impl SynoidApp {
                             ui.label(egui::RichText::new("⚠️ Please select an asset and enter a prompt.").color(COLOR_ACCENT_RED).small());
                         }
                     });
+                } else if _state.active_editor_tab == "Subtitles" {
+                    ui.vertical(|ui| {
+                        ui.add_space(10.0);
+                        ui.label(egui::RichText::new("💬 Generate Subtitles").color(color_gold).strong());
+                        ui.label(egui::RichText::new("Transcribe audio to create a matching SRT file.").color(color_text_dim).small());
+                        ui.add_space(15.0);
+
+                        if _state.input_path.is_empty() {
+                            ui.label(egui::RichText::new("⚠️ Please select a media asset first.").color(COLOR_ACCENT_RED).small());
+                        } else {
+                            if _state.is_transcribing {
+                                ui.horizontal(|ui| {
+                                    ui.spinner();
+                                    ui.label("Transcribing in background...");
+                                });
+                            } else {
+                                let srt_path = std::path::Path::new(&_state.input_path).with_extension("srt");
+                                if srt_path.exists() {
+                                    ui.label(egui::RichText::new("✅ Subtitles ready!").color(COLOR_ACCENT_GREEN));
+                                    ui.add_space(5.0);
+                                    if let Ok(content) = std::fs::read_to_string(&srt_path) {
+                                        ui.group(|ui| {
+                                            egui::ScrollArea::vertical().max_height(100.0).show(ui, |ui| {
+                                                ui.label(egui::RichText::new(content.lines().take(15).collect::<Vec<_>>().join("\n")).monospace().small());
+                                                if content.lines().count() > 15 {
+                                                    ui.label("...");
+                                                }
+                                            });
+                                        });
+                                    }
+                                    ui.add_space(10.0);
+                                    if ui.button("Regenerate Subtitles").clicked() {
+                                        _state.is_transcribing = true;
+                                        let input = _state.input_path.clone();
+                                        let ui_ptr = self.ui_state.clone();
+                                        tokio::spawn(async move {
+                                            if let Ok(engine) = crate::agent::transcription::TranscriptionEngine::new(None).await {
+                                                if let Ok(segments) = engine.transcribe(std::path::Path::new(&input)).await {
+                                                    let srt = crate::agent::transcription::generate_srt(&segments);
+                                                    let _ = tokio::fs::write(&srt_path, srt).await;
+                                                }
+                                            }
+                                            if let Ok(mut s) = ui_ptr.lock() {
+                                                s.is_transcribing = false;
+                                            }
+                                        });
+                                    }
+                                } else {
+                                    if ui.add_sized([ui.available_width(), 40.0],
+                                        egui::Button::new(egui::RichText::new("🎙 Transcribe Media").strong().color(egui::Color32::BLACK))
+                                            .fill(color_gold)
+                                            .rounding(egui::Rounding::same(8.0))
+                                    ).clicked() {
+                                        _state.is_transcribing = true;
+                                        let input = _state.input_path.clone();
+                                        let ui_ptr = self.ui_state.clone();
+                                        tokio::spawn(async move {
+                                            if let Ok(engine) = crate::agent::transcription::TranscriptionEngine::new(None).await {
+                                                if let Ok(segments) = engine.transcribe(std::path::Path::new(&input)).await {
+                                                    let srt = crate::agent::transcription::generate_srt(&segments);
+                                                    let out_srt = std::path::Path::new(&input).with_extension("srt");
+                                                    let _ = tokio::fs::write(&out_srt, srt).await;
+                                                }
+                                            }
+                                            if let Ok(mut s) = ui_ptr.lock() {
+                                                s.is_transcribing = false;
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    });
                 } else {
                     ui.vertical_centered(|ui| {
                         ui.add_space(40.0);
@@ -1264,7 +1339,9 @@ impl SynoidApp {
 
         // 4. Bottom Timeline
         egui::TopBottomPanel::bottom("editor_timeline")
-            .exact_height(280.0)
+            .resizable(true)
+            .default_height(280.0)
+            .height_range(100.0..=600.0)
             .frame(egui::Frame::none().fill(color_panel_bg).inner_margin(egui::Margin::same(16.0)))
             .show(ctx, |ui| {
                  // Toolbar strip
@@ -1427,7 +1504,39 @@ impl SynoidApp {
                      });
                      
                      // The Video Frame
-                     let video_rect = ui.available_rect_before_wrap();
+                     let mut video_rect = ui.available_rect_before_wrap();
+                     
+                     if let Some(texture) = &self.preview_texture {
+                         let tex_size = texture.size_vec2();
+                         let aspect = tex_size.x / tex_size.y;
+                         let mut new_size = video_rect.size();
+                         if new_size.x / new_size.y > aspect {
+                             new_size.x = new_size.y * aspect;
+                         } else {
+                             new_size.y = new_size.x / aspect;
+                         }
+                         let center = video_rect.center();
+                         video_rect = egui::Rect::from_center_size(center, new_size);
+                     }
+
+                     // Handle click interaction to play/pause
+                     let response = ui.allocate_rect(video_rect, egui::Sense::click());
+                     if response.clicked() && !_state.input_path.is_empty() {
+                         let is_playing = _state.video_player.as_ref().map_or(false, |p| p.playing);
+                         if is_playing {
+                             if let Some(player) = &mut _state.video_player {
+                                 player.stop();
+                             }
+                             _state.video_player = None;
+                         } else {
+                             if let Ok(player) = crate::agent::video_player::VideoPlayer::new(&_state.input_path, _state.video_position) {
+                                 _state.video_player = Some(player);                             }
+                         }
+                     }
+                     if response.hovered() && !_state.input_path.is_empty() {
+                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                     }
+
                      ui.painter().rect_filled(video_rect, 12.0, egui::Color32::from_rgb(0, 0, 0)); // Pure black
                      
                      // Texture render if available
@@ -1516,20 +1625,37 @@ impl eframe::App for SynoidApp {
             }
 
             // 3. Video player frame update
+            let mut new_texture_pixels: Option<(Vec<u8>, [usize; 2])> = None;
+            let mut new_position: Option<f64> = None;
+            let mut player_is_playing = false;
+            
+            // Snapshot immutable fields before mutably borrowing video_player
+            let cur_pos = state.video_position;
+            let max_dur = state.video_duration;
+            
             if let Some(player) = &mut state.video_player {
-                let size = [player.width as _, player.height as _];
-                if let Some(frame) = player.get_next_frame() {
-                    let color_image = egui::ColorImage::from_rgb(size, frame);
-                    self.preview_texture = Some(ctx.load_texture("video_frame", color_image, Default::default()));
-                    
-                    // Update position roughly based on FPS
-                    state.video_position += 1.0 / player.fps;
-                    if state.video_position > state.video_duration {
-                        state.video_position = state.video_duration;
+                let size = [player.width, player.height];
+                let fps = player.fps;
+                player_is_playing = player.playing;
+                if let Some((is_new, frame)) = player.get_next_frame() {
+                    if is_new {
+                        new_texture_pixels = Some((frame.clone(), [size[0], size[1]]));
+                        let new_pos = cur_pos + 1.0 / fps;
+                        new_position = Some(new_pos.min(max_dur));
                     }
-                    
-                    ctx.request_repaint();
+                    player_is_playing = player.playing;
                 }
+            }
+
+            if let Some((pixels, size)) = new_texture_pixels {
+                let color_image = egui::ColorImage::from_rgb([size[0], size[1]], &pixels);
+                self.preview_texture = Some(ctx.load_texture("video_frame", color_image, Default::default()));
+            }
+            if let Some(pos) = new_position {
+                state.video_position = pos;
+            }
+            if player_is_playing {
+                ctx.request_repaint();
             }
         }
 

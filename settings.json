@@ -1,0 +1,14 @@
+{
+    "terminal.integrated.shellIntegration.enabled": false,
+    "terminal.integrated.automationProfile.windows": {
+        "path": "powershell.exe",
+        "args": [
+            "-NoLogo",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden"
+        ]
+    }
+}

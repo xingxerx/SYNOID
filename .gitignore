@@ -20,15 +20,11 @@ __pycache__/
 
 # Node.js / Web Bloat
 node_modules/
-package-lock.json
-package.json
-.cnpmrc
-.npmrc
+# Do NOT ignore package.json or package-lock.json
 
 # OS
 Thumbs.db
 .DS_Store
-
 # IDE
 .vscode
 .idea
