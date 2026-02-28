@@ -112,10 +112,10 @@ cargo run --release -- gui
 ### 🧠 Creative Intent Examples
 
 **Viral Clip Generation:**
-> "Before making any cuts, utilize the Research module to analyze current YouTube audience retention data and viewer feedback for video game content, specifically focusing on the game 'Outbound'. Based on that data, strictly define 'boring' segments as anything that typically causes audience drop-off in gaming videos (e.g., long loading screens, repetitive inventory management, off-topic rambling, or silent walking). Define 'action' segments as highly engaging moments, such as major gameplay discoveries, key base-building progress, exciting events, or important commentary.
-Pass these strict definitions to the Smart Editor's Semantic Understanding engine. Do not make random cuts; you must completely preserve all 'action' segments showcasing the core gameplay loop and highlights of 'Outbound'. Only apply ruthless editing to remove dead air and silence strictly below the -40dB threshold.
+> "Utilize the Research module to source and download the top 5 most engaging YouTube videos related to the game 'Outbound' as well as the best video editing videos. Analyze these downloaded videos specifically for their pacing, cut frequency, and how they transition between 'action' and 'boring' segments. Feed this analysis directly into the Academy module to increase your Neuroplasticity and establish a new Style Library for this genre.
+Once you have learned this editing style, apply these exact patterns to my raw footage. Pass the newly learned definitions of 'action' and 'boring' to the Smart Editor's Semantic Understanding engine. Do not make random cuts; completely preserve the core gameplay loop as defined by your newly trained style library, and only apply ruthless editing to remove dead air and silence strictly below the -40dB threshold.
 Before generating any captions, utilize Production Tools to apply studio-quality EQ, compression, and normalization to the voice tracks. Ensure the audio is fully enhanced first so that every single spoken word is picked up and transcribed into absolute, 100% accurate on-screen captions.
-Finally, utilize Smart Transitions to analyze scene motion for seamless cuts, and apply the Engagement Consolidator to structure the final video for maximum viewer retention."
+Finally, utilize Smart Transitions to apply seamless cuts based on the motion patterns you learned from the reference videos, and use the Engagement Consolidator to structure the final video."
 
 **Automated Journalism:**
 > "Research 'Universal Editing tips on trick 2026', find top 5 relevant videos, and generate a summary script."
