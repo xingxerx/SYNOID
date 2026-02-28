@@ -112,7 +112,10 @@ cargo run --release -- gui
 ### 🧠 Creative Intent Examples
 
 **Viral Clip Generation:**
-> Take this raw footage and apply ruthless editing to remove all silence. Enhance the audio for podcast quality and make it punchy. Ensure the final cut maintains a rhythm suitable for a 40-50 minute duration. This operation falls under the Video Production module, specifically utilizing the Smart Editor for semantic intent processing and Production Tools for audio enhancement. Remove any curse words or inappropiate languages and replace it with a funny sound effect.
+> "Before making any cuts, utilize the Research module to analyze current YouTube audience retention data and viewer feedback for video game content, specifically focusing on the game 'Outbound'. Based on that data, strictly define 'boring' segments as anything that typically causes audience drop-off in gaming videos (e.g., long loading screens, repetitive inventory management, off-topic rambling, or silent walking). Define 'action' segments as highly engaging moments, such as major gameplay discoveries, key base-building progress, exciting events, or important commentary.
+Pass these strict definitions to the Smart Editor's Semantic Understanding engine. Do not make random cuts; you must completely preserve all 'action' segments showcasing the core gameplay loop and highlights of 'Outbound'. Only apply ruthless editing to remove dead air and silence strictly below the -40dB threshold.
+Before generating any captions, utilize Production Tools to apply studio-quality EQ, compression, and normalization to the voice tracks. Ensure the audio is fully enhanced first so that every single spoken word is picked up and transcribed into absolute, 100% accurate on-screen captions.
+Finally, utilize Smart Transitions to analyze scene motion for seamless cuts, and apply the Engagement Consolidator to structure the final video for maximum viewer retention."
 
 **Automated Journalism:**
 > "Research 'Universal Editing tips on trick 2026', find top 5 relevant videos, and generate a summary script."
