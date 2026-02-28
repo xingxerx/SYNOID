@@ -132,6 +132,10 @@ pub struct UiState {
     pub intent_history_index: usize,
     pub track_audio: String,
     pub track_overlay: String,
+    // Editor API session tracking
+    pub editor_session_id: Option<String>,
+    pub editor_api_status: String,
+    pub ai_edit_running: bool,
 }
 
 
@@ -162,6 +166,9 @@ impl SynoidApp {
         ui_state.intent_history_index = 0;
         ui_state.track_audio = String::new();
         ui_state.track_overlay = String::new();
+        ui_state.editor_session_id = None;
+        ui_state.editor_api_status = "No active session".to_string();
+        ui_state.ai_edit_running = false;
 
         // Start background poller for Hive Mind status
         let core_clone = core.clone();
@@ -322,7 +329,38 @@ impl SynoidApp {
             ActiveCommand::Guard => self.render_guard_panel(ui, state),
             ActiveCommand::Research => self.render_research_panel(ui, state),
             ActiveCommand::AudioMixer => self.render_audio_mixer_panel(ui, state),
-            ActiveCommand::Editor => (), // Editor has its own panel layout handled elsewhere
+            ActiveCommand::Editor => {
+                // Create/reuse session then open React editor in browser
+                let _core = self.core.clone();
+                let ui_ptr = self.ui_state.clone();
+                let session_id = {
+                    let s = self.ui_state.lock().unwrap();
+                    s.editor_session_id.clone()
+                };
+                if session_id.is_none() {
+                    tokio::spawn(async move {
+                        match reqwest::Client::new()
+                            .post("http://127.0.0.1:3000/api/editor/sessions")
+                            .send().await
+                        {
+                            Ok(r) => {
+                                if let Ok(json) = r.json::<serde_json::Value>().await {
+                                    let id = json["id"].as_str().unwrap_or("").to_string();
+                                    if let Ok(mut s) = ui_ptr.lock() {
+                                        s.editor_session_id = Some(id.clone());
+                                        s.editor_api_status = format!("Session: {}", &id[..8.min(id.len())]);
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                if let Ok(mut s) = ui_ptr.lock() {
+                                    s.editor_api_status = "⚠ Server not running".to_string();
+                                }
+                            }
+                        }
+                    });
+                }
+            }
         }
     }
 
@@ -996,6 +1034,16 @@ impl SynoidApp {
                     if ui.add(egui::Button::new("↶").fill(egui::Color32::TRANSPARENT)).clicked() {}
                     if ui.add(egui::Button::new("↷").fill(egui::Color32::TRANSPARENT)).clicked() {}
 
+                    // Session status pill
+                    {
+                        let session_status = _state.editor_api_status.clone();
+                        ui.add_space(8.0);
+                        ui.label(egui::RichText::new(&session_status).size(10.0).color(
+                            if session_status.starts_with('⚠') { egui::Color32::from_rgb(255, 100, 60) }
+                            else { egui::Color32::from_rgb(80, 200, 120) }
+                        ));
+                    }
+
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_cross_align(egui::Align::Center), |ui| {
                          ui.add_space(ui.available_width() / 2.0 - 100.0); // Rough center
                          ui.label(egui::RichText::new("● My Project / ").color(color_text_dim));
@@ -1011,6 +1059,19 @@ impl SynoidApp {
                     });
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Open React Editor in browser
+                        let open_btn = egui::Button::new(egui::RichText::new("  🌐 Web Editor  ").color(color_text_light))
+                            .fill(egui::Color32::from_rgb(40, 40, 55))
+                            .rounding(egui::Rounding::same(16.0));
+                        if ui.add(open_btn).clicked() {
+                            let url = "http://127.0.0.1:3000/editor";
+                            if let Err(e) = open::that(url) {
+                                tracing::warn!("[GUI] Failed to open browser: {}", e);
+                            }
+                        }
+
+                        ui.add_space(8.0);
+
                         // Export Button
                         let export_btn = egui::Button::new(egui::RichText::new("  🎬 Export  ").color(egui::Color32::BLACK).strong())
                             .fill(color_gold)
@@ -1214,17 +1275,32 @@ impl SynoidApp {
                 } else if _state.active_editor_tab == "AI Magic" {
                     ui.vertical(|ui| {
                         ui.add_space(10.0);
-                        ui.label(egui::RichText::new("✨ Prompt-Based Edits").color(color_gold).strong());
+                        ui.label(egui::RichText::new("✨ AI Director").color(color_gold).strong());
                         ui.label(egui::RichText::new("Describe how you want to edit the active asset.").color(color_text_dim).small());
                         
                         ui.add_space(15.0);
                         ui.label("Your Prompt:");
                         ui.add(egui::TextEdit::multiline(&mut _state.intent).desired_rows(4).desired_width(ui.available_width()));
                         
-                        ui.add_space(20.0);
-                        let disabled = _state.input_path.is_empty() || _state.intent.trim().is_empty();
+                        ui.add_space(10.0);
+
+                        // Open React Editor shortcut
+                        if ui.add_sized(
+                            [ui.available_width(), 36.0],
+                            egui::Button::new(egui::RichText::new("🌐 Open Full Web Editor").color(color_gold))
+                                .fill(egui::Color32::from_rgb(30, 26, 17))
+                                .stroke(egui::Stroke::new(1.0, color_gold))
+                                .rounding(egui::Rounding::same(8.0))
+                        ).clicked() {
+                            let _ = open::that("http://127.0.0.1:3000/editor");
+                        }
+
+                        ui.add_space(10.0);
+
+                        let disabled = _state.input_path.is_empty() || _state.intent.trim().is_empty() || _state.ai_edit_running;
                         
-                        let btn = egui::Button::new(egui::RichText::new("🪄 Execute AI Magic").strong().color(egui::Color32::BLACK))
+                        let btn_label = if _state.ai_edit_running { "⏳ Running…" } else { "🪄 Execute AI Magic" };
+                        let btn = egui::Button::new(egui::RichText::new(btn_label).strong().color(egui::Color32::BLACK))
                             .fill(if disabled { egui::Color32::from_rgb(100, 100, 100) } else { color_gold })
                             .rounding(egui::Rounding::same(8.0));
                             
@@ -1237,20 +1313,48 @@ impl SynoidApp {
                                 Some(std::path::PathBuf::from("Video/magic_edit.mp4"))
                             };
                             let intent = _state.intent.clone();
+                            let ui_ptr = self.ui_state.clone();
+                            let session_id = _state.editor_session_id.clone();
                             
                             // History for undo tracking
                             if _state.intent_history.last() != Some(&intent) {
                                 _state.intent_history.push(intent.clone());
                                 _state.intent_history_index = _state.intent_history.len() - 1;
                             }
+                            _state.ai_edit_running = true;
 
                             tokio::spawn(async move {
                                 tracing::info!("[GUI] Executing AI Magic Edit...");
-                                let _ = core.process_youtube_intent(&input, &intent, output, None, false, 0).await;
+
+                                // If there's an active editor session, use the session API
+                                if let Some(sid) = session_id {
+                                    let payload = serde_json::json!({
+                                        "intent": intent,
+                                        "assetId": null
+                                    });
+                                    match reqwest::Client::new()
+                                        .post(format!("http://127.0.0.1:3000/api/editor/sessions/{}/ai/auto-edit", sid))
+                                        .json(&payload)
+                                        .send().await
+                                    {
+                                        Ok(_) => tracing::info!("[GUI] AI auto-edit job started via session API"),
+                                        Err(e) => tracing::warn!("[GUI] Session API failed, falling back: {}", e),
+                                    }
+                                } else {
+                                    // Fallback: direct smart_edit
+                                    let _input_path = std::path::PathBuf::from(&input);
+                                    let output_path = output.unwrap_or_else(|| std::path::PathBuf::from("Video/magic_edit.mp4"));
+                                    let _ = core.process_youtube_intent(&input, &intent, Some(output_path), None, false, 0).await;
+                                }
+
+                                if let Ok(mut s) = ui_ptr.lock() {
+                                    s.ai_edit_running = false;
+                                    s.editor_api_status = "Edit complete!".to_string();
+                                }
                             });
                         }
                         
-                        if disabled {
+                        if disabled && !_state.ai_edit_running {
                             ui.add_space(5.0);
                             ui.label(egui::RichText::new("⚠️ Please select an asset and enter a prompt.").color(COLOR_ACCENT_RED).small());
                         }

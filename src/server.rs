@@ -86,23 +86,28 @@ fn validate_stream_path(raw_path: &str) -> Result<PathBuf, String> {
 }
 
 pub fn create_router(state: Arc<KernelState>) -> Router {
-    // Editor API — mounts without auth so the React editor can talk to it freely
+    // Editor API (no state — handled internally by EditorState)
     let editor_router = editor_api::router(state.core.clone());
 
-    Router::new()
-        // React editor UI (served from editor/dist)
-        .nest_service("/editor", ServeDir::new("editor/dist"))
-        // Dashboard (legacy)
-        .nest_service("/", ServeDir::new("dashboard"))
-        // Editor REST API (no auth — runs on localhost only)
-        .nest("/api/editor", editor_router)
-        // Existing dashboard/legacy API (with auth)
+    // Stateful dashboard routes
+    let dashboard_router = Router::new()
         .route("/api/status", get(get_status))
         .route("/api/tasks", get(get_tasks))
         .route("/api/chat", post(handle_chat))
         .route("/api/stream", get(stream_video))
         .layer(middleware::from_fn(auth_middleware))
-        .with_state(state)
+        .with_state(state);
+
+    // Merge: stateless editor routes + file serving + stateful dashboard routes
+    Router::new()
+        // Serve React editor from /editor
+        .nest_service("/editor", ServeDir::new("editor/dist"))
+        // Dashboard legacy
+        .nest_service("/", ServeDir::new("dashboard"))
+        // Editor REST API (no auth guard — runs on localhost only)
+        .nest("/api/editor", editor_router)
+        // Merge the stateful dashboard router
+        .merge(dashboard_router)
         .layer(CorsLayer::permissive())
 }
 

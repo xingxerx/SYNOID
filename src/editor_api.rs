@@ -3,9 +3,9 @@
 
 use axum::{
     body::Body,
-    extract::{Multipart, Path, Query, State},
+    extract::{Multipart, Path, State},
     http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Response, Sse},
+    response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
 };
@@ -15,11 +15,9 @@ use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::Duration,
 };
 use tokio::{fs as tfs, process::Command};
-use tokio_stream::StreamExt as _;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use uuid::Uuid;
 
 // ─── Shared state for session tracking ────────────────────────────────────────
@@ -490,7 +488,7 @@ async fn ai_auto_edit(
         });
     }
 
-    let core = s.core.clone();
+    let _core = s.core.clone();
     let intent = req.intent.clone();
     let session_id_clone = session_id.clone();
     let store_clone = s.store.clone();
@@ -580,7 +578,7 @@ async fn start_render(
         });
     }
 
-    let core = s.core.clone();
+    let _core = s.core.clone();
     let store_clone = s.store.clone();
     let session_id_clone = session_id.clone();
     let output_clone = output_path.clone();
@@ -663,7 +661,7 @@ async fn render_status(
 // ─── Project Save/Load ────────────────────────────────────────────────────────
 async fn save_project(
     Path(session_id): Path<String>,
-    State(s): State<EditorState>,
+    State(_s): State<EditorState>,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
     let project_path = PathBuf::from(format!(
@@ -680,7 +678,7 @@ async fn save_project(
 
 async fn load_project(
     Path(session_id): Path<String>,
-    State(s): State<EditorState>,
+    State(_s): State<EditorState>,
 ) -> impl IntoResponse {
     let project_path = PathBuf::from(format!(
         "cortex_cache/editor_sessions/{}/project.json", session_id

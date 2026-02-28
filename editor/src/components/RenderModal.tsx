@@ -9,7 +9,7 @@ interface Props {
 
 export function RenderModal({ sessionId, onClose, onDownload }: Props) {
     const [status, setStatus] = React.useState<RenderStatus>({ progress: 0, status: 'idle' });
-    const intervalRef = useRef<ReturnType<typeof setInterval>>();
+    const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
     useEffect(() => {
         if (!sessionId) return;
