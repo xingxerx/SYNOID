@@ -170,7 +170,7 @@ SYNOID_API_URL=http://localhost:11434/v1
 
 ## 📜 License
 
-**Proprietary** — © 2026 Xing_The_Creator | SYNOID
+**Proprietary** — © 2026 xingxerx | SYNOID
 
 All rights reserved. Unauthorized copying, modification, or distribution is prohibited.
 
