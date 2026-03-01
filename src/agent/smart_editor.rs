@@ -1237,13 +1237,9 @@ pub async fn smart_edit(
     }
     fs::create_dir_all(&segments_dir)?;
 
-    log("[SMART] ✂️ Extracting good segments (muxing enhanced audio)...");
+    log("[SMART] ✂️ Assembling segments with single-pass render...");
 
     // Commentary Generator removed (funny_engine deprecated)
-
-    // Extract each segment
-    let mut segment_files = Vec::new();
-    let mut segment_durations = Vec::new();
 
     let total_segments = scenes_to_keep.len();
     let max_concurrency = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 6);
@@ -1275,32 +1271,25 @@ pub async fn smart_edit(
                 cmd.arg("-i").arg(production_tools::safe_arg_path(&enhanced_path));
             }
 
-            // Reset timestamps to 0 for each segment.
-            // Input-seeking (-ss before -i) leaves DTS anchored at the seek point.
-            // setpts=PTS-STARTPTS and asetpts=PTS-STARTPTS normalise them to [0, dur]
-            // which is mandatory for the xfade offset accumulation to be correct.
+            // Mapping
+            cmd.arg("-map").arg("0:v"); // Video from input 0
+
             if use_enhanced_audio {
-                cmd.arg("-filter_complex")
-                    .arg("[0:v]setpts=PTS-STARTPTS[v];[1:a]asetpts=PTS-STARTPTS[a]");
-                cmd.arg("-map").arg("[v]");
-                cmd.arg("-map").arg("[a]");
+                cmd.arg("-map").arg("1:a:0"); // Audio from input 1 (enhanced)
             } else {
-                cmd.arg("-filter_complex")
-                    .arg("[0:v]setpts=PTS-STARTPTS[v];[0:a]asetpts=PTS-STARTPTS[a]");
-                cmd.arg("-map").arg("[v]");
-                cmd.arg("-map").arg("[a]");
+                cmd.arg("-map").arg("0:a:0"); // Original audio
             }
 
-            // fast preset gives better keyframe alignment than ultrafast at ~10% cost
+            // CRF 23 is a good balance for quality/size. Preset faster for speed.
             cmd.arg("-c:v")
                 .arg("libx264")
                 .arg("-preset")
-                .arg("fast")
+                .arg("ultrafast")
                 .arg("-crf")
-                .arg("22");
+                .arg("23");
 
             // Always re-encode audio to AAC to ensure format consistency
-            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k").arg("-ar").arg("48000");
+            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
 
             cmd.arg("-avoid_negative_ts").arg("make_zero");
             cmd.arg(production_tools::safe_arg_path(&seg_path));
@@ -1319,72 +1308,56 @@ pub async fn smart_edit(
         tasks.push(handle);
     }
 
-    // Await all parallel tasks and process results
-    for (i, handle) in tasks.into_iter().enumerate() {
-        if let Ok(Some((path, dur))) = handle.await {
-            segment_files.push(path);
-            segment_durations.push(dur);
-        }
-
-        if i < 3 || i % 10 == 0 || i == total_segments - 1 {
-            log(&format!(
-                "[SMART] ⏳ Segment {}/{} processed in parallel",
-                i + 1,
-                total_segments
-            ));
-        }
+    // Concatenate all trimmed segments
+    for i in 0..total_segments {
+        filter.push_str(&format!("[v{i}][a{i}]"));
     }
+    filter.push_str(&format!("concat=n={total_segments}:v=1:a=1[outv][outa]"));
 
-    if segment_files.is_empty() {
-        fs::remove_dir_all(&segments_dir)?;
-        return Err("Failed to extract any segments".into());
-    }
+    // Check if we should add crossfades for even smoother transitions
+    // For funny mode we use xfade transitions, otherwise keep it clean
+    if _funny_mode && total_segments > 1 {
+        log("[SMART] 🎭 Funny Mode: Adding transitions between segments...");
 
-    if _funny_mode {
-        log("[SMART] 🎭 Funny Mode: Rendering transitions and commentary...");
-
-        // 6a. Complex Logic for Funny Mode
-        let transition_duration = target_transition_speed;
-        let filter_complex = production_tools::build_transition_filter(
-            segment_files.len(),
+        // Rebuild filter with xfade transitions
+        let transition_duration = target_transition_speed.min(0.5);
+        let xfade_filter = build_smooth_xfade_filter(
+            &scenes_to_keep,
+            audio_input_idx,
             transition_duration,
-            &segment_durations,
         );
 
-        if filter_complex.is_empty() {
-            // Fallback to simple concat if only 1 clip
-            log("[SMART] Only 1 clip, skipping transitions.");
-        } else {
-            let mut cmd = Command::new("ffmpeg");
-            cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
+        if !xfade_filter.is_empty() {
+            filter = xfade_filter;
+        }
+    }
 
-            // Inputs (Video Segments)
-            for seg in &segment_files {
-                cmd.arg("-i").arg(production_tools::safe_arg_path(seg));
-            }
+    log(&format!("[SMART] 🔗 Rendering {} segments in single pass...", total_segments));
 
-            // Inputs (Commentary Audio)
-            // We need to mix these in.
-            // Complex mixing logic omitted for brevity in this step,
-            // focusing on Visual Transitions first as requested.
-            // (Commentary overlay would require amix or adelay filter injection)
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
 
-            // Apply Transition Filter
-            cmd.arg("-filter_complex").arg(&filter_complex);
+    // Input 0: original video
+    cmd.arg("-i").arg(production_tools::safe_arg_path(input));
 
-            // Map output from filter (v{last}, a{last})
-            let last_idx = segment_files.len();
-            cmd.arg("-map").arg(format!("[v{}]", last_idx));
-            cmd.arg("-map").arg(format!("[a{}]", last_idx));
+    // Input 1: enhanced audio (if available)
+    if use_enhanced_audio {
+        cmd.arg("-i").arg(production_tools::safe_arg_path(&final_enhanced_audio_path));
+    }
 
-            cmd.arg("-c:v")
-                .arg("libx264")
-                .arg("-preset")
-                .arg("medium")
-                .arg("-crf")
-                .arg("23");
-            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
-            cmd.arg(production_tools::safe_arg_path(output));
+    cmd.arg("-filter_complex").arg(&filter);
+    cmd.arg("-map").arg("[outv]");
+    cmd.arg("-map").arg("[outa]");
+
+    // Encode settings - medium preset for quality, single pass = consistent quality
+    cmd.arg("-c:v").arg("libx264")
+        .arg("-preset").arg("medium")
+        .arg("-crf").arg("23")
+        .arg("-pix_fmt").arg("yuv420p");
+
+    cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
+    cmd.arg("-movflags").arg("+faststart");
+    cmd.arg(production_tools::safe_arg_path(output));
 
             let status = cmd.status().await?;
             if !status.success() {
@@ -1406,163 +1379,47 @@ pub async fn smart_edit(
         }
     }
 
-    // 6b. Smart Concat with Neuroplasticity-informed Transitions (Default path)
-    //     Falls back to raw copy-concat if the xfade filter fails or there is
-    //     only one segment.
+    // 6b. Simple Concat (Default or Fallback)
     let concat_file = segments_dir.join("concat_list.txt");
-    log("[SMART] 🔗 Stitching segments with smart transitions...");
 
-    let mut concat_succeeded = false;
-
-    // Only attempt xfade transitions when there are at least 2 valid segments
-    // and the segments were re-encoded consistently (they are always re-encoded
-    // in the extraction loop above).
-    if segment_files.len() >= 2 {
-        // Build a motion-aware transition list.
-        // For each boundary between segment[i] → segment[i+1]:
-        //   - Look up the actual gap size in the original timeline by matching
-        //     scenes_to_keep[i].end_time against the cut_points list.
-        //   - Use scene score + duration as a motion proxy to pick transition type:
-        //       score > 0.65  => high motion  → wipe/slide
-        //       score 0.4-0.65 => medium motion → dissolve/crossfade
-        //       score < 0.4   => speech/static  → near-invisible fade
-        //   - Gap < 0.5 s (speech jump cut) always overrides to near-invisible fade.
-
-        // Build a fast lookup: original_end_time → gap_size for all cut points
-        // cut_points is (orig_start_of_gap, orig_end_of_gap)
-        let gap_lookup: std::collections::HashMap<u64, f64> = cut_points
-            .iter()
-            .map(|(gs, ge)| {
-                // key = gap_start (= previous scene's end_time) quantised to ms
-                ((*gs * 1000.0) as u64, ge - gs)
-            })
-            .collect();
-
-        let mut v_chain = "[0:v]".to_string();
-        let mut a_chain = "[0:a]".to_string();
-        let mut filter_parts: Vec<String> = Vec::new();
-        let mut acc_offset = 0.0_f64;
-
-        for i in 0..segment_files.len() - 1 {
-            let seg_dur = segment_durations[i];
-
-            // Look up the gap that follows this segment in the original timeline.
-            let scene_end_ms = (scenes_to_keep[i].end_time * 1000.0) as u64;
-            let gap_in_orig = gap_lookup.get(&scene_end_ms).copied().unwrap_or(1.0);
-
-            // Motion proxy from the NEXT scene's score and own scene duration.
-            let next_score = scenes_to_keep.get(i + 1).map(|s| s.score).unwrap_or(0.5);
-            let this_score = scenes_to_keep[i].score;
-            let avg_score = (next_score + this_score) / 2.0;
-
-            // Speech cut (tiny gap = words run together) → near-invisible fade
-            let (dur, tname): (f64, &str) = if gap_in_orig < 0.5 {
-                (0.06, "fade")  // nearly invisible — speech continuity
-            } else if avg_score > 0.65 {
-                // High motion: use the neuroplasticity-driven wipe/slide
-                (neuro_transition_dur, neuro_transition_name)
-            } else if avg_score > 0.40 {
-                // Medium motion: smooth crossfade/dissolve
-                (neuro_transition_dur.max(0.15), "dissolve")
-            } else {
-                // Static / speech-heavy: subtle fade
-                (0.10, "fade")
-            };
-
-            // Safety: transition cannot be longer than the shortest neighbouring segment
-            let min_seg = seg_dur.min(segment_durations.get(i + 1).copied().unwrap_or(seg_dur));
-            let dur = dur.min(min_seg * 0.4).max(0.04);
-
-            // xfade offset: cumulative output duration minus the overlap we're about to eat
-            acc_offset += seg_dur - dur;
-
-            let v_out = format!("[xv{}]", i + 1);
-            let a_out = format!("[xa{}]", i + 1);
-            let next_v = format!("[{}:v]", i + 1);
-            let next_a = format!("[{}:a]", i + 1);
-
-            filter_parts.push(format!(
-                "{}{}xfade=transition={}:duration={:.3}:offset={:.3}{}",
-                v_chain, next_v, tname, dur, acc_offset.max(0.0), v_out
-            ));
-            filter_parts.push(format!(
-                "{}{}acrossfade=d={:.3}:c1=tri:c2=tri{}",
-                a_chain, next_a, dur, a_out
-            ));
-
-            v_chain = v_out;
-            a_chain = a_out;
-
-            log(&format!(
-                "[SMART] Transition [{i}→{}]: type={tname}, dur={dur:.3}s, gap_orig={gap_in_orig:.2}s, avg_score={avg_score:.2}",
-                i + 1
-            ));
-        }
-
-        if !filter_parts.is_empty() {
-            let filter_complex = filter_parts.join(";");
-            let mut cmd = Command::new("ffmpeg");
-            cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("warning").arg("-nostdin");
-            for seg in &segment_files {
-                cmd.arg("-i").arg(production_tools::safe_arg_path(seg));
-            }
-            cmd.arg("-filter_complex").arg(&filter_complex);
-            cmd.arg("-map").arg(&v_chain);
-            cmd.arg("-map").arg(&a_chain);
-            cmd.arg("-c:v").arg("libx264").arg("-preset").arg("fast").arg("-crf").arg("22");
-            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
-            cmd.arg("-movflags").arg("+faststart");
-            cmd.arg(production_tools::safe_arg_path(output));
-
-            match cmd.status().await {
-                Ok(s) if s.success() => {
-                    concat_succeeded = true;
-                    log("[SMART] ✅ Motion-aware transitions applied successfully.");
-                }
-                _ => {
-                    warn!("[SMART] xfade transition render failed — falling back to re-encode concat.");
-                }
-            }
+    {
+        let mut file = fs::File::create(&concat_file)?;
+        for seg in &segment_files {
+            writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
         }
     }
 
-    // Fallback: re-encode concat (NOT copy — copy preserves per-segment timestamps
-    // which start at 0 for each clip, causing timestamp discontinuities at joins
-    // that make playback choppy even though the file is technically valid).
-    if !concat_succeeded {
-        {
-            let mut file = fs::File::create(&concat_file)?;
-            for seg in &segment_files {
-                writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
-            }
-        }
+    log("[SMART] 🔗 Stitching segments together...");
 
-        let status = Command::new("ffmpeg")
-            .arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin")
-            .arg("-f").arg("concat").arg("-safe").arg("0")
-            .arg("-i").arg(production_tools::safe_arg_path(&concat_file))
-            // Re-encode so timestamps are rewritten monotonically across all segments.
-            // This prevents the choppy "jump" from timestamp resets at each joint.
-            .arg("-c:v").arg("libx264").arg("-preset").arg("fast").arg("-crf").arg("22")
-            .arg("-c:a").arg("aac").arg("-b:a").arg("192k")
-            .arg("-movflags").arg("+faststart")
-            .arg(production_tools::safe_arg_path(output))
-            .output()
-            .await?;
+    // 7. Concatenate segments
+    let status = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-nostdin")
+        .arg("-f")
+        .arg("concat")
+        .arg("-safe")
+        .arg("0")
+        .arg("-i")
+        .arg(production_tools::safe_arg_path(&concat_file))
+        .arg("-c")
+        .arg("copy")
+        .arg(production_tools::safe_arg_path(output))
+        .output()
+        .await?;
 
-        if !status.status.success() {
-            let stderr = String::from_utf8_lossy(&status.stderr);
-            error!("[SMART] FFmpeg concat failed: {}", stderr);
-            fs::remove_dir_all(&segments_dir)?;
-            return Err("Failed to concatenate segments".into());
-        }
-        log("[SMART] ✅ Fallback re-encode concat succeeded.");
-    }
-
-    // Clean up temp dir + enhanced audio
+    // Clean up
     fs::remove_dir_all(&segments_dir)?;
     if use_enhanced_audio {
         let _ = fs::remove_file(enhanced_audio_path);
+    }
+
+    if !status.status.success() {
+        let stderr = String::from_utf8_lossy(&status.stderr);
+        error!("[SMART] FFmpeg concat failed: {}", stderr);
+        return Err("Failed to concatenate segments".into());
     }
 
     // Get output file size
@@ -1630,6 +1487,193 @@ pub async fn smart_edit(
     }
 
     Ok(summary)
+}
+
+/// Build a smooth xfade filter for transitions between trimmed segments.
+/// Uses xfade for video and acrossfade for audio, applied directly on trim outputs.
+fn build_smooth_xfade_filter(
+    scenes: &[Scene],
+    audio_input_idx: usize,
+    transition_duration: f64,
+) -> String {
+    let n = scenes.len();
+    if n < 2 {
+        return String::new();
+    }
+
+    let effects = ["fade", "wipeleft", "wiperight", "slideleft", "slideright"];
+    let mut filter = String::new();
+
+    // Step 1: Trim all segments
+    for (i, scene) in scenes.iter().enumerate() {
+        filter.push_str(&format!(
+            "[0:v]trim=start={:.6}:end={:.6},setpts=PTS-STARTPTS[vraw{i}]; ",
+            scene.start_time, scene.end_time
+        ));
+        filter.push_str(&format!(
+            "[{audio_input_idx}:a]atrim=start={:.6}:end={:.6},asetpts=PTS-STARTPTS[araw{i}]; ",
+            scene.start_time, scene.end_time
+        ));
+    }
+
+    // Step 2: Chain xfade transitions for video
+    let mut prev_v = "vraw0".to_string();
+    let mut offset = scenes[0].duration - transition_duration;
+
+    for i in 1..n {
+        let effect = effects[i % effects.len()];
+        let out_label = if i == n - 1 { "outv".to_string() } else { format!("vx{i}") };
+        filter.push_str(&format!(
+            "[{prev_v}][vraw{i}]xfade=transition={effect}:duration={:.3}:offset={:.6}[{out_label}]; ",
+            transition_duration, offset.max(0.0)
+        ));
+        prev_v = out_label;
+        // Next offset accounts for the current segment minus the overlap
+        offset += scenes[i].duration - transition_duration;
+    }
+
+    // Step 3: Chain acrossfade for audio
+    let mut prev_a = "araw0".to_string();
+    for i in 1..n {
+        let out_label = if i == n - 1 { "outa".to_string() } else { format!("ax{i}") };
+        let dur = transition_duration.min(scenes[i].duration * 0.5).min(scenes[i - 1].duration * 0.5);
+        filter.push_str(&format!(
+            "[{prev_a}][araw{i}]acrossfade=d={:.3}:c1=tri:c2=tri[{out_label}]; ",
+            dur
+        ));
+        prev_a = out_label;
+    }
+
+    // Remove trailing "; "
+    if filter.ends_with("; ") {
+        filter.truncate(filter.len() - 2);
+    }
+
+    filter
+}
+
+/// Fallback: extract individual segments and concatenate (legacy approach).
+/// Used only when the single-pass filter_complex fails (e.g., very long/complex videos).
+async fn fallback_extract_and_concat(
+    input: &Path,
+    enhanced_audio_path: &Path,
+    use_enhanced_audio: bool,
+    scenes_to_keep: &[Scene],
+    output: &Path,
+    segments_dir: &Path,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    warn!("[SMART] Using fallback segment extraction...");
+
+    if !segments_dir.exists() {
+        fs::create_dir_all(segments_dir)?;
+    }
+
+    let mut segment_files = Vec::new();
+    let max_concurrency = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 6);
+    let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrency));
+    let mut tasks = Vec::with_capacity(scenes_to_keep.len());
+
+    for (i, scene) in scenes_to_keep.iter().enumerate() {
+        let seg_path = segments_dir.join(format!("seg_{:04}.mp4", i));
+        let scene_duration = scene.duration;
+        let scene_start = scene.start_time;
+        let input_path = input.to_path_buf();
+        let enhanced_path = enhanced_audio_path.to_path_buf();
+        let permit = semaphore.clone().acquire_owned().await.unwrap();
+
+        let handle = tokio::spawn(async move {
+            let mut cmd = tokio::process::Command::new("ffmpeg");
+            cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
+
+            // Use -ss after -i for accurate seeking (slower but no frame drops)
+            cmd.arg("-i").arg(production_tools::safe_arg_path(&input_path));
+            cmd.arg("-ss").arg(&scene_start.to_string());
+            cmd.arg("-t").arg(&scene_duration.to_string());
+
+            if use_enhanced_audio {
+                cmd.arg("-i").arg(production_tools::safe_arg_path(&enhanced_path));
+                cmd.arg("-ss").arg(&scene_start.to_string());
+                cmd.arg("-t").arg(&scene_duration.to_string());
+            }
+
+            cmd.arg("-map").arg("0:v");
+            if use_enhanced_audio {
+                cmd.arg("-map").arg("1:a:0");
+            } else {
+                cmd.arg("-map").arg("0:a:0");
+            }
+
+            // Force consistent encoding: same codec, profile, pixel format, GOP
+            cmd.arg("-c:v").arg("libx264")
+                .arg("-preset").arg("medium")
+                .arg("-crf").arg("23")
+                .arg("-pix_fmt").arg("yuv420p")
+                .arg("-g").arg("30")              // Fixed GOP = consistent keyframe spacing
+                .arg("-force_key_frames").arg("expr:eq(n,0)"); // Force keyframe at start
+
+            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k").arg("-ar").arg("48000");
+            cmd.arg("-avoid_negative_ts").arg("make_zero");
+            cmd.arg(production_tools::safe_arg_path(&seg_path));
+
+            let status = cmd.status().await;
+            drop(permit);
+
+            if let Ok(s) = status {
+                if s.success() {
+                    return Some(seg_path);
+                }
+            }
+            None
+        });
+
+        tasks.push(handle);
+    }
+
+    for handle in tasks {
+        if let Ok(Some(path)) = handle.await {
+            segment_files.push(path);
+        }
+    }
+
+    if segment_files.is_empty() {
+        let _ = fs::remove_dir_all(segments_dir);
+        return Err("Fallback: Failed to extract any segments".into());
+    }
+
+    // Concat with re-encode for smooth output (not -c copy)
+    let concat_file = segments_dir.join("concat_list.txt");
+    {
+        let mut file = fs::File::create(&concat_file)?;
+        for seg in &segment_files {
+            writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
+        }
+    }
+
+    let status = Command::new("ffmpeg")
+        .arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin")
+        .arg("-f").arg("concat").arg("-safe").arg("0")
+        .arg("-i").arg(production_tools::safe_arg_path(&concat_file))
+        .arg("-c:v").arg("libx264")
+        .arg("-preset").arg("medium")
+        .arg("-crf").arg("23")
+        .arg("-pix_fmt").arg("yuv420p")
+        .arg("-c:a").arg("aac").arg("-b:a").arg("192k")
+        .arg("-movflags").arg("+faststart")
+        .arg(production_tools::safe_arg_path(output))
+        .output()
+        .await?;
+
+    let _ = fs::remove_dir_all(segments_dir);
+
+    if !status.status.success() {
+        let stderr = String::from_utf8_lossy(&status.stderr);
+        error!("[SMART] Fallback concat also failed: {}", stderr);
+        return Err("Failed to concatenate segments".into());
+    }
+
+    let metadata = fs::metadata(output)?;
+    let size_mb = metadata.len() as f64 / 1_048_576.0;
+    Ok(format!("✅ Smart edit complete (fallback). Output: {:.2} MB", size_mb))
 }
 
 /// Generate a properly time-remapped SRT subtitle file from a transcript and the kept scenes.
