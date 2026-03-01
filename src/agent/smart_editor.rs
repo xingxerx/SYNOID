@@ -1359,24 +1359,22 @@ pub async fn smart_edit(
     cmd.arg("-movflags").arg("+faststart");
     cmd.arg(production_tools::safe_arg_path(output));
 
-            let status = cmd.status().await?;
-            if !status.success() {
-                // Fallback to simple concat if complex filter fails (e.g. too many inputs)
-                error!(
-                    "[SMART] Transition render failed. Falling back to simple cut."
-                );
-            } else {
-                // Success path
-                fs::remove_dir_all(&segments_dir)?;
-                if use_enhanced_audio {
-                    let _ = fs::remove_file(enhanced_audio_path);
-                }
-
-                let metadata = fs::metadata(output)?;
-                let size_mb = metadata.len() as f64 / 1_048_576.0;
-                return Ok(format!("✅ Funny Edit complete! Output: {:.2} MB", size_mb));
-            }
+    let status = cmd.status().await?;
+    if !status.success() {
+        // Fallback to simple concat if complex filter fails (e.g. too many inputs)
+        error!(
+            "[SMART] Transition render failed. Falling back to simple cut."
+        );
+    } else {
+        // Success path
+        fs::remove_dir_all(&segments_dir)?;
+        if use_enhanced_audio {
+            let _ = fs::remove_file(enhanced_audio_path);
         }
+
+        let metadata = fs::metadata(output)?;
+        let size_mb = metadata.len() as f64 / 1_048_576.0;
+        return Ok(format!("✅ Funny Edit complete! Output: {:.2} MB", size_mb));
     }
 
     // 6b. Simple Concat (Default or Fallback)
