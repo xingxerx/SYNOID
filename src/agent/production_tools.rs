@@ -397,19 +397,34 @@ pub async fn burn_subtitles(
 ) -> Result<ProductionResult, Box<dyn std::error::Error + Send + Sync>> {
     info!("[PRODUCTION] Burning subtitles from {:?} onto {:?}", input_srt, input_video);
 
-    // FFmpeg subtitle filter is strict about paths. Drive letter colons must be escaped, and slashes must be forward.
-    let mut srt_safe = safe_arg_path(input_srt).to_string_lossy().into_owned();
-    if cfg!(windows) {
-        srt_safe = srt_safe.replace("\\", "/").replace(":", "\\:");
-    }
+    // Resolve to absolute paths first so FFmpeg always finds the files regardless of CWD.
+    let abs_srt = std::fs::canonicalize(input_srt)
+        .unwrap_or_else(|_| input_srt.to_path_buf());
 
-    // Force a clean modern font
-    let filter = format!("subtitles='{}':force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2'", srt_safe);
+    // FFmpeg's `subtitles=` filter requires:
+    //   - Forward slashes
+    //   - Colon ':' inside the path escaped as '\:' (Windows drive letters)
+    //   - The path embedded as a string option, so we use the key=value form
+    //     rather than single-quote wrapping to avoid shell quoting issues.
+    let srt_str = abs_srt.to_string_lossy().replace('\\', "/");
+    // On any platform: escape colon so FFmpeg doesn't mistake it for an option separator.
+    let srt_escaped = srt_str.replace(':', "\\:");
 
-    let output = Command::new("ffmpeg")
+    // Force a clean modern font via force_style.
+    let filter = format!(
+        "subtitles=filename={}:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2'",
+        srt_escaped
+    );
+
+    let safe_input  = safe_arg_path(input_video);
+    let safe_output = safe_arg_path(output_video);
+
+    info!("[PRODUCTION] burn_subtitles filter: {}", filter);
+
+    let result = Command::new("ffmpeg")
         .arg("-y")
         .arg("-i")
-        .arg(safe_arg_path(input_video))
+        .arg(&safe_input)
         .arg("-vf")
         .arg(&filter)
         .arg("-c:a")
@@ -418,18 +433,19 @@ pub async fn burn_subtitles(
         .arg("libx264")
         .arg("-preset")
         .arg("fast")
-        .arg(safe_arg_path(output_video))
+        .arg("-crf")
+        .arg("23")
+        .arg(&safe_output)
         .output()
         .await?;
 
-    if !output.status.success() {
-        warn!("[PRODUCTION] FFmpeg burn_subtitles failed!");
-        let err = String::from_utf8_lossy(&output.stderr);
-        warn!("{}", err);
-        return Err(format!("FFmpeg error: {}", err).into());
+    if !result.status.success() {
+        let err = String::from_utf8_lossy(&result.stderr);
+        warn!("[PRODUCTION] FFmpeg burn_subtitles FAILED:\n{}", err);
+        return Err(format!("FFmpeg subtitle burn error: {}", err).into());
     }
 
-    info!("[PRODUCTION] Subtitles burned successfully: {:?}", output_video);
+    info!("[PRODUCTION] ✅ Subtitles burned successfully: {:?}", output_video);
 
     Ok(ProductionResult {
         output_path: output_video.to_path_buf(),

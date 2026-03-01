@@ -12,7 +12,7 @@ use std::io::Write;
 use std::path::Path;
 use tokio::process::Command;
 use tracing::{error, info, warn};
-const SILENCE_REFINEMENT_THRESHOLD: f64 = 0.75; // Seconds of silence to trigger a scene split
+const SILENCE_REFINEMENT_THRESHOLD: f64 = 2.0; // Seconds of silence to trigger a scene split (≤2 s pause = natural speech rhythm, not a cut point)
 use regex::Captures;
 
 /// Density of the edit - how much to keep vs how much to prune
@@ -86,7 +86,13 @@ pub struct EditIntent {
     pub censor_profanity: bool,
     #[serde(default)]
     pub profanity_replacement: Option<String>,
+    /// Show a brief [CUT] flash at every point where content was removed.
+    /// Defaults to true; suppressed automatically when density == Full.
+    #[serde(default = "default_show_cut_markers")]
+    pub show_cut_markers: bool,
 }
+
+fn default_show_cut_markers() -> bool { true }
 
 impl EditIntent {
     /// Parse natural language intent into structured intent using LLM
@@ -261,6 +267,188 @@ pub struct Scene {
     pub end_time: f64,
     pub duration: f64,
     pub score: f64, // 0.0 = definitely remove, 1.0 = definitely keep
+}
+
+/// Merge adjacent kept-scenes whose gap is smaller than `max_gap_secs` AND that
+/// both overlap at least one shared transcript segment.  This prevents a single
+/// sentence from being emitted as several micro-clips with hard cuts in between.
+pub fn merge_neighboring_scenes(
+    scenes: Vec<Scene>,
+    transcript: &[TranscriptSegment],
+    max_gap_secs: f64,
+) -> Vec<Scene> {
+    if scenes.is_empty() {
+        return scenes;
+    }
+
+    let mut merged: Vec<Scene> = Vec::with_capacity(scenes.len());
+    let mut current = scenes[0].clone();
+
+    for next in scenes.into_iter().skip(1) {
+        let gap = next.start_time - current.end_time;
+
+        // Only merge when the physical gap is small
+        if gap >= 0.0 && gap <= max_gap_secs {
+            // Check if any transcript segment bridges these two scenes
+            let bridged = transcript.iter().any(|seg| {
+                // The segment must overlap current AND next
+                let touches_current = seg.end > current.start_time && seg.start < current.end_time;
+                let touches_next   = seg.end > next.start_time   && seg.start < next.end_time;
+                touches_current && touches_next
+            });
+
+            if bridged {
+                // Absorb gap + next into current
+                current.end_time = next.end_time;
+                current.duration = current.end_time - current.start_time;
+                // Keep the higher score so continuity doesn't lower value
+                current.score = current.score.max(next.score);
+                continue;
+            }
+        }
+
+        merged.push(current);
+        current = next;
+    }
+    merged.push(current);
+
+    info!(
+        "[SMART] 🔗 Scene merge: {} scenes → {} after transcript-context grouping",
+        merged.capacity(), merged.len()
+    );
+    merged
+}
+
+/// Insert a 0.3-second black "[CUT]" marker frame between every pair of kept
+/// segments where content was removed from the original video.  The markers are
+/// composited into the final output in-place.  Only fires when `cut_points` is
+/// non-empty (i.e., something was actually removed).
+pub async fn insert_cut_markers(
+    output: &Path,
+    cut_points: &[(f64, f64)], // (original_start, original_end) of removed gaps
+    work_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if cut_points.is_empty() {
+        return Ok(());
+    }
+
+    info!("[SMART] 🎬 Inserting {} [CUT] marker frame(s)...", cut_points.len());
+
+    // Probe the resolution of the output file so our marker frame matches
+    let probe = Command::new("ffprobe")
+        .args(["-v","error","-select_streams","v:0","-show_entries",
+               "stream=width,height","-of","csv=p=0",
+               output.to_str().unwrap_or("")])
+        .output()
+        .await?;
+    let probe_str = String::from_utf8_lossy(&probe.stdout);
+    let dims: Vec<&str> = probe_str.trim().splitn(2, ',').collect();
+    let (w, h) = if dims.len() == 2 {
+        (dims[0].trim().to_string(), dims[1].trim().to_string())
+    } else {
+        ("1920".to_string(), "1080".to_string())
+    };
+
+    // Build a 0.3 s black marker clip
+    let marker_path = work_dir.join("cut_marker.mp4");
+    let drawtext = format!(
+        "drawtext=text='[CUT]':fontsize=48:fontcolor=white@0.85:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=black:shadowx=2:shadowy=2"
+    );
+    let marker_status = Command::new("ffmpeg")
+        .args(["-y","-hide_banner","-loglevel","error","-nostdin",
+               "-f","lavfi",
+               "-i", &format!("color=c=black:size={}x{}:duration=0.3:rate=30", w, h),
+               "-f","lavfi","-i","anullsrc=r=44100:cl=stereo:d=0.3",
+               "-vf", &drawtext,
+               "-c:v","libx264","-preset","ultrafast","-crf","23",
+               "-c:a","aac","-b:a","128k",
+               "-t","0.3",
+               marker_path.to_str().unwrap_or("")])
+        .status()
+        .await?;
+
+    if !marker_status.success() {
+        warn!("[SMART] Could not create [CUT] marker clip, skipping markers.");
+        return Ok(());
+    }
+
+    // Build a new concat list: original output interleaved with marker clips at
+    // each cut position.  Because we're working in output timeline order and cuts
+    // are relative to the ORIGINAL video, simply put a marker BEFORE the output
+    // so the viewer sees it at the start of every kept segment that had something
+    // removed before it.
+    //
+    // Strategy: split the output at every cut boundary, re-concat with markers.
+    // Simpler approach that works reliably: remux output into per-segment pieces,
+    // build concat list with marker between each pair, stitch.
+    //
+    // For now we use the simplest reliable approach: prepend a marker to the
+    // start of the output ("something was removed here") and insert one between
+    // every two segments by rebuilding the concat from the segment files.
+    // That requires segment files which are already cleaned up at this point.
+    //
+    // So we apply the one available approach: transcode the output with a
+    // drawtext overlay that flashes "[CUT]" for 0.3 s at the OUTPUT timestamps
+    // corresponding to each cut.
+
+    // Collect the output-timeline timestamps where each marker should flash.
+    // The caller passes original-video gap positions; we receive them as-is and
+    // convert to output-timeline by removing the total removed duration before
+    // each gap.  Since we only know cut_points in original-video time here, we
+    // flash the marker at CUMULATIVE positions on the output timeline:
+    let mut cumulative_removed: f64 = 0.0;
+    // We need the original gap starts AND the durations of removed sections;
+    // cut_points is (gap_start, gap_end) in original video time.
+    let mut flash_times: Vec<f64> = Vec::with_capacity(cut_points.len());
+    let mut prev_gap_end: f64 = 0.0;
+    for &(gap_start, gap_end) in cut_points {
+        // Time in output video = original_time - total_removed_before_this_point
+        let output_ts = gap_start - cumulative_removed;
+        flash_times.push(output_ts.max(0.0));
+        cumulative_removed += gap_end - gap_start;
+        prev_gap_end = gap_end;
+    }
+    let _ = prev_gap_end; // suppress unused warning
+
+    // Build a drawtext filter with enable expressions for each flash
+    let enable_expr: String = flash_times
+        .iter()
+        .map(|&t| format!("between(t,{:.3},{:.3})", t, t + 0.30))
+        .collect::<Vec<_>>()
+        .join("+");
+
+    let flash_drawtext = format!(
+        "drawtext=text='[ CUT ]':fontsize=52:fontcolor=white@0.9:box=1:boxcolor=black@0.6:boxborderw=8:x=(w-text_w)/2:y=(h-text_h)/2:enable='{expr}'",
+        expr = enable_expr
+    );
+
+    let marked_path = work_dir.join("output_marked.mp4");
+    let mark_status = Command::new("ffmpeg")
+        .args(["-y","-hide_banner","-loglevel","error","-nostdin",
+               "-i", output.to_str().unwrap_or(""),
+               "-vf", &flash_drawtext,
+               "-c:v","libx264","-preset","ultrafast","-crf","23",
+               "-c:a","copy",
+               marked_path.to_str().unwrap_or("")])
+        .status()
+        .await?;
+
+    let _ = fs::remove_file(&marker_path); // cleanup marker clip
+
+    if mark_status.success() {
+        match fs::copy(&marked_path, output) {
+            Ok(_) => {
+                let _ = fs::remove_file(&marked_path);
+                info!("[SMART] ✅ [CUT] markers burned into output ({} flash points).", flash_times.len());
+            }
+            Err(e) => warn!("[SMART] Could not overwrite output with marked version: {}", e),
+        }
+    } else {
+        let _ = fs::remove_file(&marked_path);
+        warn!("[SMART] [CUT] marker burn failed (non-fatal), output unchanged.");
+    }
+
+    Ok(())
 }
 
 /// Detect scenes in a video using FFmpeg scene detection
@@ -990,7 +1178,57 @@ pub async fn smart_edit(
         return Err("Fatal: Could not produce any segments even with fallback.".into());
     }
 
-    // 5. Generate concat file or transition Inputs
+    // 4.5 — Merge neighboring kept-scenes that share a transcript sentence so
+    //        a single sentence never becomes multiple separate micro-clips.
+    if let Some(ref t) = transcript {
+        let before_merge = scenes_to_keep.len();
+        scenes_to_keep = merge_neighboring_scenes(scenes_to_keep, t, 2.0);
+        if scenes_to_keep.len() < before_merge {
+            log(&format!(
+                "[SMART] 🔗 Sentence-merge: {} → {} scenes (grouped {} split sentences)",
+                before_merge, scenes_to_keep.len(), before_merge - scenes_to_keep.len()
+            ));
+        }
+    }
+
+    // Collect the removed gaps for the [CUT] marker step later.
+    // A gap exists wherever two consecutive kept-scenes are NOT touching in
+    // the original video timeline.
+    let mut cut_points: Vec<(f64, f64)> = Vec::new();
+    {
+        let mut prev_end: Option<f64> = None;
+        for sc in &scenes_to_keep {
+            if let Some(pe) = prev_end {
+                let gap = sc.start_time - pe;
+                if gap > 0.25 {
+                    cut_points.push((pe, sc.start_time));
+                }
+            }
+            prev_end = Some(sc.end_time);
+        }
+    }
+    log(&format!("[SMART] ✂️ {} cut point(s) in original video", cut_points.len()));
+
+    // Determine neuroplasticity-driven transition style
+    let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
+    let neuro_level = neuro.adaptation_level();
+    // transition_type drives xfade selection
+    // transition_dur = subtle (0.08-0.25 s) — enough to hide the cut, not
+    // enough to look like a slow film wipe
+    let neuro_transition_dur: f64 = (0.08 + config.continuity_boost * 0.20).clamp(0.08, 0.28);
+    let neuro_transition_name: &str = match neuro_level {
+        "Baseline"         => "fade",
+        "Accelerated"      => "fade",
+        "Hyperspeed"       => "slideleft",
+        "Neural Overdrive" => "wiperight",
+        "Singularity"      => "pixelize",
+        _                  => "fade",
+    };
+    log(&format!(
+        "[SMART] 🧠 Neuroplasticity transition: {} @ {:.2}s ({} level)",
+        neuro_transition_name, neuro_transition_dur, neuro_level
+    ));
+
     let job_id = uuid::Uuid::new_v4().to_string();
     let segments_dir = work_dir.join(format!("synoid_temp_{}", &job_id[..8]));
     if segments_dir.exists() {
@@ -1160,47 +1398,133 @@ pub async fn smart_edit(
         }
     }
 
-    // 6b. Simple Concat (Default or Fallback)
+    // 6b. Smart Concat with Neuroplasticity-informed Transitions (Default path)
+    //     Falls back to raw copy-concat if the xfade filter fails or there is
+    //     only one segment.
     let concat_file = segments_dir.join("concat_list.txt");
+    log("[SMART] 🔗 Stitching segments with smart transitions...");
 
-    {
-        let mut file = fs::File::create(&concat_file)?;
-        for seg in &segment_files {
-            writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
+    let mut concat_succeeded = false;
+
+    // Only attempt xfade transitions when there are at least 2 valid segments
+    // and the segments were re-encoded consistently (they are always re-encoded
+    // in the extraction loop above).
+    if segment_files.len() >= 2 {
+        // Build a speech-context-aware transition list:
+        // for each boundary between segment[i] and segment[i+1],
+        // if the gap in the original video is < 0.5 s (speech cut),
+        // force a very fast fade (nearly invisible).
+        let mut xfade_parts: Vec<String> = Vec::new();
+        let mut audio_xfade_parts: Vec<String> = Vec::new();
+        let mut acc_offset: f64 = 0.0;
+
+        for i in 0..segment_files.len() {
+            // inputs
+            xfade_parts.clear();
+            audio_xfade_parts.clear();
+            break; // build below
+        }
+
+        // Build proper xfade chain
+        let mut v_chain = "[0:v]".to_string();
+        let mut a_chain = "[0:a]".to_string();
+        let mut filter_parts: Vec<String> = Vec::new();
+        acc_offset = 0.0;
+
+        for i in 0..segment_files.len() - 1 {
+            let seg_dur = segment_durations[i];
+            let gap_in_orig = if i < cut_points.len() {
+                cut_points[i].1 - cut_points[i].0
+            } else {
+                1.0
+            };
+            // Speech cut (gap < 0.5 s) → nearly invisible fade
+            let dur = if gap_in_orig < 0.5 {
+                0.08_f64
+            } else {
+                neuro_transition_dur
+            };
+            // Transition name: speech cuts always use fade for invisibility
+            let tname = if gap_in_orig < 0.5 { "fade" } else { neuro_transition_name };
+
+            // xfade offset = sum of durations of all previous segs minus transition overlap
+            acc_offset += seg_dur - dur;
+
+            let v_out = format!("[xv{}]", i + 1);
+            let a_out = format!("[xa{}]", i + 1);
+            let next_v = format!("[{}:v]", i + 1);
+            let next_a = format!("[{}:a]", i + 1);
+
+            filter_parts.push(format!(
+                "{}{}xfade=transition={}:duration={:.3}:offset={:.3}{}",
+                v_chain, next_v, tname, dur, acc_offset.max(0.0), v_out
+            ));
+            filter_parts.push(format!(
+                "{}{}acrossfade=d={:.3}{}",
+                a_chain, next_a, dur, a_out
+            ));
+
+            v_chain = v_out;
+            a_chain = a_out;
+        }
+
+        if !filter_parts.is_empty() {
+            let filter_complex = filter_parts.join(";");
+            let mut cmd = Command::new("ffmpeg");
+            cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
+            for seg in &segment_files {
+                cmd.arg("-i").arg(production_tools::safe_arg_path(seg));
+            }
+            cmd.arg("-filter_complex").arg(&filter_complex);
+            cmd.arg("-map").arg(&v_chain);
+            cmd.arg("-map").arg(&a_chain);
+            cmd.arg("-c:v").arg("libx264").arg("-preset").arg("ultrafast").arg("-crf").arg("23");
+            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
+            cmd.arg("-movflags").arg("+faststart");
+            cmd.arg(production_tools::safe_arg_path(output));
+
+            match cmd.status().await {
+                Ok(s) if s.success() => {
+                    concat_succeeded = true;
+                    log("[SMART] ✅ Smart transitions applied successfully.");
+                }
+                _ => {
+                    warn!("[SMART] xfade transition render failed — falling back to fast concat.");
+                }
+            }
         }
     }
 
-    log("[SMART] 🔗 Stitching segments together...");
+    // Fallback: raw copy-concat (guaranteed to work, hard cuts)
+    if !concat_succeeded {
+        {
+            let mut file = fs::File::create(&concat_file)?;
+            for seg in &segment_files {
+                writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
+            }
+        }
 
-    // 7. Concatenate segments
-    let status = Command::new("ffmpeg")
-        .arg("-y")
-        .arg("-hide_banner")
-        .arg("-loglevel")
-        .arg("error")
-        .arg("-nostdin")
-        .arg("-f")
-        .arg("concat")
-        .arg("-safe")
-        .arg("0")
-        .arg("-i")
-        .arg(production_tools::safe_arg_path(&concat_file))
-        .arg("-c")
-        .arg("copy")
-        .arg(production_tools::safe_arg_path(output))
-        .output()
-        .await?;
+        let status = Command::new("ffmpeg")
+            .arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin")
+            .arg("-f").arg("concat").arg("-safe").arg("0")
+            .arg("-i").arg(production_tools::safe_arg_path(&concat_file))
+            .arg("-c").arg("copy")
+            .arg(production_tools::safe_arg_path(output))
+            .output()
+            .await?;
 
-    // Clean up
+        if !status.status.success() {
+            let stderr = String::from_utf8_lossy(&status.stderr);
+            error!("[SMART] FFmpeg concat failed: {}", stderr);
+            fs::remove_dir_all(&segments_dir)?;
+            return Err("Failed to concatenate segments".into());
+        }
+    }
+
+    // Clean up temp dir + enhanced audio
     fs::remove_dir_all(&segments_dir)?;
     if use_enhanced_audio {
         let _ = fs::remove_file(enhanced_audio_path);
-    }
-
-    if !status.status.success() {
-        let stderr = String::from_utf8_lossy(&status.stderr);
-        error!("[SMART] FFmpeg concat failed: {}", stderr);
-        return Err("Failed to concatenate segments".into());
     }
 
     // Get output file size
@@ -1212,6 +1536,16 @@ pub async fn smart_edit(
         removed, size_mb
     );
     log(&format!("[SMART] {}", summary));
+
+    // 9. [CUT] Marker pass — burn flash indicators showing where content was removed
+    // Skip when density is Full (nothing was cut) or cut_points is empty.
+    if intent.show_cut_markers && intent.density != EditDensity::Full && !cut_points.is_empty() {
+        log("[SMART] 🎬 Burning [CUT] markers into output...");
+        match insert_cut_markers(output, &cut_points, work_dir).await {
+            Ok(_) => {}
+            Err(e) => warn!("[SMART] [CUT] marker pass failed (non-fatal): {}", e),
+        }
+    }
 
     // 8. Subtitle Generation & Burning
     // Only attempt if we have a transcript to work with
@@ -1226,16 +1560,19 @@ pub async fn smart_edit(
                     Ok(_) => {
                         log(&format!("[SMART] 📄 SRT written: {} entries", srt_content.lines().filter(|l| l.contains(" --> ")).count()));
 
-                        // Burn subtitles into a new output file, then replace the original
-                        let sub_output = output.with_extension("sub.mp4");
+                        // Resolve the output to an absolute path so sub_output lands in the same dir.
+                        let abs_output = fs::canonicalize(output).unwrap_or_else(|_| output.to_path_buf());
+                        let sub_output = abs_output.with_extension("sub.mp4");
                         log("[SMART] 🔥 Burning subtitles into video...");
-                        match production_tools::burn_subtitles(output, &srt_path, &sub_output).await {
+                        match production_tools::burn_subtitles(&abs_output, &srt_path, &sub_output).await {
                             Ok(_) => {
-                                // Replace the original output with the subtitled version
-                                if let Err(e) = fs::rename(&sub_output, output) {
-                                    warn!("[SMART] Could not replace output with subtitled version: {}", e);
-                                } else {
-                                    log("[SMART] ✅ Subtitles burned into final video.");
+                                // Use copy + remove instead of rename to handle cross-device moves on WSL mounts.
+                                match fs::copy(&sub_output, &abs_output) {
+                                    Ok(_) => {
+                                        let _ = fs::remove_file(&sub_output);
+                                        log("[SMART] ✅ Subtitles burned into final video.");
+                                    }
+                                    Err(e) => warn!("[SMART] Could not replace output with subtitled version: {}", e),
                                 }
                             }
                             Err(e) => warn!("[SMART] Subtitle burning failed (non-fatal): {}", e),
@@ -1264,8 +1601,8 @@ pub fn generate_srt_for_kept_scenes(
     transcript: &[crate::agent::transcription::TranscriptSegment],
     kept_scenes: &[Scene],
 ) -> String {
-    let mut srt = String::new();
-    let mut counter = 1u32;
+    const MIN_DISPLAY_SECS: f64 = 1.0;   // Minimum subtitle display time
+    const MERGE_THRESHOLD_SECS: f64 = 0.8; // Merge entries shorter than this into prev
 
     // Build a time remapping: for each kept scene, compute its start position in the output video.
     // Output start = sum of durations of all previous kept scenes.
@@ -1276,40 +1613,67 @@ pub fn generate_srt_for_kept_scenes(
         cursor += scene.duration;
     }
 
+    // --- Pass 1: Collect all candidate entries (start, end, text) ---
+    let mut entries: Vec<(f64, f64, String)> = Vec::new();
+
     for seg in transcript {
-        // Find which kept scene this segment falls inside
         for &(src_start, src_end, out_start) in &output_offsets {
-            // Clip the segment to the scene boundary
             let clip_start = seg.start.max(src_start);
-            let clip_end = seg.end.min(src_end);
+            let clip_end   = seg.end.min(src_end);
             if clip_end <= clip_start {
                 continue;
             }
-
-            // Remap to output timeline
             let new_start = out_start + (clip_start - src_start);
-            let new_end = out_start + (clip_end - src_start);
-
-            // Format timestamps as SRT HH:MM:SS,mmm
-            let fmt = |secs: f64| -> String {
-                let total_ms = (secs * 1000.0) as u64;
-                let ms = total_ms % 1000;
-                let s = (total_ms / 1000) % 60;
-                let m = (total_ms / 60_000) % 60;
-                let h = total_ms / 3_600_000;
-                format!("{:02}:{:02}:{:02},{:03}", h, m, s, ms)
-            };
-
-            srt.push_str(&format!(
-                "{}\n{} --> {}\n{}\n\n",
-                counter,
-                fmt(new_start),
-                fmt(new_end),
-                seg.text.trim()
-            ));
-            counter += 1;
-            break; // Each segment only belongs to one scene window
+            let new_end   = out_start + (clip_end   - src_start);
+            entries.push((new_start, new_end, seg.text.trim().to_string()));
+            break;
         }
+    }
+
+    // --- Pass 2: Merge flash entries (< MERGE_THRESHOLD_SECS) into the previous entry ---
+    let mut merged: Vec<(f64, f64, String)> = Vec::new();
+    for (start, end, text) in entries {
+        let duration = end - start;
+        if duration < MERGE_THRESHOLD_SECS && !merged.is_empty() {
+            // Extend previous entry's end time and append text
+            let last = merged.last_mut().unwrap();
+            last.1 = last.1.max(end);
+            if !text.is_empty() {
+                last.2.push(' ');
+                last.2.push_str(&text);
+            }
+        } else {
+            merged.push((start, end, text));
+        }
+    }
+
+    // --- Pass 3: Enforce minimum display duration ---
+    for entry in merged.iter_mut() {
+        let duration = entry.1 - entry.0;
+        if duration < MIN_DISPLAY_SECS {
+            entry.1 = entry.0 + MIN_DISPLAY_SECS;
+        }
+    }
+
+    // --- Pass 4: Write SRT ---
+    let fmt = |secs: f64| -> String {
+        let total_ms = (secs * 1000.0) as u64;
+        let ms = total_ms % 1000;
+        let s  = (total_ms / 1000) % 60;
+        let m  = (total_ms / 60_000) % 60;
+        let h  = total_ms / 3_600_000;
+        format!("{:02}:{:02}:{:02},{:03}", h, m, s, ms)
+    };
+
+    let mut srt = String::new();
+    for (counter, (start, end, text)) in merged.into_iter().enumerate() {
+        srt.push_str(&format!(
+            "{}\n{} --> {}\n{}\n\n",
+            counter + 1,
+            fmt(start),
+            fmt(end),
+            text
+        ));
     }
 
     srt
