@@ -403,7 +403,7 @@ pub async fn burn_subtitles(
 
     // FFmpeg's `subtitles=` filter requires:
     //   - Forward slashes
-    //   - Colon ':' inside the path escaped as '\:' (Windows drive letters)
+    //   - Colon ':' inside the path escaped as '\\:' (Windows drive letters)
     //   - The path embedded as a string option, so we use the key=value form
     //     rather than single-quote wrapping to avoid shell quoting issues.
     let srt_str = abs_srt.to_string_lossy().replace('\\', "/");
@@ -411,8 +411,9 @@ pub async fn burn_subtitles(
     let srt_escaped = srt_str.replace(':', "\\:");
 
     // Force a clean modern font via force_style.
+    // Font: 28pt Bold, white text, black outline, lifted 30px from bottom.
     let filter = format!(
-        "subtitles=filename={}:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2'",
+        "subtitles=filename={}:force_style='FontName=Arial,FontSize=28,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,MarginV=30'",
         srt_escaped
     );
 
@@ -423,6 +424,10 @@ pub async fn burn_subtitles(
 
     let result = Command::new("ffmpeg")
         .arg("-y")
+        .arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-nostdin")
         .arg("-i")
         .arg(&safe_input)
         .arg("-vf")

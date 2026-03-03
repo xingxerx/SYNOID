@@ -23,6 +23,7 @@ pub mod reasoning;
 pub mod recovery;
 pub mod research_tools;
 pub mod smart_editor;
+pub mod global_discovery;
 pub mod source_tools;
 pub mod super_engine;
 pub mod supervisor;

@@ -12,6 +12,7 @@ use tracing::info;
 
 use crate::agent::brain::Brain;
 use crate::agent::defense::{IntegrityGuard, Sentinel};
+use crate::agent::global_discovery::GlobalDiscovery;
 use crate::agent::motor_cortex::MotorCortex;
 use crate::agent::production_tools;
 use crate::agent::source_tools;
@@ -96,6 +97,7 @@ pub struct AgentCore {
     // Sub-systems (Async Mutex for heavy async tasks)
     pub brain: Arc<AsyncMutex<Brain>>,
     pub cortex: Arc<AsyncMutex<MotorCortex>>,
+    pub discovery: Arc<GlobalDiscovery>,
 
 
 
@@ -126,6 +128,7 @@ impl AgentCore {
             sentinel_active: Arc::new(AtomicBool::new(false)),
             brain: Arc::new(AsyncMutex::new(Brain::new(api_url, "llama3:latest"))),
             cortex: Arc::new(AsyncMutex::new(MotorCortex::new(api_url))),
+            discovery: Arc::new(GlobalDiscovery::new()),
 
             pipeline: Arc::new(AsyncMutex::new(None)),
             autonomous_learner: Arc::new(Mutex::new(None)), // Lazy init
@@ -174,6 +177,21 @@ impl AgentCore {
     pub async fn acceleration_status(&self) -> String {
         let brain = self.brain.lock().await;
         brain.acceleration_status()
+    }
+
+    // --- Global Discovery Methods ---
+
+    pub async fn run_system_scan(&self) {
+        self.log("[CORE] 🔎 Initiating system-wide media scan...");
+        self.set_status("🔎 Scanning System...");
+        let count = self.discovery.scan().await;
+        self.log(&format!("[CORE] ✅ System scan complete. {} files indexed.", count));
+        self.set_status("⚡ Ready");
+    }
+
+    pub async fn discover_files(&self, query: &str) -> Vec<crate::agent::global_discovery::DiscoveredFile> {
+        self.log(&format!("[CORE] 🔎 Searching system for: '{}'", query));
+        self.discovery.find(query).await
     }
 
     // --- State Helpers ---
@@ -474,7 +492,23 @@ impl AgentCore {
 
         let mut brain = self.brain.lock().await;
         match brain.process(request).await {
-            Ok(res) => self.log(&format!("[CORE] ✅ {}", res)),
+            Ok(res) => {
+                if res.starts_with("DISCOVERY_MODE:") {
+                    let query = res.replace("DISCOVERY_MODE:", "");
+                    self.run_system_scan().await;
+                    let matches = self.discover_files(&query).await;
+                    if matches.is_empty() {
+                        self.log(&format!("[CORE] 🔍 No files found for '{}'", query));
+                    } else {
+                        self.log(&format!("[CORE] 🔍 Found {} matches for '{}'", matches.len(), query));
+                        for m in matches.iter().take(5) {
+                            self.log(&format!("   - {:?}", m.path));
+                        }
+                    }
+                } else {
+                    self.log(&format!("[CORE] ✅ {}", res));
+                }
+            }
             Err(e) => self.log(&format!("[CORE] ❌ {}", e)),
         }
 

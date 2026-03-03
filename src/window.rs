@@ -64,8 +64,8 @@ fn format_time(seconds: f64) -> String {
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
-enum ActiveCommand {
-    None,
+pub enum ActiveCommand {
+    Dashboard,
     // Media
     Clip,
     Compress,
@@ -83,6 +83,7 @@ enum ActiveCommand {
     Research,
     // Audio
     AudioMixer,
+    Discovery,
 }
 
 #[derive(Default, Clone)]
@@ -136,6 +137,8 @@ pub struct UiState {
     pub editor_session_id: Option<String>,
     pub editor_api_status: String,
     pub ai_edit_running: bool,
+    pub discovered_files: Vec<crate::agent::global_discovery::DiscoveredFile>,
+    pub is_scanning: bool,
 }
 
 
@@ -196,7 +199,10 @@ impl SynoidApp {
                 research_expanded: false,
                 audio_expanded: true,
             },
-            active_command: ActiveCommand::Editor,
+            },
+            active_command: ActiveCommand::Dashboard,
+            preview_texture: None,
+        }
             preview_texture: None,
         }
     }
@@ -318,7 +324,7 @@ impl SynoidApp {
 
     fn render_command_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         match self.active_command {
-            ActiveCommand::None => self.render_dashboard(ui, state),
+            ActiveCommand::Dashboard => self.render_dashboard(ui, state),
             ActiveCommand::Clip => self.render_clip_panel(ui, state),
             ActiveCommand::Compress => self.render_compress_panel(ui, state),
 
@@ -329,6 +335,7 @@ impl SynoidApp {
             ActiveCommand::Guard => self.render_guard_panel(ui, state),
             ActiveCommand::Research => self.render_research_panel(ui, state),
             ActiveCommand::AudioMixer => self.render_audio_mixer_panel(ui, state),
+            ActiveCommand::Discovery => self.render_discovery_panel(ui, state),
             ActiveCommand::Editor => {
                 // Create/reuse session then open React editor in browser
                 let _core = self.core.clone();
@@ -1027,7 +1034,7 @@ impl SynoidApp {
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
                     if ui.add(egui::Button::new(egui::RichText::new("◀  SYNOID").color(color_gold).strong()).fill(egui::Color32::TRANSPARENT)).clicked() {
-                        self.active_command = ActiveCommand::None;
+                        self.active_command = ActiveCommand::Dashboard;
                     }
                     
                     ui.add_space(20.0);
@@ -1830,6 +1837,7 @@ impl eframe::App for SynoidApp {
                             ("✂️", "Clip", ActiveCommand::Clip),
                             ("📦", "Compress", ActiveCommand::Compress),
                             ("🎬", "Editor", ActiveCommand::Editor),
+                            ("🔍", "Global Discovery", ActiveCommand::Discovery),
                         ],
                     ) {
                         new_cmd = Some(cmd);
