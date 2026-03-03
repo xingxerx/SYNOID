@@ -907,8 +907,6 @@ pub async fn smart_edit(
     let mut config = EditingStrategy::load();
 
     // APPLY LEARNED PATTERN IF AVAILABLE
-    let mut target_transition_speed = 0.5; // Default
-
     if let Some(pattern) = &learned_pattern {
         log(&format!("[SMART] 🎓 Applying Learned Pattern: '{}'", pattern.intent_tag));
         log(&format!("        - Avg Scene Duration: {:.2}s", pattern.avg_scene_duration));
@@ -922,9 +920,6 @@ pub async fn smart_edit(
 
         // 3. Continuity boost based on music sync/strictness
         config.continuity_boost = pattern.music_sync_strictness.max(0.3);
-
-        // 4. Store transition speed for later
-        target_transition_speed = if pattern.transition_speed > 0.0 { 1.0 / pattern.transition_speed } else { 0.5 };
         
         // 5. Dynamic pacing adjustment for scores
         // If pattern has short scenes, we boost segments that match that duration
@@ -1308,76 +1303,22 @@ pub async fn smart_edit(
         tasks.push(handle);
     }
 
-    // Concatenate all trimmed segments
-    for i in 0..total_segments {
-        filter.push_str(&format!("[v{i}][a{i}]"));
-    }
-    filter.push_str(&format!("concat=n={total_segments}:v=1:a=1[outv][outa]"));
-
-    // Check if we should add crossfades for even smoother transitions
-    // For funny mode we use xfade transitions, otherwise keep it clean
-    if _funny_mode && total_segments > 1 {
-        log("[SMART] 🎭 Funny Mode: Adding transitions between segments...");
-
-        // Rebuild filter with xfade transitions
-        let transition_duration = target_transition_speed.min(0.5);
-        let xfade_filter = build_smooth_xfade_filter(
-            &scenes_to_keep,
-            audio_input_idx,
-            transition_duration,
-        );
-
-        if !xfade_filter.is_empty() {
-            filter = xfade_filter;
+    // Await all segment-extraction tasks and collect successful results
+    let mut segment_files: Vec<std::path::PathBuf> = Vec::new();
+    for handle in tasks {
+        if let Ok(Some((path, _dur))) = handle.await {
+            segment_files.push(path);
         }
     }
 
-    log(&format!("[SMART] 🔗 Rendering {} segments in single pass...", total_segments));
-
-    let mut cmd = Command::new("ffmpeg");
-    cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
-
-    // Input 0: original video
-    cmd.arg("-i").arg(production_tools::safe_arg_path(input));
-
-    // Input 1: enhanced audio (if available)
-    if use_enhanced_audio {
-        cmd.arg("-i").arg(production_tools::safe_arg_path(&final_enhanced_audio_path));
+    if segment_files.is_empty() {
+        fs::remove_dir_all(&segments_dir).ok();
+        return Err("Failed to extract any video segments".into());
     }
 
-    cmd.arg("-filter_complex").arg(&filter);
-    cmd.arg("-map").arg("[outv]");
-    cmd.arg("-map").arg("[outa]");
+    log(&format!("[SMART] 🔗 Stitching {} segments together...", segment_files.len()));
 
-    // Encode settings - medium preset for quality, single pass = consistent quality
-    cmd.arg("-c:v").arg("libx264")
-        .arg("-preset").arg("medium")
-        .arg("-crf").arg("23")
-        .arg("-pix_fmt").arg("yuv420p");
-
-    cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
-    cmd.arg("-movflags").arg("+faststart");
-    cmd.arg(production_tools::safe_arg_path(output));
-
-    let status = cmd.status().await?;
-    if !status.success() {
-        // Fallback to simple concat if complex filter fails (e.g. too many inputs)
-        error!(
-            "[SMART] Transition render failed. Falling back to simple cut."
-        );
-    } else {
-        // Success path
-        fs::remove_dir_all(&segments_dir)?;
-        if use_enhanced_audio {
-            let _ = fs::remove_file(enhanced_audio_path);
-        }
-
-        let metadata = fs::metadata(output)?;
-        let size_mb = metadata.len() as f64 / 1_048_576.0;
-        return Ok(format!("✅ Funny Edit complete! Output: {:.2} MB", size_mb));
-    }
-
-    // 6b. Simple Concat (Default or Fallback)
+    // 6b. Simple Concat
     let concat_file = segments_dir.join("concat_list.txt");
 
     {
@@ -1489,6 +1430,7 @@ pub async fn smart_edit(
 
 /// Build a smooth xfade filter for transitions between trimmed segments.
 /// Uses xfade for video and acrossfade for audio, applied directly on trim outputs.
+#[allow(dead_code)]
 fn build_smooth_xfade_filter(
     scenes: &[Scene],
     audio_input_idx: usize,
@@ -1552,6 +1494,7 @@ fn build_smooth_xfade_filter(
 
 /// Fallback: extract individual segments and concatenate (legacy approach).
 /// Used only when the single-pass filter_complex fails (e.g., very long/complex videos).
+#[allow(dead_code)]
 async fn fallback_extract_and_concat(
     input: &Path,
     enhanced_audio_path: &Path,

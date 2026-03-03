@@ -32,6 +32,9 @@ pub enum Intent {
     Research {
         topic: String,
     },
+    DiscoverFile {
+        query: String,
+    },
 
 
     /// Complex creative request requiring MoE orchestration
@@ -154,20 +157,17 @@ impl Brain {
         }
 
         // 4. Research Heuristics
-        if req_lower.contains("find")
-            || req_lower.contains("search")
-            || req_lower.contains("tutorial")
-        {
-            // Simple topic extraction: everything after key verb
-            let keys = ["find", "search for", "tutorial on", "about"];
-            for key in keys {
-                if let Some(idx) = req_lower.find(key) {
-                    let topic = request[idx + key.len()..].trim().to_string();
-                    if !topic.is_empty() {
-                        return Intent::Research { topic };
-                    }
-                }
             }
+        }
+
+        // 5. Discovery Heuristics
+        if req_lower.contains("find") || req_lower.contains("search") || req_lower.contains("where is") {
+             if req_lower.contains("video") || req_lower.contains("file") || req_lower.contains("clip") || req_lower.contains("mp4") {
+                let query = request.replace("find", "").replace("search for", "").replace("where is", "").trim().to_string();
+                if !query.is_empty() {
+                    return Intent::DiscoverFile { query };
+                }
+             }
         }
 
 
@@ -388,6 +388,10 @@ impl Brain {
                     }
                     Err(e) => Err(format!("Research failed: {}", e)),
                 }
+            }
+            Intent::DiscoverFile { query } => {
+                info!("[BRAIN] ⚡ Fast-path activated: Global File Discovery");
+                Ok(format!("DISCOVERY_MODE:{}", query))
             }
 
 
