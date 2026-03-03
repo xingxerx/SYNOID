@@ -739,17 +739,16 @@ pub fn score_scenes(
         }
 
         // 2. Progressive Decay (20% -> 100%)
-        // Multiplier for penalties: Starts at 1.0, ramps up to ~3.0x at the end
+        // Multiplier for penalties: Starts at 1.0, ramps up to ~1.8x at the end
+        // (Softened from 3.0× — the original curve gutted the video's climax/conclusion)
         let penalty_multiplier = if progress > 0.2 {
-            1.0 + ((progress - 0.2) / 0.8) * 2.0 
+            1.0 + ((progress - 0.2) / 0.8) * 0.8 
         } else {
             1.0
         };
 
-        // 3. Terminal Clarity (Last 20%): Extra harsh flat penalty
-        if progress > 0.8 {
-             score -= 0.08; 
-        }
+        // Terminal clarity removed — let content quality drive cuts, not position.
+        // The old -0.08 penalty was destroying story conclusions.
 
         // Visual Heuristics
         if intent.remove_boring {
@@ -766,13 +765,12 @@ pub fn score_scenes(
                 score -= effective_penalty;
             } else if scene.duration > 15.0 {
                 score -= effective_penalty / 2.0;
-            } else if scene.duration < 3.0 && intent.density != EditDensity::Full {
-                score += 0.2; // Prefer shorter segments for "not boring" highlights
             }
+            // (Removed: +0.2 bias for <3s clips — was causing choppy micro-cuts)
         }
 
-        if intent.keep_action && scene.duration < config.action_duration_threshold {
-            score += 0.3;
+        if intent.keep_action && scene.duration < config.action_duration_threshold && scene.duration >= 2.0 {
+            score += 0.15; // Moderate boost; require ≥2s to avoid micro-clips
         }
 
         // Semantic Heuristics (Transcript Analysis)
@@ -845,13 +843,9 @@ pub fn score_scenes(
 
         if intent.ruthless || intent.density == EditDensity::Highlights {
             // "Ruthless" or "Highlights": Everything is slightly penalized unless it's action or speech
-            // ADJUSTED: Less harsh flat penalty, rely more on specific heuristics & positional penalty
             score -= 0.05; 
 
-            // Prefer even shorter segments
-            if scene.duration < 1.5 {
-                score += 0.2;
-            }
+            // (Removed: +0.2 micro-segment bias in ruthless mode — was causing rapid-fire cuts)
         }
 
         scene.score = score.clamp(0.0, 1.0);
@@ -1146,6 +1140,20 @@ pub async fn smart_edit(
         scenes_to_keep = scenes.iter().cloned().filter(|s| s.score > keep_threshold).collect();
     }
 
+    // 4.1 — Minimum scene duration filter: remove micro-clips that flash by too fast.
+    //       Keep only scenes ≥ 2.5s.  If that would remove everything, skip this filter.
+    {
+        let before_min_dur = scenes_to_keep.len();
+        let filtered: Vec<Scene> = scenes_to_keep.iter().cloned().filter(|s| s.duration >= 2.5).collect();
+        if !filtered.is_empty() {
+            scenes_to_keep = filtered;
+            let removed_micro = before_min_dur - scenes_to_keep.len();
+            if removed_micro > 0 {
+                log(&format!("[SMART] 🚫 Removed {} micro-clips (< 2.5s) to prevent choppy cuts", removed_micro));
+            }
+        }
+    }
+
     let mut total_kept = scenes_to_keep.len();
     let removed = total_before_filtering - total_kept;
 
@@ -1176,15 +1184,28 @@ pub async fn smart_edit(
 
     // 4.5 — Merge neighboring kept-scenes that share a transcript sentence so
     //        a single sentence never becomes multiple separate micro-clips.
+    //        Gap tolerance 4.0s (up from 2.0s) — natural speech pauses are 2-4s.
     if let Some(ref t) = transcript {
         let before_merge = scenes_to_keep.len();
-        scenes_to_keep = merge_neighboring_scenes(scenes_to_keep, t, 2.0);
+        scenes_to_keep = merge_neighboring_scenes(scenes_to_keep, t, 4.0);
         if scenes_to_keep.len() < before_merge {
             log(&format!(
                 "[SMART] 🔗 Sentence-merge: {} → {} scenes (grouped {} split sentences)",
                 before_merge, scenes_to_keep.len(), before_merge - scenes_to_keep.len()
             ));
         }
+    }
+
+    // 4.6 — Scene padding: add 0.25s before and after each kept scene to prevent
+    //        speech from being clipped at boundaries.  Clamped to video bounds.
+    {
+        let total_video_duration = scenes.last().map(|s| s.end_time).unwrap_or(0.0);
+        for scene in scenes_to_keep.iter_mut() {
+            scene.start_time = (scene.start_time - 0.25).max(0.0);
+            scene.end_time = (scene.end_time + 0.25).min(total_video_duration);
+            scene.duration = scene.end_time - scene.start_time;
+        }
+        log("[SMART] 🛡️ Added 0.25s padding around each scene to prevent speech clipping.");
     }
 
     // Collect the removed gaps for the [CUT] marker step later.
@@ -1318,36 +1339,128 @@ pub async fn smart_edit(
 
     log(&format!("[SMART] 🔗 Stitching {} segments together...", segment_files.len()));
 
-    // 6b. Simple Concat
-    let concat_file = segments_dir.join("concat_list.txt");
+    // 7. Stitch segments — use crossfade transitions when feasible (≤ 30 segments),
+    //    fall back to simple concat for very long edit lists.
+    let xfade_dur = neuro_transition_dur.clamp(0.12, 0.25);
 
-    {
-        let mut file = fs::File::create(&concat_file)?;
+    let status = if segment_files.len() >= 2 && segment_files.len() <= 30 {
+        // ── Crossfade path ──────────────────────────────────────────────
+        log(&format!("[SMART] 🎞️ Using crossfade transitions ({:.2}s, {} style)", xfade_dur, neuro_transition_name));
+
+        // Build filter_complex that chains xfade/acrossfade across all segments
+        let n = segment_files.len();
+        let mut filter = String::new();
+
+        // Probe each segment duration (needed for xfade offset calculation)
+        let mut seg_durations: Vec<f64> = Vec::with_capacity(n);
         for seg in &segment_files {
-            writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
+            let probe = Command::new("ffprobe")
+                .args(["-v","error","-show_entries","format=duration",
+                       "-of","default=noprint_wrappers=1:nokey=1",
+                       seg.to_str().unwrap_or("")])
+                .output()
+                .await;
+            let dur = if let Ok(p) = probe {
+                String::from_utf8_lossy(&p.stdout).trim().parse::<f64>().unwrap_or(3.0)
+            } else { 3.0 };
+            seg_durations.push(dur);
         }
-    }
 
-    log("[SMART] 🔗 Stitching segments together...");
+        // Chain video xfade
+        let mut prev_v = format!("[0:v]");
+        let mut cumulative_offset = seg_durations[0] - xfade_dur;
 
-    // 7. Concatenate segments
-    let status = Command::new("ffmpeg")
-        .arg("-y")
-        .arg("-hide_banner")
-        .arg("-loglevel")
-        .arg("error")
-        .arg("-nostdin")
-        .arg("-f")
-        .arg("concat")
-        .arg("-safe")
-        .arg("0")
-        .arg("-i")
-        .arg(production_tools::safe_arg_path(&concat_file))
-        .arg("-c")
-        .arg("copy")
-        .arg(production_tools::safe_arg_path(output))
-        .output()
-        .await?;
+        for i in 1..n {
+            let out_label = if i == n - 1 { "[outv]".to_string() } else { format!("[vx{}]", i) };
+            filter.push_str(&format!(
+                "{}[{}:v]xfade=transition={}:duration={:.3}:offset={:.6}{}; ",
+                prev_v, i, neuro_transition_name, xfade_dur, cumulative_offset.max(0.0), out_label
+            ));
+            prev_v = out_label.clone();
+            cumulative_offset += seg_durations[i] - xfade_dur;
+        }
+
+        // Chain audio acrossfade
+        let mut prev_a = format!("[0:a]");
+        for i in 1..n {
+            let out_label = if i == n - 1 { "[outa]".to_string() } else { format!("[ax{}]", i) };
+            let dur = xfade_dur.min(seg_durations[i] * 0.5).min(seg_durations[i - 1] * 0.5);
+            filter.push_str(&format!(
+                "{}[{}:a]acrossfade=d={:.3}:c1=tri:c2=tri{}; ",
+                prev_a, i, dur, out_label
+            ));
+            prev_a = out_label.clone();
+        }
+
+        // Remove trailing "; "
+        if filter.ends_with("; ") {
+            filter.truncate(filter.len() - 2);
+        }
+
+        let mut cmd = Command::new("ffmpeg");
+        cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
+
+        // Add all segment files as inputs
+        for seg in &segment_files {
+            cmd.arg("-i").arg(production_tools::safe_arg_path(seg));
+        }
+
+        cmd.arg("-filter_complex").arg(&filter);
+        cmd.arg("-map").arg("[outv]");
+        cmd.arg("-map").arg("[outa]");
+        cmd.arg("-c:v").arg("libx264").arg("-preset").arg("fast").arg("-crf").arg("23");
+        cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
+        cmd.arg("-movflags").arg("+faststart");
+        cmd.arg(production_tools::safe_arg_path(output));
+
+        let xfade_result = cmd.output().await?;
+
+        if xfade_result.status.success() {
+            log("[SMART] ✅ Crossfade stitching succeeded.");
+            xfade_result
+        } else {
+            // Crossfade failed — fall back to simple concat
+            let stderr = String::from_utf8_lossy(&xfade_result.stderr);
+            warn!("[SMART] Crossfade filter failed ({}), falling back to simple concat.", stderr.lines().next().unwrap_or("unknown error"));
+
+            let concat_file = segments_dir.join("concat_list.txt");
+            {
+                let mut file = fs::File::create(&concat_file)?;
+                for seg in &segment_files {
+                    writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
+                }
+            }
+
+            Command::new("ffmpeg")
+                .arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin")
+                .arg("-f").arg("concat").arg("-safe").arg("0")
+                .arg("-i").arg(production_tools::safe_arg_path(&concat_file))
+                .arg("-c").arg("copy")
+                .arg(production_tools::safe_arg_path(output))
+                .output()
+                .await?
+        }
+    } else {
+        // ── Simple concat path (1 segment or > 30 segments) ─────────
+        let concat_file = segments_dir.join("concat_list.txt");
+        {
+            let mut file = fs::File::create(&concat_file)?;
+            for seg in &segment_files {
+                writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
+            }
+        }
+
+        log("[SMART] 🔗 Using simple concat (single segment or too many for crossfade).");
+
+        Command::new("ffmpeg")
+            .arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin")
+            .arg("-f").arg("concat").arg("-safe").arg("0")
+            .arg("-i").arg(production_tools::safe_arg_path(&concat_file))
+            .arg("-c").arg("copy")
+            .arg(production_tools::safe_arg_path(output))
+            .output()
+            .await?
+    };
 
     // Clean up
     fs::remove_dir_all(&segments_dir)?;

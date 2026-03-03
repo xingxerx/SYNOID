@@ -17,6 +17,9 @@ async fn test_smart_edit_fallback() {
         density: synoid_core::agent::smart_editor::EditDensity::Highlights,
         custom_keywords: vec![],
         target_duration: None,
+        censor_profanity: false,
+        profanity_replacement: None,
+        show_cut_markers: true,
     };
     
     let config = EditingStrategy::default();
@@ -58,6 +61,9 @@ async fn test_speech_protection_ruthless() {
         density: synoid_core::agent::smart_editor::EditDensity::Highlights,
         custom_keywords: vec![],
         target_duration: None,
+        censor_profanity: false,
+        profanity_replacement: None,
+        show_cut_markers: true,
     };
     
     let config = EditingStrategy::default();
