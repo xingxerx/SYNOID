@@ -200,6 +200,9 @@ impl SuperEngine {
                 "Embodied Edit Initiated: '{}' on {}",
                 instruction, input
             )),
+            Intent::DiscoverFile { query } => {
+                Ok(format!("DISCOVERY_MODE:{}", query))
+            }
             Intent::Orchestrate { .. } => unreachable!("Handled in process_command"),
             Intent::Unknown { .. } => unreachable!("Handled in process_command"),
         }
