@@ -199,10 +199,7 @@ impl SynoidApp {
                 research_expanded: false,
                 audio_expanded: true,
             },
-            },
             active_command: ActiveCommand::Dashboard,
-            preview_texture: None,
-        }
             preview_texture: None,
         }
     }
