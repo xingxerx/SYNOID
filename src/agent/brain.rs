@@ -157,7 +157,10 @@ impl Brain {
         }
 
         // 4. Research Heuristics
-            }
+        if req_lower.contains("research") {
+            return Intent::Research {
+                topic: request.to_string(),
+            };
         }
 
         // 5. Discovery Heuristics

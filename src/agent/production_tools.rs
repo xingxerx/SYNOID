@@ -412,8 +412,12 @@ pub async fn burn_subtitles(
 
     // Force a clean modern font via force_style.
     // Font: 28pt Bold, white text, black outline, lifted 30px from bottom.
+    // NOTE: Do NOT wrap force_style value in single-quotes here.
+    // tokio::process::Command passes args directly to the OS (no shell interp),
+    // so single-quotes are treated as literal char values and cause FFmpeg to
+    // fail parsing the filter string on Windows.
     let filter = format!(
-        "subtitles=filename={}:force_style='FontName=Arial,FontSize=28,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,MarginV=30'",
+        "subtitles=filename={}:force_style=FontName=Arial,FontSize=28,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,MarginV=30",
         srt_escaped
     );
 

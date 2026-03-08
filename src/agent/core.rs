@@ -233,19 +233,22 @@ impl AgentCore {
     // --- Core Logic Methods ---
 
     fn sanitize_input(input: &str) -> String {
-        let mut s = input.trim().to_string();
+        let s = input.trim().to_string();
         
-        // Remove surrounding quotes if they exist
-        if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
-            s.remove(0);
-            s.pop();
-        }
-
         // Remove hidden control characters (e.g., \u{202a} Left-to-Right Embedding)
         // This is common when copying paths from Windows Explorer property dialogs.
-        s.chars()
+        let filtered: String = s.chars()
             .filter(|c| !c.is_control() && *c != '\u{202a}' && *c != '\u{202b}' && *c != '\u{202c}')
-            .collect()
+            .collect();
+
+        let mut result = filtered;
+        
+        // Remove surrounding quotes if they exist
+        if (result.starts_with('"') && result.ends_with('"')) || (result.starts_with('\'') && result.ends_with('\'')) {
+            result.remove(0);
+            result.pop();
+        }
+        result
     }
 
     pub async fn process_youtube_intent(

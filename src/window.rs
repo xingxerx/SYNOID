@@ -199,10 +199,7 @@ impl SynoidApp {
                 research_expanded: false,
                 audio_expanded: true,
             },
-            },
             active_command: ActiveCommand::Dashboard,
-            preview_texture: None,
-        }
             preview_texture: None,
         }
     }
@@ -736,6 +733,41 @@ impl SynoidApp {
         
         ui.add_space(10.0);
         ui.label(egui::RichText::new("Note: 'Execute Intent' uses full embodied reasoning. 'Optimized Edit' is faster for specific requests.").small().color(COLOR_TEXT_SECONDARY));
+    }
+
+    fn render_discovery_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.heading(egui::RichText::new("🔍 Global File Discovery").color(COLOR_ACCENT_BLUE));
+        ui.separator();
+        ui.add_space(10.0);
+
+        ui.label("Search for media files across your system:");
+        ui.horizontal(|ui| {
+            let resp = ui.text_edit_singleline(&mut state.intent);
+            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                let core = self.core.clone();
+                let query = state.intent.clone();
+                tokio::spawn(async move {
+                    let _ = core.process_brain_request(&format!("find video {}", query)).await;
+                });
+            }
+        });
+
+        ui.add_space(20.0);
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Search Results").strong());
+            if state.discovered_files.is_empty() {
+                ui.label("No files discovered yet. Type a query above.");
+            } else {
+                for file in &state.discovered_files {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("📄 {}", file.name));
+                        if ui.button("📂 Use").clicked() {
+                            state.input_path = file.path.to_string_lossy().to_string();
+                        }
+                    });
+                }
+            }
+        });
     }
 
     fn render_learn_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
