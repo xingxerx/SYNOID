@@ -54,7 +54,14 @@ pub struct EditingStrategy {
     pub continuity_boost: f64,
     pub speech_ratio_threshold: f64,
     pub action_duration_threshold: f64,
+    /// Maximum allowed gap (seconds) between two consecutive kept scenes.
+    /// If a gap exceeds this, the best scene within the gap is inserted to
+    /// prevent jarring narrative jumps. Default: 45.0 s.
+    #[serde(default = "default_max_jump_gap_secs")]
+    pub max_jump_gap_secs: f64,
 }
+
+fn default_max_jump_gap_secs() -> f64 { 45.0 }
 
 impl Default for EditingStrategy {
     fn default() -> Self {
@@ -67,6 +74,7 @@ impl Default for EditingStrategy {
             continuity_boost: 0.6,
             speech_ratio_threshold: 0.1,
             action_duration_threshold: 3.0,
+            max_jump_gap_secs: 45.0,
         }
     }
 }
@@ -336,6 +344,62 @@ pub fn merge_neighboring_scenes(
         merged.capacity(), merged.len()
     );
     merged
+}
+
+/// Scan `scenes_to_keep` for gaps larger than `max_gap_secs`.  For every such
+/// gap, pick the highest-scoring scene from `all_scenes` that falls entirely
+/// within the gap and insert it as a narrative bridge.  This prevents jarring
+/// long jumps where the editor skips minutes of content with no transition.
+///
+/// The inserted bridge scene only needs score > 0.0 — even a mediocre scene is
+/// better than a 3-minute unexplained jump for storytelling continuity.
+pub fn bridge_narrative_gaps(
+    mut scenes_to_keep: Vec<Scene>,
+    all_scenes: &[Scene],
+    max_gap_secs: f64,
+) -> Vec<Scene> {
+    if scenes_to_keep.len() < 2 || max_gap_secs <= 0.0 {
+        return scenes_to_keep;
+    }
+
+    let mut bridges_added = 0usize;
+    let mut i = 0;
+
+    while i + 1 < scenes_to_keep.len() {
+        let gap = scenes_to_keep[i + 1].start_time - scenes_to_keep[i].end_time;
+
+        if gap > max_gap_secs {
+            let gap_start = scenes_to_keep[i].end_time;
+            let gap_end   = scenes_to_keep[i + 1].start_time;
+
+            // Find the best-scoring scene that fits entirely within this gap.
+            // Scenes that are already in scenes_to_keep are implicitly excluded
+            // because they fall outside [gap_start, gap_end].
+            if let Some(bridge) = all_scenes
+                .iter()
+                .filter(|s| s.start_time >= gap_start && s.end_time <= gap_end)
+                .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
+            {
+                // Insert the bridge scene right after position i.
+                scenes_to_keep.insert(i + 1, bridge.clone());
+                bridges_added += 1;
+                // Skip the freshly inserted scene so we don't re-check it.
+                i += 2;
+                continue;
+            }
+        }
+
+        i += 1;
+    }
+
+    if bridges_added > 0 {
+        info!(
+            "[SMART] 🌉 Narrative bridge: inserted {} scene(s) to close gaps > {:.0}s",
+            bridges_added, max_gap_secs
+        );
+    }
+
+    scenes_to_keep
 }
 
 /// Insert a 0.3-second black "[CUT]" marker frame between every pair of kept
@@ -757,10 +821,11 @@ pub fn score_scenes(
         }
 
         // 2. Progressive Decay (20% -> 100%)
-        // Multiplier for penalties: Starts at 1.0, ramps up to ~1.8x at the end
-        // (Softened from 3.0× — the original curve gutted the video's climax/conclusion)
+        // Multiplier for penalties: Starts at 1.0, ramps up to 1.5x at the end.
+        // Capped at 1.5x (was 3.0x) to avoid over-penalising the second half of
+        // the video, which was the root cause of large narrative jumps.
         let penalty_multiplier = if progress > 0.2 {
-            1.0 + ((progress - 0.2) / 0.8) * 0.8 
+            1.0 + ((progress - 0.2) / 0.8) * 0.5
         } else {
             1.0
         };
@@ -1214,16 +1279,19 @@ pub async fn smart_edit(
         }
     }
 
-    // 4.6 — Scene padding: add 0.25s before and after each kept scene to prevent
-    //        speech from being clipped at boundaries.  Clamped to video bounds.
+    // 4.6 — Bridge large narrative gaps.
+    // If two consecutive kept scenes are more than max_jump_gap_secs apart we
+    // insert the best available scene from within that gap so the edit doesn't
+    // jump minutes ahead without any transitional context.
     {
-        let total_video_duration = scenes.last().map(|s| s.end_time).unwrap_or(0.0);
-        for scene in scenes_to_keep.iter_mut() {
-            scene.start_time = (scene.start_time - 0.25).max(0.0);
-            scene.end_time = (scene.end_time + 0.25).min(total_video_duration);
-            scene.duration = scene.end_time - scene.start_time;
+        let before_bridge = scenes_to_keep.len();
+        scenes_to_keep = bridge_narrative_gaps(scenes_to_keep, &scenes, config.max_jump_gap_secs);
+        if scenes_to_keep.len() > before_bridge {
+            log(&format!(
+                "[SMART] 🌉 Gap-bridge: {} → {} scenes after inserting narrative bridges",
+                before_bridge, scenes_to_keep.len()
+            ));
         }
-        log("[SMART] 🛡️ Added 0.25s padding around each scene to prevent speech clipping.");
     }
 
     // Collect the removed gaps for the [CUT] marker step later.
