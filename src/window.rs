@@ -465,7 +465,7 @@ impl SynoidApp {
                                     ui.label("Rate Edit:");
                                     for i in 1..=5 {
                                         let star = if i <= 3 { "⭐" } else { "☆" }; // Placeholder or real
-                                        if ui.button(format!("{}", i)).clicked() {
+                                        if ui.button(format!("{} {}", i, star)).clicked() {
                                             let core = self.core.clone();
                                             let job_id = job.id;
                                             tokio::spawn(async move {
@@ -866,9 +866,57 @@ impl SynoidApp {
         ui.text_edit_singleline(&mut state.style_name);
         ui.add_space(20.0);
 
+        ui.label("YouTube / Reference URL:");
+        ui.text_edit_singleline(&mut state.youtube_url);
+        
+        let download_enabled = state.youtube_url.starts_with("http");
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("🎓 Analyze & Learn").size(16.0))
+                egui::Button::new(egui::RichText::new("📥 Download Safe Video to Academy").size(14.0))
+                    .fill(if download_enabled { COLOR_ACCENT_BLUE } else { egui::Color32::from_rgb(80, 80, 80) }),
+            )
+            .clicked()
+            && download_enabled
+        {
+            let core = self.core.clone();
+            let url = state.youtube_url.clone();
+            
+            tokio::spawn(async move {
+                // 1. Guard check
+                if let Err(e) = crate::agent::download_guard::DownloadGuard::validate_url(&url) {
+                    tracing::warn!("[GUI] Download blocked by Sentinel: {}", e);
+                    return;
+                }
+                
+                // 2. Setup Academy dir
+                let academy_dir = std::path::Path::new("D:\\SYNOID\\Academy");
+                let _ = tokio::fs::create_dir_all(academy_dir).await;
+                
+                // 3. Download
+                tracing::info!("[GUI] Fetching reference video for Academy: {}", url);
+                if let Ok(info) = crate::agent::source_tools::download_youtube(&url, academy_dir, None).await {
+                    // 4. Validate downloaded file
+                    let local_path = info.local_path;
+                    if let Err(e) = crate::agent::download_guard::DownloadGuard::validate_downloaded_file(&local_path) {
+                        tracing::warn!("[GUI] Downloaded file blocked by Sentinel: {}", e);
+                        let _ = tokio::fs::remove_file(local_path).await;
+                        return;
+                    }
+                    
+                    // 5. Learn immediately
+                    tracing::info!("[GUI] Download complete! Extracting neural style templates into Brain...");
+                    let _ = core.learn_style(&local_path, &info.title).await;
+                } else {
+                    tracing::error!("[GUI] Failed to fetch video from YouTube.");
+                }
+            });
+        }
+        
+        ui.add_space(20.0);
+
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🎓 Analyze Local File & Learn").size(16.0))
                     .fill(COLOR_ACCENT_GREEN),
             )
             .clicked()

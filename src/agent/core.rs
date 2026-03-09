@@ -659,7 +659,7 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn record_user_rating(&self, job_id: Uuid, stars: u8) {
+    pub async fn record_user_rating(&self, job_id: uuid::Uuid, stars: u8) {
         let quality = match stars {
             1 => 0.1,
             2 => 0.3,

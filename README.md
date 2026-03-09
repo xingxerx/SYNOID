@@ -112,10 +112,10 @@ cargo run --release -- gui
 ### 🧠 Creative Intent Examples
 
 **Viral Clip Generation:**
-> "Utilize the Research module to source and download the top 5 most engaging YouTube videos related to the game 'Outbound' as well as the best video editing videos. Analyze these downloaded videos specifically for their pacing, cut frequency, and how they transition between 'action' and 'boring' segments. Feed this analysis directly into the Academy module to increase your Neuroplasticity and establish a new Style Library for this genre.
-Once you have learned this editing style, apply these exact patterns to my raw footage. Pass the newly learned definitions of 'action' and 'boring' to the Smart Editor's Semantic Understanding engine. Do not make random cuts; completely preserve the core gameplay loop as defined by your newly trained style library, and only apply ruthless editing to remove dead air and silence strictly below the -40dB threshold.
+> "Utilize the Research module to source and download the top 5 most engaging YouTube videos related to popular games as well as the best video editing videos. Analyze these downloaded videos specifically for their pacing and how they maintain viewer engagement without making random cuts. Feed this analysis directly into the Academy module to increase your Neuroplasticity and establish a new Style Library for this genre.
+Once you have learned this style, apply these patterns to my raw footage. Do not make random cuts; completely preserve the core gameplay loop. Instead of content trimming, focus the Smart Editor's Semantic Understanding engine on identifying and beeping out all cuss words and slurs.
 Before generating any captions, utilize Production Tools to apply studio-quality EQ, compression, and normalization to the voice tracks. Ensure the audio is fully enhanced first so that every single spoken word is picked up and transcribed into absolute, 100% accurate on-screen captions.
-Finally, utilize Smart Transitions to apply seamless cuts based on the motion patterns you learned from the reference videos, and use the Engagement Consolidator to structure the final video."
+Finally, utilize the Engagement Consolidator to structure the final video, prioritizing audio clarity and professional censoring over aggressive editing."
 
 **Automated Journalism:**
 > "Research 'Universal Editing tips on trick 2026', find top 5 relevant videos, and generate a summary script."

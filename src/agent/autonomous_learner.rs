@@ -487,14 +487,13 @@ impl AutonomousLearner {
 
         // Calculate Quality based on kept_ratio.
         // A good edit is balanced (ratio 0.3-0.7 gives 1.0 XP). Too low or high means extreme edits, which give less XP.
-        let mut quality = 0.5;
-        if kept_ratio >= 0.3 && kept_ratio <= 0.7 {
-            quality = 1.0;
+        let quality = if kept_ratio >= 0.3 && kept_ratio <= 0.7 {
+            1.0
         } else if kept_ratio < 0.15 || kept_ratio > 0.9 {
-            quality = 0.2;
+            0.2
         } else {
-            quality = 0.6; // Moderate
-        }
+            0.6 // Moderate
+        };
 
         let mut brain_lock = self.brain.lock().await;
         

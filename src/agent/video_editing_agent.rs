@@ -4,10 +4,10 @@
 use crate::agent::autonomous_learner::AutonomousLearner;
 use crate::agent::brain::Brain;
 use crate::agent::smart_editor;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
-use std::path::Path;
 
 #[derive(Clone)]
 pub struct VideoEditingAgent {
@@ -18,14 +18,14 @@ pub struct VideoEditingAgent {
 impl VideoEditingAgent {
     pub fn new(brain: Arc<Mutex<Brain>>) -> Self {
         let learner = Arc::new(AutonomousLearner::new(brain.clone()));
-        Self {
-            brain,
-            learner,
-        }
+        Self { brain, learner }
     }
 
     /// Run a "Betterment Cycle": Find a benchmark, learn from it, then try to apply it
-    pub async fn run_betterment_cycle(&self, topic: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn run_betterment_cycle(
+        &self,
+        topic: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("[VEA] 🚀 Starting Betterment Cycle for topic: '{}'", topic);
 
         // 1. Trigger the learner to find and acquire a benchmark
@@ -39,8 +39,10 @@ impl VideoEditingAgent {
             brain_lock.learning_kernel.recall_pattern(topic)
         };
 
-        info!("[VEA] 🧠 Recalled pattern: '{}' (S: {:.2}s, T: {:.2}x)", 
-            pattern.intent_tag, pattern.avg_scene_duration, pattern.transition_speed);
+        info!(
+            "[VEA] 🧠 Recalled pattern: '{}' (S: {:.2}s, T: {:.2}x)",
+            pattern.intent_tag, pattern.avg_scene_duration, pattern.transition_speed
+        );
 
         Ok(())
     }
@@ -70,7 +72,8 @@ impl VideoEditingAgent {
             None,  // pre_scanned_scenes
             None,  // pre_scanned_transcript
             Some(pattern),
-        ).await?;
+        )
+        .await?;
 
         // 3. Feed back the result to the learner
         // (Wait for render to finish, then analyze the duration/pacing of the output)
@@ -78,7 +81,9 @@ impl VideoEditingAgent {
             if metadata.len() > 0 {
                 // In a real scenario, we'd get the actual video duration here
                 // For now, we use a mock or heuristic if needed
-                self.learner.learn_from_edit(instruction, output, 30.0).await;
+                self.learner
+                    .learn_from_edit(instruction, output, 30.0, 0.5)
+                    .await;
             }
         }
 

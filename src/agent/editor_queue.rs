@@ -156,4 +156,9 @@ impl VideoEditorQueue {
         let jobs = self.jobs.lock().await;
         jobs.clone()
     }
+
+    pub async fn clear_completed(&self) {
+        let mut jobs = self.jobs.lock().await;
+        jobs.retain(|j| !matches!(j.status, JobStatus::Completed { .. } | JobStatus::Failed(_)));
+    }
 }

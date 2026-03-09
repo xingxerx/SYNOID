@@ -36,7 +36,6 @@ pub enum Intent {
         query: String,
     },
 
-
     /// Complex creative request requiring MoE orchestration
     Orchestrate {
         goal: String,
@@ -91,7 +90,10 @@ impl Brain {
     }
 
     pub async fn initialize_hive_mind(&mut self) -> Result<(), String> {
-        self.hive_mind.refresh_models().await.map_err(|e| e.to_string())
+        self.hive_mind
+            .refresh_models()
+            .await
+            .map_err(|e| e.to_string())
     }
 
     /// Late-bind the GPU context after async detection completes.
@@ -164,16 +166,26 @@ impl Brain {
         }
 
         // 5. Discovery Heuristics
-        if req_lower.contains("find") || req_lower.contains("search") || req_lower.contains("where is") {
-             if req_lower.contains("video") || req_lower.contains("file") || req_lower.contains("clip") || req_lower.contains("mp4") {
-                let query = request.replace("find", "").replace("search for", "").replace("where is", "").trim().to_string();
+        if req_lower.contains("find")
+            || req_lower.contains("search")
+            || req_lower.contains("where is")
+        {
+            if req_lower.contains("video")
+                || req_lower.contains("file")
+                || req_lower.contains("clip")
+                || req_lower.contains("mp4")
+            {
+                let query = request
+                    .replace("find", "")
+                    .replace("search for", "")
+                    .replace("where is", "")
+                    .trim()
+                    .to_string();
                 if !query.is_empty() {
                     return Intent::DiscoverFile { query };
                 }
-             }
+            }
         }
-
-
 
         // 7. Orchestrate Heuristics (MoE Dispatcher)
         // Complex creative requests requiring multi-expert coordination
@@ -358,6 +370,8 @@ impl Brain {
                             color_grade_style: "learned".to_string(),
                             success_rating: 5, // User explicitly asked to learn this, so we rate it high
                             source_video: Some(input.clone()),
+                            kept_ratio: 0.5,
+                            outcome_xp: 1.0,
                         };
 
                         // Removed extra closing brace
@@ -397,22 +411,21 @@ impl Brain {
                 Ok(format!("DISCOVERY_MODE:{}", query))
             }
 
-
             Intent::Orchestrate { goal, .. } => {
-                 info!("[BRAIN] 🎼 Orchestrating creative goal: {}", goal);
-                 // Use the LLM to reason about the orchestration
-                 match self.agent.reason(&goal).await {
-                     Ok(resp) => Ok(format!("Orchestration Plan: {}", resp)),
-                     Err(e) => Err(format!("Orchestration failed: {}", e)),
-                 }
+                info!("[BRAIN] 🎼 Orchestrating creative goal: {}", goal);
+                // Use the LLM to reason about the orchestration
+                match self.agent.reason(&goal).await {
+                    Ok(resp) => Ok(format!("Orchestration Plan: {}", resp)),
+                    Err(e) => Err(format!("Orchestration failed: {}", e)),
+                }
             }
             Intent::CreateEdit { input, instruction } => {
                 // Similar to Orchestrate but simpler
-                 info!("[BRAIN] 🎬 Planning edit for {}: {}", input, instruction);
-                 match self.agent.reason(&instruction).await {
-                     Ok(resp) => Ok(format!("Edit Plan: {}", resp)),
-                     Err(e) => Err(format!("Planning failed: {}", e)),
-                 }
+                info!("[BRAIN] 🎬 Planning edit for {}: {}", input, instruction);
+                match self.agent.reason(&instruction).await {
+                    Ok(resp) => Ok(format!("Edit Plan: {}", resp)),
+                    Err(e) => Err(format!("Planning failed: {}", e)),
+                }
             }
             Intent::Unknown { request } => {
                 info!("[BRAIN] 🧠 Complex request detected. Waking up Cortex (GPT-OSS)...");
@@ -420,13 +433,16 @@ impl Brain {
                 // Check if model changed (neuroplasticity might upgrade us)
                 let current_best = self.hive_mind.get_reasoning_model();
                 if self.agent.model != current_best {
-                     info!("[BRAIN] 🔄 Upgrading Cortex to better model: {} -> {}", self.agent.model, current_best);
-                     self.agent = SynoidAgent::new(&self.api_url, &current_best);
+                    info!(
+                        "[BRAIN] 🔄 Upgrading Cortex to better model: {} -> {}",
+                        self.agent.model, current_best
+                    );
+                    self.agent = SynoidAgent::new(&self.api_url, &current_best);
                 }
-                
+
                 match self.agent.reason(&request).await {
-                     Ok(resp) => Ok(format!("Cortex reasoned: {}", resp)),
-                     Err(e) => Err(format!("Cortex failed: {}", e)),
+                    Ok(resp) => Ok(format!("Cortex reasoned: {}", resp)),
+                    Err(e) => Err(format!("Cortex failed: {}", e)),
                 }
             }
         }

@@ -151,29 +151,31 @@ pub async fn compress_video(
     let safe_input = safe_arg_path(input);
     let safe_output = safe_arg_path(output);
 
-    let status = Command::new("ffmpeg")
-        .arg("-y")
-        .arg("-i")
-        .arg(&safe_input)
-        .args([
-            "-c:v",
-            "libx264",
-            "-b:v",
-            &format!("{:.0}k", video_bitrate_kbps),
-            "-maxrate",
-            &format!("{:.0}k", video_bitrate_kbps * 1.5),
-            "-bufsize",
-            &format!("{:.0}k", video_bitrate_kbps * 2.0),
-            "-preset",
-            "medium",
-            "-c:a",
-            "aac",
-            "-b:a",
-            &format!("{:.0}k", audio_bitrate_kbps),
-        ])
-        .arg(&safe_output)
-        .status()
-        .await?;
+    let gpu_ctx = crate::gpu_backend::get_gpu_context().await;
+    let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
+
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-y").arg("-i").arg(&safe_input);
+
+    cmd.arg("-c:v").arg(gpu_ctx.ffmpeg_encoder());
+    for flag in gpu_ctx.neuroplastic_ffmpeg_flags(neuro.current_speed()) {
+        cmd.arg(flag);
+    }
+
+    cmd.args([
+        "-b:v",
+        &format!("{:.0}k", video_bitrate_kbps),
+        "-maxrate",
+        &format!("{:.0}k", video_bitrate_kbps * 1.5),
+        "-bufsize",
+        &format!("{:.0}k", video_bitrate_kbps * 2.0),
+        "-c:a",
+        "aac",
+        "-b:a",
+        &format!("{:.0}k", audio_bitrate_kbps),
+    ]);
+
+    let status = cmd.arg(&safe_output).status().await?;
 
     if !status.success() {
         return Err("FFmpeg compression failed".into());
@@ -450,8 +452,11 @@ pub async fn burn_subtitles(
 
     info!("[PRODUCTION] burn_subtitles filter: {}", filter);
 
-    let result = Command::new("ffmpeg")
-        .arg("-y")
+    let gpu_ctx = crate::gpu_backend::get_gpu_context().await;
+    let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
+
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-y")
         .arg("-hide_banner")
         .arg("-loglevel")
         .arg("error")
@@ -463,14 +468,20 @@ pub async fn burn_subtitles(
         .arg("-c:a")
         .arg("copy")
         .arg("-c:v")
-        .arg("libx264")
-        .arg("-preset")
-        .arg("fast")
-        .arg("-crf")
-        .arg("23")
-        .arg(&safe_output)
-        .output()
-        .await?;
+        .arg(gpu_ctx.ffmpeg_encoder());
+
+    for flag in gpu_ctx.neuroplastic_ffmpeg_flags(neuro.current_speed()) {
+        cmd.arg(flag);
+    }
+
+    if gpu_ctx.has_gpu() {
+        cmd.arg("-cq").arg("23"); // NVENC
+    } else {
+        cmd.arg("-crf").arg("23"); // CPU
+    }
+
+    cmd.arg(&safe_output);
+    let result = cmd.output().await?;
 
     // Clean up temp file regardless of outcome
     let _ = std::fs::remove_file(&temp_ass);
