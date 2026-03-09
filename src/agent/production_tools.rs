@@ -515,8 +515,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\
 
     let mut ass = header.to_string();
 
-    // Parse SRT blocks: each block is index\ntimestamp --> timestamp\ntext...
-    for block in srt.trim().split("\r\n\r\n").chain(srt.trim().split("\n\n")) {
+    // Parse SRT blocks: detect line-ending style and split once to avoid duplicates
+    let separator = if srt.contains("\r\n\r\n") {
+        "\r\n\r\n"
+    } else {
+        "\n\n"
+    };
+    for block in srt.trim().split(separator) {
         let lines: Vec<&str> = block.trim().lines().collect();
         if lines.len() < 3 {
             continue;
@@ -643,7 +648,7 @@ pub async fn apply_audio_censor(
             filter_complex.push_str(tag);
         }
         filter_complex.push_str(&format!(
-            "amix=inputs={}:duration=first:dropout_transition=0[out]",
+            "amix=inputs={}:duration=first:dropout_transition=0:normalize=0[out]",
             censor_timestamps.len() + 1
         ));
 
@@ -674,7 +679,7 @@ pub async fn apply_audio_censor(
             // lower the volume to 40 % so it blends cleanly, then delay it.
             filter_complex.push_str(&format!(
                 "sine=frequency=1000:sample_rate=44100:duration={dur:.4},\
-                 volume=0.4,\
+                 volume=0.65,\
                  adelay={delay}|{delay}[beep{i}];",
                 dur = dur,
                 delay = delay_ms,
@@ -688,7 +693,7 @@ pub async fn apply_audio_censor(
             filter_complex.push_str(&format!("[beep{}]", i));
         }
         filter_complex.push_str(&format!(
-            "amix=inputs={}:duration=first:dropout_transition=0[out]",
+            "amix=inputs={}:duration=first:dropout_transition=0:normalize=0[out]",
             n + 1
         ));
 

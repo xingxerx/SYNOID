@@ -20,6 +20,9 @@ const MAX_MULTIPLIER: f64 = 16.0;
 pub struct Neuroplasticity {
     /// Total successful operations processed.
     pub experience_points: u64,
+    /// Fractional XP buffer for quality-weighted accumulation.
+    #[serde(default)]
+    pub experience_points_f64: f64,
     /// Current speed multiplier (starts at 1.0, doubles per threshold).
     pub speed_multiplier: f64,
     /// Unix timestamp when this instance was first created.
@@ -53,6 +56,7 @@ impl Neuroplasticity {
 
         let fresh = Self {
             experience_points: 0,
+            experience_points_f64: 0.0,
             speed_multiplier: 1.0,
             created_at: now,
             adaptations: 0,
@@ -64,14 +68,35 @@ impl Neuroplasticity {
 
     /// Record a successful task completion and potentially increase speed.
     pub fn record_success(&mut self) {
-        self.experience_points += 1;
+        self.record_success_with_quality(1.0);
+    }
+
+    /// Record a success weighted by edit quality.
+    ///
+    /// `quality` should be in [0.0, 1.0] where:
+    /// - 1.0 = ideal balanced edit (kept_ratio 0.3–0.7)
+    /// - 0.5 = mediocre edit
+    /// - 0.1 = poor/extreme edit (cut everything or kept everything)
+    ///
+    /// Fractional XP accumulates in a buffer and is flushed to
+    /// `experience_points` when it crosses a whole number.
+    pub fn record_success_with_quality(&mut self, quality: f64) {
+        let xp_gain = quality.clamp(0.0, 1.0).max(0.1); // Minimum 0.1 XP always
+        self.experience_points_f64 += xp_gain;
+
+        // Flush whole XP units from the buffer
+        let gained_whole = self.experience_points_f64.floor() as u64;
+        if gained_whole > 0 {
+            self.experience_points += gained_whole;
+            self.experience_points_f64 -= gained_whole as f64;
+        }
 
         let new_multiplier = self.calculate_multiplier();
         if (new_multiplier - self.speed_multiplier).abs() > f64::EPSILON {
             self.adaptations += 1;
             info!(
-                "[NEUROPLASTICITY] ⚡ ADAPTATION #{}: Speed {:.1}× → {:.1}× (at {} XP)",
-                self.adaptations, self.speed_multiplier, new_multiplier, self.experience_points
+                "[NEUROPLASTICITY] ⚡ ADAPTATION #{}: Speed {:.1}× → {:.1}× (at {} XP, quality={:.2})",
+                self.adaptations, self.speed_multiplier, new_multiplier, self.experience_points, xp_gain
             );
             self.speed_multiplier = new_multiplier;
         }
@@ -165,6 +190,7 @@ mod tests {
     fn fresh() -> Neuroplasticity {
         Neuroplasticity {
             experience_points: 0,
+            experience_points_f64: 0.0,
             speed_multiplier: 1.0,
             created_at: 0,
             adaptations: 0,

@@ -61,7 +61,9 @@ pub struct EditingStrategy {
     pub max_jump_gap_secs: f64,
 }
 
-fn default_max_jump_gap_secs() -> f64 { 45.0 }
+fn default_max_jump_gap_secs() -> f64 {
+    45.0
+}
 
 impl Default for EditingStrategy {
     fn default() -> Self {
@@ -69,7 +71,7 @@ impl Default for EditingStrategy {
             scene_threshold: 0.25,
             min_scene_score: 0.30, // Raised from 0.20 — prevents micro-cuts
             boring_penalty_threshold: 25.0, // Tighter: cut long boring blocks sooner
-            speech_boost: 0.5,  // Raised from 0.4 — speech is story, keep more of it
+            speech_boost: 0.5,     // Raised from 0.4 — speech is story, keep more of it
             silence_penalty: -0.4,
             continuity_boost: 0.6,
             speech_ratio_threshold: 0.1,
@@ -81,15 +83,36 @@ impl Default for EditingStrategy {
 
 impl EditingStrategy {
     pub fn load() -> Self {
-        // Try loading from JSON, fallback to default
+        // First try the learned, cortex-cached strategy (compounding learning)
+        if let Ok(content) = fs::read_to_string("cortex_cache/editing_strategy.json") {
+            if let Ok(config) = serde_json::from_str(&content) {
+                info!("[SMART] Loaded editing strategy from cortex_cache/editing_strategy.json");
+                return config;
+            }
+        }
+
+        // Fallback to static JSON
         if let Ok(content) = fs::read_to_string("editing_strategy.json") {
             if let Ok(config) = serde_json::from_str(&content) {
                 info!("[SMART] Loaded editing strategy from editing_strategy.json");
                 return config;
             }
         }
+
         info!("[SMART] Using default editing strategy");
         Self::default()
+    }
+
+    pub fn save_to_cortex(&self) {
+        let _ = fs::create_dir_all("cortex_cache");
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            match fs::write("cortex_cache/editing_strategy.json", json) {
+                Ok(_) => info!(
+                    "[SMART] 💾 Saved tuned EditingStrategy to cortex_cache/editing_strategy.json"
+                ),
+                Err(e) => warn!("[SMART] Failed to save strategy to cortex: {}", e),
+            }
+        }
     }
 }
 
@@ -114,17 +137,22 @@ pub struct EditIntent {
     pub show_cut_markers: bool,
 }
 
-fn default_show_cut_markers() -> bool { true }
-fn default_censor_profanity() -> bool { true }
+fn default_show_cut_markers() -> bool {
+    false
+}
+fn default_censor_profanity() -> bool {
+    true
+}
 
 impl EditIntent {
     /// Parse natural language intent into structured intent using LLM
     pub async fn from_llm(text: &str) -> Self {
         use crate::agent::gpt_oss_bridge::SynoidAgent;
-        let api_url = std::env::var("OLLAMA_API_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let api_url = std::env::var("OLLAMA_API_URL")
+            .unwrap_or_else(|_| "http://localhost:11434".to_string());
         // Llama3:latest serves as our standard fast JSON intent parser
         let agent = SynoidAgent::new(&api_url, "llama3:latest");
-        
+
         let prompt = format!(
             r#"You are a video editing AI assistant. Convert the user's natural language request into a JSON configuration for the EditIntent struct.
 The JSON must strictly follow this structure and include nothing else:
@@ -142,7 +170,9 @@ The JSON must strictly follow this structure and include nothing else:
 }}
 
 User Request: "{}"
-"#, text);
+"#,
+            text
+        );
 
         match agent.reason(&prompt).await {
             Ok(response) => {
@@ -169,9 +199,12 @@ User Request: "{}"
                     tracing::warn!("[SMART] LLM intent JSON deserialization failed, falling back to heuristic parsing. Raw: {}", clean_json);
                 }
             }
-            Err(e) => tracing::warn!("[SMART] LLM intent parsing failed: {}, falling back to heuristic parsing", e),
+            Err(e) => tracing::warn!(
+                "[SMART] LLM intent parsing failed: {}, falling back to heuristic parsing",
+                e
+            ),
         }
-        
+
         Self::from_text(text)
     }
 
@@ -181,9 +214,28 @@ User Request: "{}"
 
         // Density detection
         let mut density = EditDensity::Balanced;
-        
-        let highlights_words = ["short", "highlights", "ruthless", "aggressive", "fast-paced", "quick", "snappy"];
-        let full_words = ["long", "full", "whole", "most", "minutes", "hour", "hours", "40-60", "exhaustive", "complete"];
+
+        let highlights_words = [
+            "short",
+            "highlights",
+            "ruthless",
+            "aggressive",
+            "fast-paced",
+            "quick",
+            "snappy",
+        ];
+        let full_words = [
+            "long",
+            "full",
+            "whole",
+            "most",
+            "minutes",
+            "hour",
+            "hours",
+            "40-60",
+            "exhaustive",
+            "complete",
+        ];
 
         if highlights_words.iter().any(|&w| lower.contains(w)) {
             density = EditDensity::Highlights;
@@ -236,27 +288,27 @@ User Request: "{}"
     fn parse_duration_range(text: &str) -> Option<(f64, f64)> {
         // Look for patterns like "40-60 minutes", "30 mins", "1 hour"
         // Return (min_seconds, max_seconds)
-        
+
         let mut min_secs = 0.0;
         let mut max_secs = 0.0;
-        
+
         // Simple case: "X-Y minutes"
         if let Some(caps) = regex::Regex::new(r"(\d+)-(\d+)\s*(min|minute|mins)")
             .ok()?
-            .captures(text) {
+            .captures(text)
+        {
             let caps: Captures = caps;
             min_secs = caps.get(1)?.as_str().parse::<f64>().ok()? * 60.0;
             max_secs = caps.get(2)?.as_str().parse::<f64>().ok()? * 60.0;
         } else if let Some(caps) = regex::Regex::new(r"(\d+)\s*(min|minute|mins)")
             .ok()?
-            .captures(text) {
+            .captures(text)
+        {
             let caps: Captures = caps;
             let mins = caps.get(1)?.as_str().parse::<f64>().ok()?;
             min_secs = mins * 60.0 * 0.9; // 10% tolerance
             max_secs = mins * 60.0 * 1.1;
-        } else if let Some(caps) = regex::Regex::new(r"(\d+)\s*(hour|hr)")
-            .ok()?
-            .captures(text) {
+        } else if let Some(caps) = regex::Regex::new(r"(\d+)\s*(hour|hr)").ok()?.captures(text) {
             let caps: Captures = caps;
             let hrs = caps.get(1)?.as_str().parse::<f64>().ok()?;
             min_secs = hrs * 3600.0 * 0.9;
@@ -273,7 +325,11 @@ User Request: "{}"
     /// Check if any editing intent was detected
     #[allow(dead_code)]
     pub fn has_intent(&self) -> bool {
-        self.remove_boring || self.keep_action || self.remove_silence || self.keep_speech || self.ruthless
+        self.remove_boring
+            || self.keep_action
+            || self.remove_silence
+            || self.keep_speech
+            || self.ruthless
     }
 }
 
@@ -310,7 +366,7 @@ pub fn merge_neighboring_scenes(
             let bridged = transcript.iter().any(|seg| {
                 // The segment must overlap current AND next
                 let touches_current = seg.end > current.start_time && seg.start < current.end_time;
-                let touches_next   = seg.end > next.start_time   && seg.start < next.end_time;
+                let touches_next = seg.end > next.start_time && seg.start < next.end_time;
                 touches_current && touches_next
             });
 
@@ -331,7 +387,8 @@ pub fn merge_neighboring_scenes(
 
     info!(
         "[SMART] 🔗 Scene merge: {} scenes → {} after transcript-context grouping",
-        merged.capacity(), merged.len()
+        merged.capacity(),
+        merged.len()
     );
     merged
 }
@@ -360,7 +417,7 @@ pub fn bridge_narrative_gaps(
 
         if gap > max_gap_secs {
             let gap_start = scenes_to_keep[i].end_time;
-            let gap_end   = scenes_to_keep[i + 1].start_time;
+            let gap_end = scenes_to_keep[i + 1].start_time;
 
             // Find the best-scoring scene that fits entirely within this gap.
             // Scenes that are already in scenes_to_keep are implicitly excluded
@@ -368,7 +425,11 @@ pub fn bridge_narrative_gaps(
             if let Some(bridge) = all_scenes
                 .iter()
                 .filter(|s| s.start_time >= gap_start && s.end_time <= gap_end)
-                .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
+                .max_by(|a, b| {
+                    a.score
+                        .partial_cmp(&b.score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
             {
                 // Insert the bridge scene right after position i.
                 scenes_to_keep.insert(i + 1, bridge.clone());
@@ -405,13 +466,24 @@ pub async fn insert_cut_markers(
         return Ok(());
     }
 
-    info!("[SMART] 🎬 Inserting {} [CUT] marker frame(s)...", cut_points.len());
+    info!(
+        "[SMART] 🎬 Inserting {} [CUT] marker frame(s)...",
+        cut_points.len()
+    );
 
     // Probe the resolution of the output file so our marker frame matches
     let probe = Command::new("ffprobe")
-        .args(["-v","error","-select_streams","v:0","-show_entries",
-               "stream=width,height","-of","csv=p=0",
-               output.to_str().unwrap_or("")])
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0",
+            output.to_str().unwrap_or(""),
+        ])
         .output()
         .await?;
     let probe_str = String::from_utf8_lossy(&probe.stdout);
@@ -428,15 +500,36 @@ pub async fn insert_cut_markers(
         "drawtext=text='[CUT]':fontsize=48:fontcolor=white@0.85:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=black:shadowx=2:shadowy=2"
     );
     let marker_status = Command::new("ffmpeg")
-        .args(["-y","-hide_banner","-loglevel","error","-nostdin",
-               "-f","lavfi",
-               "-i", &format!("color=c=black:size={}x{}:duration=0.3:rate=30", w, h),
-               "-f","lavfi","-i","anullsrc=r=44100:cl=stereo:d=0.3",
-               "-vf", &drawtext,
-               "-c:v","libx264","-preset","ultrafast","-crf","23",
-               "-c:a","aac","-b:a","128k",
-               "-t","0.3",
-               marker_path.to_str().unwrap_or("")])
+        .args([
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-f",
+            "lavfi",
+            "-i",
+            &format!("color=c=black:size={}x{}:duration=0.3:rate=30", w, h),
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=44100:cl=stereo:d=0.3",
+            "-vf",
+            &drawtext,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-t",
+            "0.3",
+            marker_path.to_str().unwrap_or(""),
+        ])
         .status()
         .await?;
 
@@ -497,12 +590,26 @@ pub async fn insert_cut_markers(
 
     let marked_path = work_dir.join("output_marked.mp4");
     let mark_status = Command::new("ffmpeg")
-        .args(["-y","-hide_banner","-loglevel","error","-nostdin",
-               "-i", output.to_str().unwrap_or(""),
-               "-vf", &flash_drawtext,
-               "-c:v","libx264","-preset","ultrafast","-crf","23",
-               "-c:a","copy",
-               marked_path.to_str().unwrap_or("")])
+        .args([
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-i",
+            output.to_str().unwrap_or(""),
+            "-vf",
+            &flash_drawtext,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "23",
+            "-c:a",
+            "copy",
+            marked_path.to_str().unwrap_or(""),
+        ])
         .status()
         .await?;
 
@@ -512,9 +619,15 @@ pub async fn insert_cut_markers(
         match fs::copy(&marked_path, output) {
             Ok(_) => {
                 let _ = fs::remove_file(&marked_path);
-                info!("[SMART] ✅ [CUT] markers burned into output ({} flash points).", flash_times.len());
+                info!(
+                    "[SMART] ✅ [CUT] markers burned into output ({} flash points).",
+                    flash_times.len()
+                );
             }
-            Err(e) => warn!("[SMART] Could not overwrite output with marked version: {}", e),
+            Err(e) => warn!(
+                "[SMART] Could not overwrite output with marked version: {}",
+                e
+            ),
         }
     } else {
         let _ = fs::remove_file(&marked_path);
@@ -678,7 +791,7 @@ pub fn ensure_speech_continuity(
                     max_score = scenes[i].score;
                 }
             }
-            
+
             // Ensure even the "best" part of the sentence meets a minimum threshold if it's speech
             let min_speech_score = if is_ruthless { 0.25 } else { 0.35 };
             max_score = max_score.max(min_speech_score);
@@ -688,14 +801,14 @@ pub fn ensure_speech_continuity(
                     // In ruthless mode, we only boost if the gap isn't too large or score too low
                     // Trying to preserve flow without keeping dead air
                     let current_score = scenes[i].score;
-                    
+
                     if is_ruthless {
-                         if current_score < 0.1 {
-                             // Don't boost absolute trash in ruthless mode
-                             continue; 
-                         }
-                         // Partial boost
-                         scenes[i].score = (current_score + max_score) / 2.0;
+                        if current_score < 0.1 {
+                            // Don't boost absolute trash in ruthless mode
+                            continue;
+                        }
+                        // Partial boost
+                        scenes[i].score = (current_score + max_score) / 2.0;
                     } else {
                         // Full boost (Classic behavior)
                         scenes[i].score = max_score;
@@ -786,7 +899,11 @@ pub fn score_scenes(
     config: &EditingStrategy,
     total_duration: f64, // NEW: Needed for positional scoring
 ) {
-    info!("[SMART] Scoring {} scenes based on intent (Total Duration: {:.2}s)...", scenes.len(), total_duration);
+    info!(
+        "[SMART] Scoring {} scenes based on intent (Total Duration: {:.2}s)...",
+        scenes.len(),
+        total_duration
+    );
 
     // 1. Base Scoring
     for scene in scenes.iter_mut() {
@@ -807,7 +924,7 @@ pub fn score_scenes(
 
         // 1. Preservation Phase (First 20%): Boost to establish context/hook
         if progress < 0.2 {
-             score += 0.1; 
+            score += 0.1;
         }
 
         // 2. Progressive Decay (20% -> 100%)
@@ -828,7 +945,7 @@ pub fn score_scenes(
             let boring_penalty = match intent.density {
                 EditDensity::Highlights => 0.4,
                 EditDensity::Balanced => 0.2,
-                EditDensity::Full => 0.05, 
+                EditDensity::Full => 0.05,
             };
 
             // Apply positional multiplier to boring penalty
@@ -842,7 +959,10 @@ pub fn score_scenes(
             // (Removed: +0.2 bias for <3s clips — was causing choppy micro-cuts)
         }
 
-        if intent.keep_action && scene.duration < config.action_duration_threshold && scene.duration >= 2.0 {
+        if intent.keep_action
+            && scene.duration < config.action_duration_threshold
+            && scene.duration >= 2.0
+        {
             score += 0.15; // Moderate boost; require ≥2s to avoid micro-clips
         }
 
@@ -858,9 +978,9 @@ pub fn score_scenes(
 
                 if seg_end > seg_start {
                     speech_duration += seg_end - seg_start;
-                    
+
                     let text_lower = seg.text.to_lowercase();
-                    
+
                     // Custom Keywords
                     if !intent.custom_keywords.is_empty() {
                         for keyword in &intent.custom_keywords {
@@ -876,7 +996,17 @@ pub fn score_scenes(
                         is_fun = true;
                     }
                     // 2. Fun/Excitement keywords
-                    let fun_words = ["wow", "haha", "lol", "cool", "omg", "whoa", "crazy", "funny", "hilarious"];
+                    let fun_words = [
+                        "wow",
+                        "haha",
+                        "lol",
+                        "cool",
+                        "omg",
+                        "whoa",
+                        "crazy",
+                        "funny",
+                        "hilarious",
+                    ];
                     if fun_words.iter().any(|&w| text_lower.contains(w)) {
                         is_fun = true;
                     }
@@ -916,7 +1046,7 @@ pub fn score_scenes(
 
         if intent.ruthless || intent.density == EditDensity::Highlights {
             // "Ruthless" or "Highlights": Everything is slightly penalized unless it's action or speech
-            score -= 0.05; 
+            score -= 0.05;
 
             // (Removed: +0.2 micro-segment bias in ruthless mode — was causing rapid-fire cuts)
         }
@@ -955,7 +1085,7 @@ pub async fn smart_edit(
     log("[SMART] 🧠 Starting AI-powered edit...");
 
     // ... (File extension checks remain same)
-    
+
     // Fix: Ensure output path has a valid video extension
     let mut output_buf = output.to_path_buf();
     if let Some(ext) = output_buf.extension() {
@@ -975,29 +1105,48 @@ pub async fn smart_edit(
 
     // APPLY LEARNED PATTERN IF AVAILABLE
     if let Some(pattern) = &learned_pattern {
-        log(&format!("[SMART] 🎓 Applying Learned Pattern: '{}'", pattern.intent_tag));
-        log(&format!("        - Avg Scene Duration: {:.2}s", pattern.avg_scene_duration));
-        log(&format!("        - Transition Speed: {:.2}x", pattern.transition_speed));
+        log(&format!(
+            "[SMART] 🎓 Applying Learned Pattern: '{}'",
+            pattern.intent_tag
+        ));
+        log(&format!(
+            "        - Avg Scene Duration: {:.2}s",
+            pattern.avg_scene_duration
+        ));
+        log(&format!(
+            "        - Transition Speed: {:.2}x",
+            pattern.transition_speed
+        ));
 
         // 1. Adjust 'Boring' Threshold based on average scene duration
-        config.boring_penalty_threshold = pattern.avg_scene_duration * 1.5; 
-        
+        config.boring_penalty_threshold = pattern.avg_scene_duration * 1.5;
+
         // 2. Adjust Action Threshold
         config.action_duration_threshold = pattern.avg_scene_duration;
 
         // 3. Continuity boost based on music sync/strictness
         config.continuity_boost = pattern.music_sync_strictness.max(0.3);
-        
+
         // 5. Dynamic pacing adjustment for scores
         // If pattern has short scenes, we boost segments that match that duration
-        info!("[SMART] 📉 Tuning score heuristics for {} pacing", if pattern.avg_scene_duration < 3.0 { "fast" } else { "rhythmic" });
-        
+        info!(
+            "[SMART] 📉 Tuning score heuristics for {} pacing",
+            if pattern.avg_scene_duration < 3.0 {
+                "fast"
+            } else {
+                "rhythmic"
+            }
+        );
+
         // 6. STRICTNESS: Increase base threshold based on music_sync_strictness
         // If strictness is 0.8, we raise min_scene_score from 0.2 to ~0.35 or 0.4
         // This forces "boring" parts to be cut more aggressively.
         let strictness_penalty = pattern.music_sync_strictness * 0.3; // Up to +0.3
         config.min_scene_score = (config.min_scene_score + strictness_penalty).min(0.6);
-        log(&format!("[SMART] 🛡️ Strictness Level: {:.2} -> Min Score raised to {:.2}", pattern.music_sync_strictness, config.min_scene_score));
+        log(&format!(
+            "[SMART] 🛡️ Strictness Level: {:.2} -> Min Score raised to {:.2}",
+            pattern.music_sync_strictness, config.min_scene_score
+        ));
     }
 
     // 0. Pre-process: Enhance Audio & Transcribe (Code follows...)
@@ -1023,24 +1172,35 @@ pub async fn smart_edit(
     // Transcribe
     log("[SMART] 📝 Transcribing audio for semantic understanding...");
     let transcript = if let Some(t) = pre_scanned_transcript {
-        log(&format!("[SMART] Using pre-scanned transcript ({} segments)", t.len()));
+        log(&format!(
+            "[SMART] Using pre-scanned transcript ({} segments)",
+            t.len()
+        ));
         Some(t)
     } else if use_enhanced_audio {
         let whisper_audio_path = work_dir.join("synoid_audio_whisper.wav");
-        
+
         // Extract 16kHz mono specifically for Whisper from the enhanced audio
         log("[SMART] 🎧 Extracting 16kHz mono audio for Whisper...");
-        let audio_for_whisper = match production_tools::extract_audio_wav(&enhanced_audio_path, &whisper_audio_path).await {
-            Ok(p) => p,
-            Err(e) => {
-                warn!("[SMART] Failed to downsample to 16kHz mono: {}. Using enhanced instead.", e);
-                enhanced_audio_path.clone()
-            }
-        };
+        let audio_for_whisper =
+            match production_tools::extract_audio_wav(&enhanced_audio_path, &whisper_audio_path)
+                .await
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!(
+                        "[SMART] Failed to downsample to 16kHz mono: {}. Using enhanced instead.",
+                        e
+                    );
+                    enhanced_audio_path.clone()
+                }
+            };
 
-        let engine = TranscriptionEngine::new(None).await.map_err(|e| e.to_string())?;
+        let engine = TranscriptionEngine::new(None)
+            .await
+            .map_err(|e| e.to_string())?;
         let res = engine.transcribe(&audio_for_whisper).await;
-        
+
         if audio_for_whisper == whisper_audio_path {
             let _ = fs::remove_file(&whisper_audio_path);
         }
@@ -1076,11 +1236,11 @@ pub async fn smart_edit(
         if let Some(t) = &transcript {
             log("[SMART] 🤬 Applying audio censorship pass based on transcript...");
             let censored_path = work_dir.join("synoid_audio_censored.wav");
-            
+
             // Comprehensive list of words to bleep — racial slurs, hate speech, and profanity
             let profanity_words = get_profanity_word_list();
             let mut censor_timestamps: Vec<(f64, f64)> = Vec::new();
-            
+
             for seg in t {
                 let text_lower = seg.text.to_lowercase();
                 for bad_word in &profanity_words {
@@ -1092,7 +1252,8 @@ pub async fn smart_edit(
                 }
             }
             // Merge overlapping/adjacent timestamp ranges (in case a segment has multiple hits)
-            censor_timestamps.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            censor_timestamps
+                .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
             let mut merged_stamps: Vec<(f64, f64)> = Vec::new();
             for (s, e) in censor_timestamps {
                 if let Some(last) = merged_stamps.last_mut() {
@@ -1104,14 +1265,27 @@ pub async fn smart_edit(
                 merged_stamps.push((s, e));
             }
             let censor_timestamps = merged_stamps;
-            
+
             if !censor_timestamps.is_empty() {
-                match production_tools::apply_audio_censor(&final_enhanced_audio_path, &censored_path, &censor_timestamps, intent.profanity_replacement.as_deref()).await {
+                match production_tools::apply_audio_censor(
+                    &final_enhanced_audio_path,
+                    &censored_path,
+                    &censor_timestamps,
+                    intent.profanity_replacement.as_deref(),
+                )
+                .await
+                {
                     Ok(_) => {
-                         log(&format!("[SMART] Successfully censored {} segments.", censor_timestamps.len()));
-                         final_enhanced_audio_path = censored_path;
+                        log(&format!(
+                            "[SMART] Successfully censored {} segments.",
+                            censor_timestamps.len()
+                        ));
+                        final_enhanced_audio_path = censored_path;
                     }
-                    Err(e) => warn!("[SMART] Audio censorship failed: {}, using original enhanced audio.", e),
+                    Err(e) => warn!(
+                        "[SMART] Audio censorship failed: {}, using original enhanced audio.",
+                        e
+                    ),
                 }
             } else {
                 log("[SMART] No profanity detected in transcript.");
@@ -1122,7 +1296,10 @@ pub async fn smart_edit(
     // 2. Detect scenes
     log("[SMART] 🔍 Analyzing video scenes...");
     let mut scenes = if let Some(s) = pre_scanned_scenes {
-        log(&format!("[SMART] Using pre-scanned scenes ({} scenes)", s.len()));
+        log(&format!(
+            "[SMART] Using pre-scanned scenes ({} scenes)",
+            s.len()
+        ));
         s
     } else {
         detect_scenes(input, config.scene_threshold).await?
@@ -1136,48 +1313,54 @@ pub async fn smart_edit(
 
     // 3. Score scenes based on intent AND transcript
     log("[SMART] 📊 Scoring scenes based on semantic data...");
-    
+
     // Calculate total duration from scenes if possible, or use end time of last scene
     let total_duration = scenes.last().map(|s| s.end_time).unwrap_or(0.0);
-    
-    score_scenes(&mut scenes, &intent, transcript.as_deref(), &config, total_duration);
+
+    score_scenes(
+        &mut scenes,
+        &intent,
+        transcript.as_deref(),
+        &config,
+        total_duration,
+    );
 
     // 3.5 ML Pacing Refinement
     if let Some(pattern) = &learned_pattern {
         let target_dur = pattern.avg_scene_duration;
         let strictness = pattern.music_sync_strictness;
-        
+
         for scene in scenes.iter_mut() {
             let dur_ratio = scene.duration / target_dur;
-            
+
             // A. Boost scenes that match the learned pacing (within 20% tolerance)
             // BUT ONLY IF they are already somewhat decent (score > 0.2)
             if scene.score > 0.2 {
                 let diff = (scene.duration - target_dur).abs();
                 if diff < target_dur * 0.2 {
-                     // Verify context allows it - don't boost long boring scenes just because they match avg
-                     scene.score = (scene.score + 0.1).clamp(0.0, 1.0);
+                    // Verify context allows it - don't boost long boring scenes just because they match avg
+                    scene.score = (scene.score + 0.1).clamp(0.0, 1.0);
                 }
             }
-            
+
             // B. PENALIZE scenes that deviate too much (too long)
             // If strictness is high, we hate long scenes unless they are "Action" or "Speech" heavy (high score)
             if dur_ratio > 2.0 {
                 // It's double the average length.
                 // If it's a really good scene (score > 0.7), let it slide slightly.
                 // If it's mediocre (score < 0.5), HAMMER IT.
-                let penalty = if scene.score < 0.5 { 
+                let penalty = if scene.score < 0.5 {
                     0.2 * strictness // Heavy penalty for boring long scenes
                 } else {
                     0.05 * strictness // Light penalty for good long scenes
                 };
                 scene.score = (scene.score - penalty).clamp(0.0, 1.0);
             }
-            
+
             // C. PENALIZE scenes that deviate too much (too short)
             // Only if we aren't in "fast" mode
             if target_dur > 5.0 && dur_ratio < 0.3 {
-                 scene.score = (scene.score - 0.1 * strictness).clamp(0.0, 1.0);
+                scene.score = (scene.score - 0.1 * strictness).clamp(0.0, 1.0);
             }
         }
     }
@@ -1186,59 +1369,93 @@ pub async fn smart_edit(
     let mut keep_threshold = config.min_scene_score;
     let total_before_filtering = scenes.len();
     let mut scenes_to_keep: Vec<Scene> = Vec::new();
-    
+
     // Iterative Refinement for Duration Target
     if let Some((min_d, max_d)) = intent.target_duration {
-        log(&format!("[SMART] 🎯 Targeting duration: {:.0}s - {:.0}s", min_d, max_d));
-        
+        log(&format!(
+            "[SMART] 🎯 Targeting duration: {:.0}s - {:.0}s",
+            min_d, max_d
+        ));
+
         // Log score distribution
         let scores: Vec<f64> = scenes.iter().map(|s| s.score).collect();
         let min_s = scores.iter().cloned().fold(1.0, f64::min);
         let max_s = scores.iter().cloned().fold(0.0, f64::max);
         let avg_s = scores.iter().sum::<f64>() / scores.len() as f64;
-        log(&format!("[SMART] Score Stats: Min={:.2}, Max={:.2}, Avg={:.2}", min_s, max_s, avg_s));
+        log(&format!(
+            "[SMART] Score Stats: Min={:.2}, Max={:.2}, Avg={:.2}",
+            min_s, max_s, avg_s
+        ));
 
         // Start strictly if we are way over duration
         let mut step_size = 0.02;
 
         for iteration in 1..=50 {
-            scenes_to_keep = scenes.iter().cloned().filter(|s| s.score > keep_threshold).collect();
+            scenes_to_keep = scenes
+                .iter()
+                .cloned()
+                .filter(|s| s.score > keep_threshold)
+                .collect();
             let current_duration: f64 = scenes_to_keep.iter().map(|s| s.duration).sum();
-            
-            log(&format!("        - Iteration {}: Threshold={:.2}, Duration={:.0}s (Target: {:.0}-{:.0})", 
-                iteration, keep_threshold, current_duration, min_d, max_d));
-            
+
+            log(&format!(
+                "        - Iteration {}: Threshold={:.2}, Duration={:.0}s (Target: {:.0}-{:.0})",
+                iteration, keep_threshold, current_duration, min_d, max_d
+            ));
+
             if current_duration < min_d {
                 // Too short, lower threshold to include more
-                if keep_threshold <= 0.0 { break; }
+                if keep_threshold <= 0.0 {
+                    break;
+                }
                 keep_threshold = (keep_threshold - step_size).max(0.0);
             } else if current_duration > max_d {
                 // Too long, raise threshold to be more selective
-                if keep_threshold >= 1.0 { break; }
+                if keep_threshold >= 1.0 {
+                    break;
+                }
                 keep_threshold = (keep_threshold + step_size).min(1.0);
             } else {
-                log(&format!("[SMART] ✅ Target duration reached in {} attempts.", iteration));
+                log(&format!(
+                    "[SMART] ✅ Target duration reached in {} attempts.",
+                    iteration
+                ));
                 break;
             }
-            
+
             // Dynamic step size to avoid oscillation
-            if iteration > 10 { step_size = 0.01; }
-            if iteration > 30 { step_size = 0.005; }
+            if iteration > 10 {
+                step_size = 0.01;
+            }
+            if iteration > 30 {
+                step_size = 0.005;
+            }
         }
     } else {
-        scenes_to_keep = scenes.iter().cloned().filter(|s| s.score > keep_threshold).collect();
+        scenes_to_keep = scenes
+            .iter()
+            .cloned()
+            .filter(|s| s.score > keep_threshold)
+            .collect();
     }
 
     // 4.1 — Minimum scene duration filter: remove micro-clips that flash by too fast.
     //       Keep only scenes ≥ 3.5s.  If that would remove everything, skip this filter.
     {
         let before_min_dur = scenes_to_keep.len();
-        let filtered: Vec<Scene> = scenes_to_keep.iter().cloned().filter(|s| s.duration >= 3.5).collect();
+        let filtered: Vec<Scene> = scenes_to_keep
+            .iter()
+            .cloned()
+            .filter(|s| s.duration >= 3.5)
+            .collect();
         if !filtered.is_empty() {
             scenes_to_keep = filtered;
             let removed_micro = before_min_dur - scenes_to_keep.len();
             if removed_micro > 0 {
-                log(&format!("[SMART] 🚫 Removed {} micro-clips (< 3.5s) to prevent choppy cuts", removed_micro));
+                log(&format!(
+                    "[SMART] 🚫 Removed {} micro-clips (< 3.5s) to prevent choppy cuts",
+                    removed_micro
+                ));
             }
         }
     }
@@ -1250,14 +1467,25 @@ pub async fn smart_edit(
         log("[SMART] ⚠️ All scenes were filtered out! Triggering Best-of Fallback...");
         // Sort all scenes by score descending and take the top 3 (or all if < 3)
         let mut all_scenes = scenes.clone();
-        all_scenes.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        
+        all_scenes.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         scenes_to_keep = all_scenes.into_iter().take(3).collect();
         // Sort back by time
-        scenes_to_keep.sort_by(|a, b| a.start_time.partial_cmp(&b.start_time).unwrap_or(std::cmp::Ordering::Equal));
-        
+        scenes_to_keep.sort_by(|a, b| {
+            a.start_time
+                .partial_cmp(&b.start_time)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
         total_kept = scenes_to_keep.len();
-        log(&format!("[SMART] 🎯 Fallback: Selected top {} highest-scoring segments.", total_kept));
+        log(&format!(
+            "[SMART] 🎯 Fallback: Selected top {} highest-scoring segments.",
+            total_kept
+        ));
     }
 
     log(&format!(
@@ -1280,7 +1508,9 @@ pub async fn smart_edit(
         if scenes_to_keep.len() < before_merge {
             log(&format!(
                 "[SMART] 🔗 Sentence-merge: {} → {} scenes (grouped {} split sentences)",
-                before_merge, scenes_to_keep.len(), before_merge - scenes_to_keep.len()
+                before_merge,
+                scenes_to_keep.len(),
+                before_merge - scenes_to_keep.len()
             ));
         }
     }
@@ -1295,7 +1525,8 @@ pub async fn smart_edit(
         if scenes_to_keep.len() > before_bridge {
             log(&format!(
                 "[SMART] 🌉 Gap-bridge: {} → {} scenes after inserting narrative bridges",
-                before_bridge, scenes_to_keep.len()
+                before_bridge,
+                scenes_to_keep.len()
             ));
         }
     }
@@ -1316,7 +1547,10 @@ pub async fn smart_edit(
             prev_end = Some(sc.end_time);
         }
     }
-    log(&format!("[SMART] ✂️ {} cut point(s) in original video", cut_points.len()));
+    log(&format!(
+        "[SMART] ✂️ {} cut point(s) in original video",
+        cut_points.len()
+    ));
 
     // Determine neuroplasticity-driven transition style
     let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
@@ -1326,12 +1560,12 @@ pub async fn smart_edit(
     // enough to look like a slow film wipe
     let neuro_transition_dur: f64 = (0.08 + config.continuity_boost * 0.20).clamp(0.08, 0.28);
     let neuro_transition_name: &str = match neuro_level {
-        "Baseline"         => "fade",
-        "Accelerated"      => "fade",
-        "Hyperspeed"       => "slideleft",
+        "Baseline" => "fade",
+        "Accelerated" => "fade",
+        "Hyperspeed" => "slideleft",
         "Neural Overdrive" => "wiperight",
-        "Singularity"      => "pixelize",
-        _                  => "fade",
+        "Singularity" => "pixelize",
+        _ => "fade",
     };
     log(&format!(
         "[SMART] 🧠 Neuroplasticity transition: {} @ {:.2}s ({} level)",
@@ -1350,7 +1584,10 @@ pub async fn smart_edit(
     // Commentary Generator removed (funny_engine deprecated)
 
     let total_segments = scenes_to_keep.len();
-    let max_concurrency = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 6);
+    let max_concurrency = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(2, 6);
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrency));
     let mut tasks = Vec::with_capacity(total_segments);
 
@@ -1358,7 +1595,7 @@ pub async fn smart_edit(
         let seg_path = segments_dir.join(format!("seg_{:04}.mp4", i));
         let scene_duration = scene.duration;
         let scene_start = scene.start_time;
-        
+
         // Clone for move into task
         let input_path = input.to_path_buf();
         let enhanced_path = final_enhanced_audio_path.clone();
@@ -1366,17 +1603,23 @@ pub async fn smart_edit(
 
         let handle = tokio::spawn(async move {
             let mut cmd = tokio::process::Command::new("ffmpeg");
-            cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
+            cmd.arg("-y")
+                .arg("-hide_banner")
+                .arg("-loglevel")
+                .arg("error")
+                .arg("-nostdin");
 
             // Accurate input-seeking (-ss and -t before -i) prevents frame doubling and lag
             cmd.arg("-ss").arg(&scene_start.to_string());
             cmd.arg("-t").arg(&scene_duration.to_string());
-            cmd.arg("-i").arg(production_tools::safe_arg_path(&input_path));
+            cmd.arg("-i")
+                .arg(production_tools::safe_arg_path(&input_path));
 
             if use_enhanced_audio {
                 cmd.arg("-ss").arg(&scene_start.to_string());
                 cmd.arg("-t").arg(&scene_duration.to_string());
-                cmd.arg("-i").arg(production_tools::safe_arg_path(&enhanced_path));
+                cmd.arg("-i")
+                    .arg(production_tools::safe_arg_path(&enhanced_path));
             }
 
             // Mapping
@@ -1412,7 +1655,7 @@ pub async fn smart_edit(
             }
             None
         });
-        
+
         tasks.push(handle);
     }
 
@@ -1429,7 +1672,10 @@ pub async fn smart_edit(
         return Err("Failed to extract any video segments".into());
     }
 
-    log(&format!("[SMART] 🔗 Stitching {} segments together...", segment_files.len()));
+    log(&format!(
+        "[SMART] 🔗 Stitching {} segments together...",
+        segment_files.len()
+    ));
 
     // 7. Stitch segments — use crossfade transitions when feasible (≤ 30 segments),
     //    fall back to simple concat for very long edit lists.
@@ -1437,7 +1683,10 @@ pub async fn smart_edit(
 
     let status = if segment_files.len() >= 2 && segment_files.len() <= 30 {
         // ── Crossfade path ──────────────────────────────────────────────
-        log(&format!("[SMART] 🎞️ Using crossfade transitions ({:.2}s, {} style)", xfade_dur, neuro_transition_name));
+        log(&format!(
+            "[SMART] 🎞️ Using crossfade transitions ({:.2}s, {} style)",
+            xfade_dur, neuro_transition_name
+        ));
 
         // Build filter_complex that chains xfade/acrossfade across all segments
         let n = segment_files.len();
@@ -1447,14 +1696,25 @@ pub async fn smart_edit(
         let mut seg_durations: Vec<f64> = Vec::with_capacity(n);
         for seg in &segment_files {
             let probe = Command::new("ffprobe")
-                .args(["-v","error","-show_entries","format=duration",
-                       "-of","default=noprint_wrappers=1:nokey=1",
-                       seg.to_str().unwrap_or("")])
+                .args([
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    seg.to_str().unwrap_or(""),
+                ])
                 .output()
                 .await;
             let dur = if let Ok(p) = probe {
-                String::from_utf8_lossy(&p.stdout).trim().parse::<f64>().unwrap_or(3.0)
-            } else { 3.0 };
+                String::from_utf8_lossy(&p.stdout)
+                    .trim()
+                    .parse::<f64>()
+                    .unwrap_or(3.0)
+            } else {
+                3.0
+            };
             seg_durations.push(dur);
         }
 
@@ -1463,10 +1723,19 @@ pub async fn smart_edit(
         let mut cumulative_offset = seg_durations[0] - xfade_dur;
 
         for i in 1..n {
-            let out_label = if i == n - 1 { "[outv]".to_string() } else { format!("[vx{}]", i) };
+            let out_label = if i == n - 1 {
+                "[outv]".to_string()
+            } else {
+                format!("[vx{}]", i)
+            };
             filter.push_str(&format!(
                 "{}[{}:v]xfade=transition={}:duration={:.3}:offset={:.6}{}; ",
-                prev_v, i, neuro_transition_name, xfade_dur, cumulative_offset.max(0.0), out_label
+                prev_v,
+                i,
+                neuro_transition_name,
+                xfade_dur,
+                cumulative_offset.max(0.0),
+                out_label
             ));
             prev_v = out_label.clone();
             cumulative_offset += seg_durations[i] - xfade_dur;
@@ -1475,8 +1744,14 @@ pub async fn smart_edit(
         // Chain audio acrossfade
         let mut prev_a = format!("[0:a]");
         for i in 1..n {
-            let out_label = if i == n - 1 { "[outa]".to_string() } else { format!("[ax{}]", i) };
-            let dur = xfade_dur.min(seg_durations[i] * 0.5).min(seg_durations[i - 1] * 0.5);
+            let out_label = if i == n - 1 {
+                "[outa]".to_string()
+            } else {
+                format!("[ax{}]", i)
+            };
+            let dur = xfade_dur
+                .min(seg_durations[i] * 0.5)
+                .min(seg_durations[i - 1] * 0.5);
             filter.push_str(&format!(
                 "{}[{}:a]acrossfade=d={:.3}:c1=tri:c2=tri{}; ",
                 prev_a, i, dur, out_label
@@ -1490,7 +1765,11 @@ pub async fn smart_edit(
         }
 
         let mut cmd = Command::new("ffmpeg");
-        cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
+        cmd.arg("-y")
+            .arg("-hide_banner")
+            .arg("-loglevel")
+            .arg("error")
+            .arg("-nostdin");
 
         // Add all segment files as inputs
         for seg in &segment_files {
@@ -1500,7 +1779,12 @@ pub async fn smart_edit(
         cmd.arg("-filter_complex").arg(&filter);
         cmd.arg("-map").arg("[outv]");
         cmd.arg("-map").arg("[outa]");
-        cmd.arg("-c:v").arg("libx264").arg("-preset").arg("fast").arg("-crf").arg("23");
+        cmd.arg("-c:v")
+            .arg("libx264")
+            .arg("-preset")
+            .arg("fast")
+            .arg("-crf")
+            .arg("23");
         cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k");
         cmd.arg("-movflags").arg("+faststart");
         cmd.arg(production_tools::safe_arg_path(output));
@@ -1513,21 +1797,37 @@ pub async fn smart_edit(
         } else {
             // Crossfade failed — fall back to simple concat
             let stderr = String::from_utf8_lossy(&xfade_result.stderr);
-            warn!("[SMART] Crossfade filter failed ({}), falling back to simple concat.", stderr.lines().next().unwrap_or("unknown error"));
+            warn!(
+                "[SMART] Crossfade filter failed ({}), falling back to simple concat.",
+                stderr.lines().next().unwrap_or("unknown error")
+            );
 
             let concat_file = segments_dir.join("concat_list.txt");
             {
                 let mut file = fs::File::create(&concat_file)?;
                 for seg in &segment_files {
-                    writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
+                    writeln!(
+                        file,
+                        "file '{}'",
+                        seg.to_str().ok_or("Invalid segment path")?
+                    )?;
                 }
             }
 
             Command::new("ffmpeg")
-                .arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin")
-                .arg("-f").arg("concat").arg("-safe").arg("0")
-                .arg("-i").arg(production_tools::safe_arg_path(&concat_file))
-                .arg("-c").arg("copy")
+                .arg("-y")
+                .arg("-hide_banner")
+                .arg("-loglevel")
+                .arg("error")
+                .arg("-nostdin")
+                .arg("-f")
+                .arg("concat")
+                .arg("-safe")
+                .arg("0")
+                .arg("-i")
+                .arg(production_tools::safe_arg_path(&concat_file))
+                .arg("-c")
+                .arg("copy")
                 .arg(production_tools::safe_arg_path(output))
                 .output()
                 .await?
@@ -1538,17 +1838,30 @@ pub async fn smart_edit(
         {
             let mut file = fs::File::create(&concat_file)?;
             for seg in &segment_files {
-                writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
+                writeln!(
+                    file,
+                    "file '{}'",
+                    seg.to_str().ok_or("Invalid segment path")?
+                )?;
             }
         }
 
         log("[SMART] 🔗 Using simple concat (single segment or too many for crossfade).");
 
         Command::new("ffmpeg")
-            .arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin")
-            .arg("-f").arg("concat").arg("-safe").arg("0")
-            .arg("-i").arg(production_tools::safe_arg_path(&concat_file))
-            .arg("-c").arg("copy")
+            .arg("-y")
+            .arg("-hide_banner")
+            .arg("-loglevel")
+            .arg("error")
+            .arg("-nostdin")
+            .arg("-f")
+            .arg("concat")
+            .arg("-safe")
+            .arg("0")
+            .arg("-i")
+            .arg(production_tools::safe_arg_path(&concat_file))
+            .arg("-c")
+            .arg("copy")
             .arg(production_tools::safe_arg_path(output))
             .output()
             .await?
@@ -1570,9 +1883,10 @@ pub async fn smart_edit(
     let metadata = fs::metadata(output)?;
     let size_mb = metadata.len() as f64 / 1_048_576.0;
 
+    let kept_ratio = scenes_to_keep.len() as f64 / scenes.len().max(1) as f64;
     let summary = format!(
-        "✅ Smart edit complete! Removed {} boring segments. Output: {:.2} MB",
-        removed, size_mb
+        "✅ Smart edit complete! Removed {} boring segments. Output: {:.2} MB (kept_ratio: {:.2})",
+        removed, size_mb, kept_ratio
     );
     log(&format!("[SMART] {}", summary));
 
@@ -1597,17 +1911,22 @@ pub async fn smart_edit(
                 let srt_path = work_dir.join("synoid_subtitles.srt");
                 match fs::write(&srt_path, &srt_content) {
                     Ok(_) => {
-                        log(&format!("[SMART] 📄 SRT written: {} entries", srt_content.lines().filter(|l| l.contains(" --> ")).count()));
+                        log(&format!(
+                            "[SMART] 📄 SRT written: {} entries",
+                            srt_content.lines().filter(|l| l.contains(" --> ")).count()
+                        ));
 
                         // Resolve the output to an absolute path so sub_output lands in the same dir.
                         // strip_unc_prefix removes the Windows \\?\ extended-path prefix that
                         // fs::canonicalize sometimes returns; FFmpeg cannot open those paths.
                         let abs_output = strip_unc_prefix(
-                            fs::canonicalize(output).unwrap_or_else(|_| output.to_path_buf())
+                            fs::canonicalize(output).unwrap_or_else(|_| output.to_path_buf()),
                         );
                         let sub_output = abs_output.with_extension("sub.mp4");
                         log("[SMART] 🔥 Burning subtitles into video...");
-                        match production_tools::burn_subtitles(&abs_output, &srt_path, &sub_output).await {
+                        match production_tools::burn_subtitles(&abs_output, &srt_path, &sub_output)
+                            .await
+                        {
                             Ok(_) => {
                                 // Use copy + remove instead of rename to handle cross-device moves on WSL mounts.
                                 match fs::copy(&sub_output, &abs_output) {
@@ -1632,6 +1951,12 @@ pub async fn smart_edit(
                 log("[SMART] ⚠️ No subtitle entries generated (empty transcript after remapping).");
             }
         }
+    }
+
+    // If we used a learned pattern to tune this config, persist it
+    // so the next edit starts with these refined parameters.
+    if learned_pattern.is_some() {
+        config.save_to_cortex();
     }
 
     Ok(summary)
@@ -1671,7 +1996,11 @@ fn build_smooth_xfade_filter(
 
     for i in 1..n {
         let effect = effects[i % effects.len()];
-        let out_label = if i == n - 1 { "outv".to_string() } else { format!("vx{i}") };
+        let out_label = if i == n - 1 {
+            "outv".to_string()
+        } else {
+            format!("vx{i}")
+        };
         filter.push_str(&format!(
             "[{prev_v}][vraw{i}]xfade=transition={effect}:duration={:.3}:offset={:.6}[{out_label}]; ",
             transition_duration, offset.max(0.0)
@@ -1684,8 +2013,14 @@ fn build_smooth_xfade_filter(
     // Step 3: Chain acrossfade for audio
     let mut prev_a = "araw0".to_string();
     for i in 1..n {
-        let out_label = if i == n - 1 { "outa".to_string() } else { format!("ax{i}") };
-        let dur = transition_duration.min(scenes[i].duration * 0.5).min(scenes[i - 1].duration * 0.5);
+        let out_label = if i == n - 1 {
+            "outa".to_string()
+        } else {
+            format!("ax{i}")
+        };
+        let dur = transition_duration
+            .min(scenes[i].duration * 0.5)
+            .min(scenes[i - 1].duration * 0.5);
         filter.push_str(&format!(
             "[{prev_a}][araw{i}]acrossfade=d={:.3}:c1=tri:c2=tri[{out_label}]; ",
             dur
@@ -1719,7 +2054,10 @@ async fn fallback_extract_and_concat(
     }
 
     let mut segment_files = Vec::new();
-    let max_concurrency = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 6);
+    let max_concurrency = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(2, 6);
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrency));
     let mut tasks = Vec::with_capacity(scenes_to_keep.len());
 
@@ -1733,15 +2071,21 @@ async fn fallback_extract_and_concat(
 
         let handle = tokio::spawn(async move {
             let mut cmd = tokio::process::Command::new("ffmpeg");
-            cmd.arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin");
+            cmd.arg("-y")
+                .arg("-hide_banner")
+                .arg("-loglevel")
+                .arg("error")
+                .arg("-nostdin");
 
             // Use -ss after -i for accurate seeking (slower but no frame drops)
-            cmd.arg("-i").arg(production_tools::safe_arg_path(&input_path));
+            cmd.arg("-i")
+                .arg(production_tools::safe_arg_path(&input_path));
             cmd.arg("-ss").arg(&scene_start.to_string());
             cmd.arg("-t").arg(&scene_duration.to_string());
 
             if use_enhanced_audio {
-                cmd.arg("-i").arg(production_tools::safe_arg_path(&enhanced_path));
+                cmd.arg("-i")
+                    .arg(production_tools::safe_arg_path(&enhanced_path));
                 cmd.arg("-ss").arg(&scene_start.to_string());
                 cmd.arg("-t").arg(&scene_duration.to_string());
             }
@@ -1754,14 +2098,25 @@ async fn fallback_extract_and_concat(
             }
 
             // Force consistent encoding: same codec, profile, pixel format, GOP
-            cmd.arg("-c:v").arg("libx264")
-                .arg("-preset").arg("medium")
-                .arg("-crf").arg("23")
-                .arg("-pix_fmt").arg("yuv420p")
-                .arg("-g").arg("30")              // Fixed GOP = consistent keyframe spacing
-                .arg("-force_key_frames").arg("expr:eq(n,0)"); // Force keyframe at start
+            cmd.arg("-c:v")
+                .arg("libx264")
+                .arg("-preset")
+                .arg("medium")
+                .arg("-crf")
+                .arg("23")
+                .arg("-pix_fmt")
+                .arg("yuv420p")
+                .arg("-g")
+                .arg("30") // Fixed GOP = consistent keyframe spacing
+                .arg("-force_key_frames")
+                .arg("expr:eq(n,0)"); // Force keyframe at start
 
-            cmd.arg("-c:a").arg("aac").arg("-b:a").arg("192k").arg("-ar").arg("48000");
+            cmd.arg("-c:a")
+                .arg("aac")
+                .arg("-b:a")
+                .arg("192k")
+                .arg("-ar")
+                .arg("48000");
             cmd.arg("-avoid_negative_ts").arg("make_zero");
             cmd.arg(production_tools::safe_arg_path(&seg_path));
 
@@ -1795,20 +2150,40 @@ async fn fallback_extract_and_concat(
     {
         let mut file = fs::File::create(&concat_file)?;
         for seg in &segment_files {
-            writeln!(file, "file '{}'", seg.to_str().ok_or("Invalid segment path")?)?;
+            writeln!(
+                file,
+                "file '{}'",
+                seg.to_str().ok_or("Invalid segment path")?
+            )?;
         }
     }
 
     let status = Command::new("ffmpeg")
-        .arg("-y").arg("-hide_banner").arg("-loglevel").arg("error").arg("-nostdin")
-        .arg("-f").arg("concat").arg("-safe").arg("0")
-        .arg("-i").arg(production_tools::safe_arg_path(&concat_file))
-        .arg("-c:v").arg("libx264")
-        .arg("-preset").arg("medium")
-        .arg("-crf").arg("23")
-        .arg("-pix_fmt").arg("yuv420p")
-        .arg("-c:a").arg("aac").arg("-b:a").arg("192k")
-        .arg("-movflags").arg("+faststart")
+        .arg("-y")
+        .arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-nostdin")
+        .arg("-f")
+        .arg("concat")
+        .arg("-safe")
+        .arg("0")
+        .arg("-i")
+        .arg(production_tools::safe_arg_path(&concat_file))
+        .arg("-c:v")
+        .arg("libx264")
+        .arg("-preset")
+        .arg("medium")
+        .arg("-crf")
+        .arg("23")
+        .arg("-pix_fmt")
+        .arg("yuv420p")
+        .arg("-c:a")
+        .arg("aac")
+        .arg("-b:a")
+        .arg("192k")
+        .arg("-movflags")
+        .arg("+faststart")
         .arg(production_tools::safe_arg_path(output))
         .output()
         .await?;
@@ -1823,7 +2198,10 @@ async fn fallback_extract_and_concat(
 
     let metadata = fs::metadata(output)?;
     let size_mb = metadata.len() as f64 / 1_048_576.0;
-    Ok(format!("✅ Smart edit complete (fallback). Output: {:.2} MB", size_mb))
+    Ok(format!(
+        "✅ Smart edit complete (fallback). Output: {:.2} MB",
+        size_mb
+    ))
 }
 
 /// Generate a properly time-remapped SRT subtitle file from a transcript and the kept scenes.
@@ -1833,7 +2211,7 @@ pub fn generate_srt_for_kept_scenes(
     transcript: &[crate::agent::transcription::TranscriptSegment],
     kept_scenes: &[Scene],
 ) -> String {
-    const MIN_DISPLAY_SECS: f64 = 1.0;   // Minimum subtitle display time
+    const MIN_DISPLAY_SECS: f64 = 1.0; // Minimum subtitle display time
     const MERGE_THRESHOLD_SECS: f64 = 0.8; // Merge entries shorter than this into prev
 
     // Build a time remapping: for each kept scene, compute its start position in the output video.
@@ -1851,12 +2229,12 @@ pub fn generate_srt_for_kept_scenes(
     for seg in transcript {
         for &(src_start, src_end, out_start) in &output_offsets {
             let clip_start = seg.start.max(src_start);
-            let clip_end   = seg.end.min(src_end);
+            let clip_end = seg.end.min(src_end);
             if clip_end <= clip_start {
                 continue;
             }
             let new_start = out_start + (clip_start - src_start);
-            let new_end   = out_start + (clip_end   - src_start);
+            let new_end = out_start + (clip_end - src_start);
             entries.push((new_start, new_end, seg.text.trim().to_string()));
             break;
         }
@@ -1891,9 +2269,9 @@ pub fn generate_srt_for_kept_scenes(
     let fmt = |secs: f64| -> String {
         let total_ms = (secs * 1000.0) as u64;
         let ms = total_ms % 1000;
-        let s  = (total_ms / 1000) % 60;
-        let m  = (total_ms / 60_000) % 60;
-        let h  = total_ms / 3_600_000;
+        let s = (total_ms / 1000) % 60;
+        let m = (total_ms / 60_000) % 60;
+        let h = total_ms / 3_600_000;
         format!("{:02}:{:02}:{:02},{:03}", h, m, s, ms)
     };
 
@@ -1915,26 +2293,61 @@ pub fn generate_srt_for_kept_scenes(
 /// Words are stored as lowercase substring matches.
 pub fn get_profanity_word_list() -> Vec<&'static str> {
     vec![
-        // Common profanity
-        "fuck", "shit", "bitch", "cunt", "dick", "cock", "pussy",
-        "asshole", "bastard", "damn", "ass",
+        // Common profanity (explicit forms + root for substring matching)
+        "fucking",
+        "fuck",
+        "shit",
+        "bitch",
+        "cunt",
+        "dick",
+        "cock",
+        "pussy",
+        "asshole",
+        "bastard",
+        "damn",
+        "ass",
         // Racial slurs — n-word and variants
-        "nigger", "nigga", "nigg", "n-word",
+        "niggers",
+        "nigger",
+        "niggas",
+        "nigga",
+        "nigg",
+        "n-word",
         // Other racial/ethnic slurs
-        "chink", "gook", "spic", "wetback", "kike", "cracker",
-        "beaner", "raghead", "towelhead", "sandnigger", "zipperhead",
-        "coon", "jigaboo", "porch monkey", "jungle bunny",
+        "chink",
+        "gook",
+        "spic",
+        "wetback",
+        "kike",
+        "cracker",
+        "beaner",
+        "raghead",
+        "towelhead",
+        "sandnigger",
+        "zipperhead",
+        "coon",
+        "jigaboo",
+        "porch monkey",
+        "jungle bunny",
         // Homophobic / transphobic slurs
-        "faggot", "fag", "dyke", "tranny", "shemale",
+        "faggot",
+        "fag",
+        "dyke",
+        "tranny",
+        "shemale",
         // Ableist slurs
-        "retard", "retarded",
+        "retard",
+        "retarded",
     ]
 }
 
 /// Estimate a narrow (word-level) timestamp within a transcript segment for a
 /// given bad word. Uses linear interpolation across the words in the segment.
 /// Returns `(start_secs, end_secs)` clamped to the segment bounds.
-pub fn estimate_word_timestamps(seg: &crate::agent::transcription::TranscriptSegment, bad_word: &str) -> (f64, f64) {
+pub fn estimate_word_timestamps(
+    seg: &crate::agent::transcription::TranscriptSegment,
+    bad_word: &str,
+) -> (f64, f64) {
     let words: Vec<&str> = seg.text.split_whitespace().collect();
     let n = words.len().max(1) as f64;
     let seg_dur = (seg.end - seg.start).max(0.001);
@@ -1943,11 +2356,8 @@ pub fn estimate_word_timestamps(seg: &crate::agent::transcription::TranscriptSeg
     for (i, word) in words.iter().enumerate() {
         if word.to_lowercase().contains(bad_word) {
             let word_start = seg.start + (i as f64 / n) * seg_dur - pad;
-            let word_end   = seg.start + ((i + 1) as f64 / n) * seg_dur + pad;
-            return (
-                word_start.max(seg.start),
-                word_end.min(seg.end),
-            );
+            let word_end = seg.start + ((i + 1) as f64 / n) * seg_dur + pad;
+            return (word_start.max(seg.start), word_end.min(seg.end));
         }
     }
     // Fallback: mute entire segment (bad word found but exact position unclear)
@@ -1972,7 +2382,7 @@ mod tests {
     fn test_censor_detects_cuss_and_homosexual() {
         // This exact phrase comes from the user's prompt in offline/heuristic mode
         let intent = EditIntent::from_text(
-            "remove any homosexual or cuss words from the video add captions"
+            "remove any homosexual or cuss words from the video add captions",
         );
         assert!(
             intent.censor_profanity,
@@ -2003,7 +2413,7 @@ mod tests {
         ];
 
         let refined = refine_scenes_with_transcript(scenes, &transcript);
-        
+
         // SILENCE_REFINEMENT_THRESHOLD is 2.0s.
         // Gap before first segment (0.0-1.0 = 1.0s gap) is < threshold → NOT split out.
         // Segments emitted:
@@ -2012,8 +2422,14 @@ mod tests {
         //   [2] 7.0-9.0  speech  score=0.5
         //   [3] 9.0-10.0 silence score=0.0  (tail)
         assert_eq!(refined.len(), 4);
-        assert_eq!(refined[0].score, 0.5, "first speech segment should have neutral score 0.5");
-        assert_eq!(refined[1].score, 0.0, "inter-speech silence should have score 0.0");
+        assert_eq!(
+            refined[0].score, 0.5,
+            "first speech segment should have neutral score 0.5"
+        );
+        assert_eq!(
+            refined[1].score, 0.0,
+            "inter-speech silence should have score 0.0"
+        );
     }
 
     #[test]
@@ -2036,13 +2452,13 @@ mod tests {
         let intent = EditIntent::from_text("remove boring");
         let config = EditingStrategy::default();
         let total_duration = 1000.0;
-        
+
         score_scenes(&mut scenes, &intent, None, &config, total_duration);
-        
+
         // Scene at start (10s) vs Scene at end (900s)
         // Both are 10s long (which is boring-ish but under 15s threshold)
         // The one at the end should have a lower score due to high progress multiplier
-        
+
         println!("Start scene score: {}", scenes[0].score);
         println!("End scene score: {}", scenes[1].score);
 
@@ -2054,20 +2470,18 @@ mod tests {
 
     #[test]
     fn test_scoring_logic() {
-        let mut scenes = vec![
-            Scene {
-                start_time: 0.0,
-                end_time: 5.0,
-                duration: 5.0,
-                score: 0.5,
-            },
-        ];
+        let mut scenes = vec![Scene {
+            start_time: 0.0,
+            end_time: 5.0,
+            duration: 5.0,
+            score: 0.5,
+        }];
 
         let intent = EditIntent::from_text("remove boring");
         let config = EditingStrategy::default();
-        
+
         score_scenes(&mut scenes, &intent, None, &config, 5.0);
-        
+
         // No transcript provided, neutral score should remain around 0.3-0.5
         assert!(scenes[0].score >= 0.3);
     }
@@ -2077,10 +2491,22 @@ mod tests {
         use crate::agent::transcription::TranscriptSegment;
         // Segment: "hello world" from 0.0–4.0 s
         // "world" is word index 1 of 2, so it occupies the second half: ~2.0–4.0 s
-        let seg = TranscriptSegment { start: 0.0, end: 4.0, text: "hello world".to_string() };
+        let seg = TranscriptSegment {
+            start: 0.0,
+            end: 4.0,
+            text: "hello world".to_string(),
+        };
         let (s, e) = estimate_word_timestamps(&seg, "world");
-        assert!(s >= 1.5 && s <= 2.5, "start should be in second half of segment, got {}", s);
-        assert!(e >= 3.0 && e <= 4.1, "end should be near segment end, got {}", e);
+        assert!(
+            s >= 1.5 && s <= 2.5,
+            "start should be in second half of segment, got {}",
+            s
+        );
+        assert!(
+            e >= 3.0 && e <= 4.1,
+            "end should be near segment end, got {}",
+            e
+        );
     }
 
     #[test]
@@ -2090,7 +2516,11 @@ mod tests {
         assert!(words.contains(&"fuck"));
         assert!(words.contains(&"shit"));
         // List is comprehensive (>20 entries)
-        assert!(words.len() > 20, "profanity list should have >20 entries, has {}", words.len());
+        assert!(
+            words.len() > 20,
+            "profanity list should have >20 entries, has {}",
+            words.len()
+        );
         // Racial slur present
         assert!(words.contains(&"nigger"));
         // Homophobic slur present

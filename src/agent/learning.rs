@@ -20,8 +20,23 @@ pub struct EditingPattern {
     pub transition_speed: f64,
     pub music_sync_strictness: f64, // 0.0 to 1.0
     pub color_grade_style: String,
-    pub success_rating: u32, // 1-5 stars
+    pub success_rating: u32, // 1-5 stars from user
     pub source_video: Option<String>,
+    /// Fraction of scenes kept during the edit (0.0 = cut everything, 1.0 = kept everything).
+    /// Ideal range is 0.3–0.7 for a balanced edit.
+    #[serde(default = "default_kept_ratio")]
+    pub kept_ratio: f64,
+    /// Quality weight derived from balance of kept_ratio and user rating.
+    /// 1.0 = perfect edit, 0.1 = poor edit. Used to prefer high-quality patterns.
+    #[serde(default = "default_outcome_xp")]
+    pub outcome_xp: f64,
+}
+
+fn default_kept_ratio() -> f64 {
+    0.5
+}
+fn default_outcome_xp() -> f64 {
+    1.0
 }
 
 impl Default for EditingPattern {
@@ -34,6 +49,8 @@ impl Default for EditingPattern {
             color_grade_style: "neutral".to_string(),
             success_rating: 3,
             source_video: None,
+            kept_ratio: 0.5,
+            outcome_xp: 1.0,
         }
     }
 }
@@ -61,28 +78,46 @@ impl LearningKernel {
         }
     }
 
-    /// Retrieve the best known editing pattern for a user intent
+    /// Retrieve the best known editing pattern for a user intent.
+    /// Prefers patterns with higher `outcome_xp` (quality score) when multiple match.
     pub fn recall_pattern(&self, intent: &str) -> EditingPattern {
         let intent_lower = intent.to_lowercase();
-        
+
         // 1. Direct Match
         if let Some(pattern) = self.patterns.get(intent) {
-            info!("[KERNEL] 🧠 Exact match pattern for '{}'", intent);
+            info!(
+                "[KERNEL] 🧠 Exact match pattern for '{}' (XP: {:.2})",
+                intent, pattern.outcome_xp
+            );
             return pattern.clone();
         }
 
-        // 2. Keyword Match (Iterate over all keys)
-        // If the user asks for "gaming video", and we have "gaming_montage", match it.
+        // 2. Keyword Match — collect ALL fuzzy matches and pick the highest quality one
+        let mut fuzzy_matches: Vec<&EditingPattern> = Vec::new();
         for (key, pattern) in &self.patterns {
-            if intent_lower.contains(key) || key.contains(&intent_lower) {
-                info!("[KERNEL] 🧠 Fuzzy match: '{}' -> '{}'", intent, key);
-                return pattern.clone();
+            if intent_lower.contains(key.as_str()) || key.contains(&intent_lower) {
+                fuzzy_matches.push(pattern);
             }
         }
-        
-        // 3. Fallback Heuristics (if no learned data matches)
+        if !fuzzy_matches.is_empty() {
+            // Sort descending by outcome_xp then by success_rating
+            fuzzy_matches.sort_by(|a, b| {
+                b.outcome_xp
+                    .partial_cmp(&a.outcome_xp)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| b.success_rating.cmp(&a.success_rating))
+            });
+            let best = fuzzy_matches[0];
+            info!(
+                "[KERNEL] 🧠 Best fuzzy match for '{}': '{}' (XP: {:.2})",
+                intent, best.intent_tag, best.outcome_xp
+            );
+            return best.clone();
+        }
+
+        // 3. Fallback Heuristics
         let key = if intent_lower.contains("hype") || intent_lower.contains("fast") {
-            "fast_paced" 
+            "fast_paced"
         } else if intent_lower.contains("cinematic") || intent_lower.contains("slow") {
             "cinematic"
         } else {
@@ -90,21 +125,32 @@ impl LearningKernel {
         };
 
         if let Some(pattern) = self.patterns.get(key) {
-            info!("[KERNEL] 🧠 Fallback heuristic pattern for '{}': {:?}", key, pattern);
+            info!(
+                "[KERNEL] 🧠 Fallback heuristic for '{}': '{}' (XP: {:.2})",
+                intent, key, pattern.outcome_xp
+            );
             return pattern.clone();
-        } 
-        
-        // 4. Ultimate Fallback: The highest rated learned pattern
-        // This ensures the agent "applies what it learns to any video we provide it with"
-        if let Some((best_key, best_pattern)) = self.patterns.iter()
-            .filter(|(_, p)| p.intent_tag != "general" && p.success_rating >= 4)
-            .max_by_key(|(_, p)| p.success_rating) {
-            
-            info!("[KERNEL] 🧠 Applying generalized learned knowledge from '{}' to this video.", best_key);
+        }
+
+        // 4. Ultimate fallback: highest quality (outcome_xp) learned pattern
+        if let Some((best_key, best_pattern)) = self
+            .patterns
+            .iter()
+            .filter(|(_, p)| p.intent_tag != "general" && p.outcome_xp >= 0.6)
+            .max_by(|a, b| {
+                a.1.outcome_xp
+                    .partial_cmp(&b.1.outcome_xp)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+        {
+            info!(
+                "[KERNEL] 🧠 Applying best learned knowledge from '{}' (XP: {:.2}).",
+                best_key, best_pattern.outcome_xp
+            );
             return best_pattern.clone();
         }
 
-        info!("[KERNEL] New context encountered. Using default heuristics.");
+        info!("[KERNEL] No learned patterns. Using defaults.");
         EditingPattern::default()
     }
 
@@ -113,7 +159,7 @@ impl LearningKernel {
         // Store under the specific intent tag provided by the learning process
         // e.g. "cinematic_travel_video"
         let key = intent.to_lowercase().replace(" ", "_");
-        
+
         info!("[KERNEL] 💾 Memorizing pattern for '{}'", key);
         self.patterns.insert(key.clone(), pattern.clone());
         self.save();
@@ -123,15 +169,24 @@ impl LearningKernel {
     fn log_learned_style_to_markdown(&self, key: &str, pattern: &EditingPattern) {
         let md_path = PathBuf::from("cortex_cache/learned_styles.md");
         let _ = fs::create_dir_all("cortex_cache");
-        let source_str = pattern.source_video.clone().unwrap_or_else(|| "Unknown/Generated".to_string());
+        let source_str = pattern
+            .source_video
+            .clone()
+            .unwrap_or_else(|| "Unknown/Generated".to_string());
         let entry = format!(
-            "### {}\n- **Source Video**: {}\n- **Avg Scene Duration**: {:.2}s\n- **Transition Speed**: {:.2}\n- **Music Sync Strictness**: {:.2}\n- **Color Grade Style**: {}\n- **Success Rating**: {}\n\n",
-            key, source_str, pattern.avg_scene_duration, pattern.transition_speed, pattern.music_sync_strictness, pattern.color_grade_style, pattern.success_rating
+            "### {}\n- **Source Video**: {}\n- **Avg Scene Duration**: {:.2}s\n- **Transition Speed**: {:.2}\n- **Music Sync Strictness**: {:.2}\n- **Color Grade Style**: {}\n- **Success Rating**: {}★\n- **Kept Ratio**: {:.1}%\n- **Outcome XP**: {:.2}\n\n",
+            key, source_str, pattern.avg_scene_duration, pattern.transition_speed, pattern.music_sync_strictness,
+            pattern.color_grade_style, pattern.success_rating,
+            pattern.kept_ratio * 100.0, pattern.outcome_xp
         );
-        
+
         // Append to file
         use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&md_path) {
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&md_path)
+        {
             let _ = file.write_all(entry.as_bytes());
         }
     }

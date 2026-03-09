@@ -139,6 +139,7 @@ pub struct UiState {
     pub ai_edit_running: bool,
     pub discovered_files: Vec<crate::agent::global_discovery::DiscoveredFile>,
     pub is_scanning: bool,
+    pub recent_jobs: Vec<crate::agent::editor_queue::EditJob>,
 }
 
 
@@ -181,10 +182,12 @@ impl SynoidApp {
         tokio::spawn(async move {
             loop {
                 let status = core_clone.get_hive_status().await;
+                let jobs = core_clone.list_jobs().await;
                 if let Ok(mut state) = ui_state_clone.lock() {
                     state.hive_mind_status = status;
+                    state.recent_jobs = jobs;
                 }
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }
         });
 
@@ -407,9 +410,77 @@ impl SynoidApp {
             });
         }
 
+        // ── Recent Job Activity ─────────────────────────────────────────────
+        ui.add_space(20.0);
+        self.render_job_history(ui, state);
+
         // ── Human Control Index ──────────────────────────────────────────────
         ui.add_space(20.0);
         self.render_hci_panel(ui);
+    }
+
+    fn render_job_history(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.group(|ui| {
+            ui.horizontal(|ui| {
+                ui.heading("🎬 Recent Job History");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("🗑 Clear Completed").clicked() {
+                        let core = self.core.clone();
+                        tokio::spawn(async move { let _ = core.editor_queue.clear_completed().await; });
+                    }
+                });
+            });
+            ui.separator();
+            ui.add_space(5.0);
+
+            if state.recent_jobs.is_empty() {
+                ui.label(egui::RichText::new("No active or recent jobs.").color(COLOR_TEXT_SECONDARY).italics());
+            } else {
+                egui::ScrollArea::vertical().max_height(350.0).show(ui, |ui| {
+                    for job in state.recent_jobs.iter().rev() {
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                let status_color = match job.status {
+                                    crate::agent::editor_queue::JobStatus::Queued => egui::Color32::from_rgb(150, 150, 150),
+                                    crate::agent::editor_queue::JobStatus::Processing { .. } => COLOR_ACCENT_BLUE,
+                                    crate::agent::editor_queue::JobStatus::Completed { .. } => COLOR_ACCENT_GREEN,
+                                    crate::agent::editor_queue::JobStatus::Failed(_) => COLOR_ACCENT_RED,
+                                };
+                                
+                                ui.label(egui::RichText::new(format!("Job {}", &job.id.to_string()[..8])).strong());
+                                ui.label(egui::RichText::new(format!("{:?}", job.status)).color(status_color));
+                                
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(format!("{:.1}s", job.created_at.elapsed().as_secs_f32()));
+                                });
+                            });
+                            
+                            ui.label(egui::RichText::new(&job.intent).small().color(COLOR_TEXT_SECONDARY));
+                            
+                            if let crate::agent::editor_queue::JobStatus::Completed { kept_ratio, duration_secs, .. } = job.status {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("Kept: {:.0}% | Final: {:.1}s", kept_ratio * 100.0, duration_secs)).small());
+                                    
+                                    ui.add_space(10.0);
+                                    ui.label("Rate Edit:");
+                                    for i in 1..=5 {
+                                        let star = if i <= 3 { "⭐" } else { "☆" }; // Placeholder or real
+                                        if ui.button(format!("{}", i)).clicked() {
+                                            let core = self.core.clone();
+                                            let job_id = job.id;
+                                            tokio::spawn(async move {
+                                                core.record_user_rating(job_id, i as u8).await;
+                                            });
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                        ui.add_space(4.0);
+                    }
+                });
+            }
+        });
     }
 
     /// HCI (Human Control Index) authorship score panel.
