@@ -178,12 +178,24 @@ impl GpuContext {
 
         let prefetch_enabled = neuro_speed >= 2.0 && self.has_gpu();
 
-        let ffmpeg_preset = match neuro_speed as u32 {
-            0..=1 => "medium",
-            2..=3 => "fast",
-            4..=7 => "veryfast",
-            8..=15 => "ultrafast",
-            _ => "ultrafast",
+        let ffmpeg_preset = if self.has_gpu() {
+            // NVIDIA NVENC presets (p1 = fastest, p7 = slowest)
+            match neuro_speed as u32 {
+                0..=1 => "p4",  // medium
+                2..=3 => "p3",  // fast
+                4..=7 => "p2",  // faster
+                8..=15 => "p1", // fastest
+                _ => "p1",
+            }
+        } else {
+            // libx264 presets
+            match neuro_speed as u32 {
+                0..=1 => "medium",
+                2..=3 => "fast",
+                4..=7 => "veryfast",
+                8..=15 => "ultrafast",
+                _ => "ultrafast",
+            }
         };
 
         CudaAccelConfig {
@@ -318,11 +330,11 @@ mod tests {
         let cfg = ctx.cuda_accel_config(4.0);
         assert_eq!(cfg.batch_size, 32); // 8 * 4
         assert!(cfg.prefetch_enabled);
-        assert_eq!(cfg.ffmpeg_preset, "veryfast");
+        assert_eq!(cfg.ffmpeg_preset, "p2");
 
         // 16× speed brain (capped)
         let cfg = ctx.cuda_accel_config(16.0);
         assert_eq!(cfg.batch_size, 128); // 8 * 16
-        assert_eq!(cfg.ffmpeg_preset, "ultrafast");
+        assert_eq!(cfg.ffmpeg_preset, "p1");
     }
 }

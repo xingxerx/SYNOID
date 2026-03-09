@@ -38,14 +38,20 @@ impl ErrorHealer {
             ]);
         }
 
-        // Threading pressure → single-thread + ultrafast preset
+        // Threading pressure → single-thread + fast preset
         if err_lower.contains("out of memory") || err_lower.contains("resource") {
-            warn!("[HEALER] Resource pressure — reducing threads & using ultrafast preset.");
+            let is_nvenc = new_args.iter().any(|a| a.contains("nvenc"));
+            let preset = if is_nvenc { "p1" } else { "ultrafast" };
+
+            warn!(
+                "[HEALER] Resource pressure — reducing threads & using {} preset.",
+                preset
+            );
             new_args.extend([
                 "-threads".to_string(),
                 "1".to_string(),
                 "-preset".to_string(),
-                "ultrafast".to_string(),
+                preset.to_string(),
             ]);
         }
 

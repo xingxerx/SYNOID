@@ -140,7 +140,8 @@ impl Neuroplasticity {
     }
 
     fn persistence_path() -> PathBuf {
-        let dir = PathBuf::from("cortex_cache");
+        let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
+        let dir = PathBuf::from(format!("cortex_cache{}", suffix));
         let _ = fs::create_dir_all(&dir);
         dir.join("neuroplasticity.json")
     }

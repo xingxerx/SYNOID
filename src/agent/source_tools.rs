@@ -13,20 +13,17 @@ use tokio::process::Command;
 use tracing::info;
 
 /// Find the Deno binary path to pass to yt-dlp's --js-runtimes flag.
-/// yt-dlp needs a JS runtime to bypass YouTube's bot check.
 fn find_deno_path() -> Option<String> {
-    // Common Windows install locations for Deno (winget installs here)
+    let localappdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let userprofile = std::env::var("USERPROFILE").unwrap_or_default();
+
     let candidates = [
-        // winget default for current user
-        format!(
-            "{}\\deno.exe",
-            std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Programs\\deno"
-        ),
-        format!(
-            "{}\\deno\\deno.exe",
-            std::env::var("USERPROFILE").unwrap_or_default() + "\\.deno\\bin"
-        ),
-        // PATH-based: try to resolve via `where deno`
+        // winget / installer default locations
+        format!("{}\\Programs\\deno\\deno.exe", localappdata),
+        format!("{}\\.deno\\bin\\deno.exe", userprofile),
+        format!("{}\\deno\\deno.exe", localappdata),
+        format!("{}\\Microsoft\\WinGet\\Packages\\DenoLand.Deno_Microsoft.Winget.Source_8wekyb3d8bbwe\\deno.exe", localappdata),
+        format!("{}\\.lmstudio\\.internal\\utils\\deno.exe", userprofile),
     ];
 
     for path in &candidates {
@@ -36,7 +33,7 @@ fn find_deno_path() -> Option<String> {
         }
     }
 
-    // Try resolving via PATH using `where` (Windows) or `which` (unix)
+    // Fallback: resolve via PATH
     let resolver = if cfg!(windows) { "where" } else { "which" };
     if let Ok(out) = std::process::Command::new(resolver).arg("deno").output() {
         if out.status.success() {
@@ -249,10 +246,24 @@ fn build_ytdlp_info_args(
         args.push("yt_dlp".to_string());
     }
 
-    // Inject Deno JS runtime if available (required for modern YouTube)
+    // Inject Deno JS runtime if available
     if let Some(deno) = find_deno_path() {
         args.push("--js-runtimes".to_string());
         args.push(format!("deno:{}", deno));
+    }
+
+    // Use iOS/Android client emulation to bypass bot detection (no cookies needed,
+    // avoids DPAPI decryption failures that occur when using --cookies-from-browser)
+    args.push("--extractor-args".to_string());
+    args.push("youtube:player_client=ios,android".to_string());
+
+    // If a specific browser cookie override is requested, honour it
+    if let Some(browser) = auth_browser {
+        if browser.starts_with('-') {
+            return Err("Browser name cannot start with '-'".into());
+        }
+        args.push("--cookies-from-browser".to_string());
+        args.push(browser.to_string());
     }
 
     args.extend_from_slice(&[
@@ -266,14 +277,6 @@ fn build_ytdlp_info_args(
         "%(height)s".to_string(),
         "--no-download".to_string(),
     ]);
-
-    // Use provided browser or fallback to edge (most common on Windows)
-    let browser = auth_browser.unwrap_or("edge");
-    if browser.starts_with('-') {
-        return Err("Browser name cannot start with '-'".into());
-    }
-    args.push("--cookies-from-browser".to_string());
-    args.push(browser.to_string());
 
     args.push("--".to_string());
     args.push(url.to_string());
@@ -301,6 +304,10 @@ fn build_ytdlp_download_args(
         args.push(format!("deno:{}", deno));
     }
 
+    // Use iOS/Android client emulation to bypass bot detection
+    args.push("--extractor-args".to_string());
+    args.push("youtube:player_client=ios,android".to_string());
+
     args.extend_from_slice(&[
         "-f".to_string(),
         "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best".to_string(),
@@ -308,13 +315,14 @@ fn build_ytdlp_download_args(
         safe_arg_path(output_path).to_string_lossy().to_string(),
     ]);
 
-    // Use provided browser or fallback to edge (most common on Windows)
-    let browser = auth_browser.unwrap_or("edge");
-    if browser.starts_with('-') {
-        return Err("Browser name cannot start with '-'".into());
+    // If a specific browser cookie override is requested, honour it
+    if let Some(browser) = auth_browser {
+        if browser.starts_with('-') {
+            return Err("Browser name cannot start with '-'".into());
+        }
+        args.push("--cookies-from-browser".to_string());
+        args.push(browser.to_string());
     }
-    args.push("--cookies-from-browser".to_string());
-    args.push(browser.to_string());
 
     args.push("--".to_string());
     args.push(url.to_string());
@@ -412,15 +420,15 @@ pub async fn search_youtube(
         args.push("yt_dlp".to_string());
     }
 
-    // Inject Deno JS runtime if available (required for modern YouTube)
+    // Inject Deno JS runtime if available
     if let Some(deno) = find_deno_path() {
         args.push("--js-runtimes".to_string());
         args.push(format!("deno:{}", deno));
     }
 
-    // Use Edge cookies to bypass YouTube bot detection
-    args.push("--cookies-from-browser".to_string());
-    args.push("edge".to_string());
+    // Use iOS/Android client emulation to bypass bot detection (avoids DPAPI issues)
+    args.push("--extractor-args".to_string());
+    args.push("youtube:player_client=ios,android".to_string());
 
     args.extend_from_slice(&[
         "--print".to_string(),

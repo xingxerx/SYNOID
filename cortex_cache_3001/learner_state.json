@@ -1,0 +1,12 @@
+{
+  "topic_index": 6,
+  "repo_index": 0,
+  "processed_urls": [],
+  "known_repos": [
+    "https://github.com/mltframework/mlt",
+    "https://github.com/KDE/kdenlive",
+    "https://github.com/OpenShot/libopenshot",
+    "https://github.com/Shotcut/shotcut",
+    "https://github.com/obsproject/obs-studio"
+  ]
+}

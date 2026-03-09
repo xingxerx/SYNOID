@@ -62,7 +62,10 @@ pub struct LearningKernel {
 
 impl LearningKernel {
     pub fn new() -> Self {
-        let path = PathBuf::from("brain_memory.json");
+        let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
+        let cache_dir = format!("cortex_cache{}", suffix);
+        let _ = fs::create_dir_all(&cache_dir);
+        let path = PathBuf::from(&cache_dir).join("brain_memory.json");
         let patterns = if path.exists() {
             match fs::read_to_string(&path) {
                 Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
@@ -167,8 +170,10 @@ impl LearningKernel {
     }
 
     fn log_learned_style_to_markdown(&self, key: &str, pattern: &EditingPattern) {
-        let md_path = PathBuf::from("cortex_cache/learned_styles.md");
-        let _ = fs::create_dir_all("cortex_cache");
+        let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
+        let cache_dir = format!("cortex_cache{}", suffix);
+        let md_path = PathBuf::from(&cache_dir).join("learned_styles.md");
+        let _ = fs::create_dir_all(&cache_dir);
         let source_str = pattern
             .source_video
             .clone()

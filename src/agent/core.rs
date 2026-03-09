@@ -389,6 +389,43 @@ impl AgentCore {
             self.set_status(&format!("🧠 Processing Intent: {}", intent));
             self.log(&format!("[CORE] Applying intent: {}", intent));
 
+            let lower_intent = intent.to_lowercase();
+            if lower_intent.contains("viral clip") {
+                self.log("[CORE] 🎓 Special Intent Detected: 'Viral Clip Generation'. Scanning Academy...");
+                let academy_dir = Path::new("D:\\SYNOID\\Academy");
+                if academy_dir.exists() && academy_dir.is_dir() {
+                    let mut found_benchmark = false;
+                    if let Ok(entries) = std::fs::read_dir(academy_dir) {
+                        for entry in entries.flatten() {
+                            let path = entry.path();
+                            if path.is_file() {
+                                if let Some(ext) = path.extension() {
+                                    let ext_str = ext.to_string_lossy().to_lowercase();
+                                    if ["mp4", "mkv", "avi", "mov", "webm"]
+                                        .contains(&ext_str.as_str())
+                                    {
+                                        self.log(&format!("[CORE] 🧠 Prioritizing learning from Academy benchmark: {:?}", path.file_name().unwrap_or_default()));
+                                        // Await the learning to feed the brain before we recall the pattern below!
+                                        let _ =
+                                            self.learn_style(&path, "Viral Clip Generation").await;
+                                        found_benchmark = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if !found_benchmark {
+                        self.log(
+                            "[CORE] ⚠️ Academy directory is empty. Skipping benchmark ingestion.",
+                        );
+                    }
+                } else {
+                    self.log(
+                        "[CORE] ⚠️ Academy directory not found. Skipping benchmark ingestion.",
+                    );
+                }
+            }
+
             // 1. Query Brain for Learned Pattern
             let mut pattern = None;
             {

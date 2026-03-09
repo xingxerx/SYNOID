@@ -84,9 +84,12 @@ impl Default for EditingStrategy {
 impl EditingStrategy {
     pub fn load() -> Self {
         // First try the learned, cortex-cached strategy (compounding learning)
-        if let Ok(content) = fs::read_to_string("cortex_cache/editing_strategy.json") {
+        let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
+        let cache_dir = format!("cortex_cache{}", suffix);
+        let cached_path = format!("{}/editing_strategy.json", cache_dir);
+        if let Ok(content) = fs::read_to_string(&cached_path) {
             if let Ok(config) = serde_json::from_str(&content) {
-                info!("[SMART] Loaded editing strategy from cortex_cache/editing_strategy.json");
+                info!("[SMART] Loaded editing strategy from {}", cached_path);
                 return config;
             }
         }
@@ -104,12 +107,13 @@ impl EditingStrategy {
     }
 
     pub fn save_to_cortex(&self) {
-        let _ = fs::create_dir_all("cortex_cache");
+        let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
+        let cache_dir = format!("cortex_cache{}", suffix);
+        let _ = fs::create_dir_all(&cache_dir);
+        let path = format!("{}/editing_strategy.json", cache_dir);
         if let Ok(json) = serde_json::to_string_pretty(self) {
-            match fs::write("cortex_cache/editing_strategy.json", json) {
-                Ok(_) => info!(
-                    "[SMART] 💾 Saved tuned EditingStrategy to cortex_cache/editing_strategy.json"
-                ),
+            match fs::write(&path, json) {
+                Ok(_) => info!("[SMART] 💾 Saved tuned EditingStrategy to {}", path),
                 Err(e) => warn!("[SMART] Failed to save strategy to cortex: {}", e),
             }
         }
@@ -254,11 +258,13 @@ User Request: "{}"
                 || lower.contains("fast")
                 || lower.contains("intense")
                 || lower.contains("engaging")
-                || lower.contains("interesting"),
+                || lower.contains("interesting")
+                || lower.contains("viral clip"),
             remove_silence: lower.contains("silence")
                 || lower.contains("quiet")
                 || lower.contains("dead air")
-                || lower.contains("silent parts"),
+                || lower.contains("silent parts")
+                || lower.contains("viral clip"),
             keep_speech: lower.contains("speech")
                 || lower.contains("talking")
                 || lower.contains("dialogue")
@@ -277,10 +283,12 @@ User Request: "{}"
             censor_profanity: true, // Always-on: safety-first, never let slurs through
             profanity_replacement: if lower.contains("boing") {
                 Some("boing.wav".to_string())
+            } else if lower.contains("beep") || lower.contains("viral clip") {
+                Some("beep.wav".to_string())
             } else if lower.contains("funny sound") || lower.contains("sound effect") {
                 Some("boing.wav".to_string())
             } else {
-                None
+                Some("beep.wav".to_string()) // Default to beep for slurs
             },
         }
     }

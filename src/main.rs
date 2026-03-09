@@ -22,7 +22,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Launch the GUI Control Center
-    Gui,
+    Gui {
+        /// Dashboard server port (change to run multiple instances)
+        #[arg(short, long, default_value_t = 3000)]
+        port: u16,
+    },
 
     /// Download and process a YouTube video
     Youtube {
@@ -41,7 +45,6 @@ enum Commands {
         /// Process in chunks for long videos (minutes per chunk)
         #[arg(long, default_value = "10")]
         chunk_minutes: u32,
-
 
         /// Browser to borrow cookies from for authentication
         #[arg(long)]
@@ -220,7 +223,7 @@ enum Commands {
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv().ok();
-    
+
     // Set default log level to suppress noisy internal crates (wgpu, naga, etc.)
     // unless explicitly overridden by the user.
     if std::env::var("RUST_LOG").is_err() {
@@ -265,18 +268,25 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Check external dependencies
     let missing_deps = synoid_core::agent::health::check_dependencies();
     if !missing_deps.is_empty() {
-        tracing::debug!("⚠️ Missing dependencies: {:?}. Some features may not work.", missing_deps);
+        tracing::debug!(
+            "⚠️ Missing dependencies: {:?}. Some features may not work.",
+            missing_deps
+        );
     }
 
-    let api_url = std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
+    let api_url =
+        std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
 
     // Initialize the Ghost (Agent Core)
     let core = Arc::new(AgentCore::new(&api_url));
 
     // Connect Brain → GPU/CUDA backend (neuroplasticity-tuned acceleration)
     core.connect_gpu_to_brain().await;
-    info!("🧠⚡ Neural-GPU bridge active: {}", core.acceleration_status().await);
-    
+    info!(
+        "🧠⚡ Neural-GPU bridge active: {}",
+        core.acceleration_status().await
+    );
+
     // Initialize Hive Mind (Ollama discovery) - Non-blocking background task
     let core_for_hive = core.clone();
     tokio::spawn(async move {
@@ -292,10 +302,28 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Cli::parse();
 
     match args.command {
-        Commands::Gui => {
+        Commands::Gui { port } => {
             use crate::agent::health::HealthMonitor;
             use synoid_core::server;
             use synoid_core::state::KernelState;
+
+            // Set instance ID so all state files are scoped to this port.
+            // Default instance (3000) keeps "cortex_cache/" unchanged.
+            let instance_id = if port == 3000 {
+                String::new()
+            } else {
+                format!("_{}", port)
+            };
+            std::env::set_var("SYNOID_INSTANCE_ID", &instance_id);
+            info!(
+                "🔷 Instance ID: '{}' (port {})",
+                if instance_id.is_empty() {
+                    "default"
+                } else {
+                    &instance_id
+                },
+                port
+            );
 
             // Start health monitor (heartbeat every 30 seconds)
             let health = HealthMonitor::new(30);
@@ -309,7 +337,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let server_state = state.clone();
             tokio::spawn(async move {
                 info!("🌐 Auto-launching Dashboard Server...");
-                server::start_server(3000, server_state).await;
+                server::start_server(port, server_state).await;
             });
 
             // Launch GUI (Blocking) — pass AgentCore
@@ -335,7 +363,15 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             chunk_minutes,
             login,
         } => {
-            core.process_youtube_intent(&url, &intent, output, login.as_deref(), false, chunk_minutes).await?;
+            core.process_youtube_intent(
+                &url,
+                &intent,
+                output,
+                login.as_deref(),
+                false,
+                chunk_minutes,
+            )
+            .await?;
         }
         Commands::Research { topic, limit } => {
             core.process_research(&topic, limit).await?;
@@ -404,7 +440,9 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
                         println!("\n💡 Suggestions:");
                         if avg > 5.0 {
-                            println!("1. Pace is slow. Consider 'make it faster' or 'cut silence'.");
+                            println!(
+                                "1. Pace is slow. Consider 'make it faster' or 'cut silence'."
+                            );
                         } else if avg < 2.0 {
                             println!("1. Pace is fast/action-heavy. Consider 'stabilize' or 'enhance audio'.");
                         } else {
