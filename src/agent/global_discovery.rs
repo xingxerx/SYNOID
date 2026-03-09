@@ -1,10 +1,10 @@
 // SYNOID Global Discovery - System-wide Media Indexing
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{info, warn};
+use tracing::info;
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]
@@ -76,22 +76,24 @@ impl GlobalDiscovery {
     pub async fn scan(&self) -> usize {
         info!("[DISCOVERY] 🔎 Starting global system scan...");
         let mut new_index = Vec::new();
-        let extensions = ["mp4", "mov", "mkv", "avi", "webm", "wav", "mp3", "jpg", "png", "svg"];
+        let extensions = [
+            "mp4", "mov", "mkv", "avi", "webm", "wav", "mp3", "jpg", "png", "svg",
+        ];
 
         for root in &self.search_paths {
             info!("[DISCOVERY] Scanning root: {:?}", root);
-            
+
             // We use a sync walkdir inside a spawned blocking task for performance
             let root_clone = root.clone();
             let ext_list = extensions.to_vec();
-            
+
             let found = tokio::task::spawn_blocking(move || {
                 let mut results = Vec::new();
                 for entry in WalkDir::new(&root_clone)
                     .follow_links(true)
                     .max_depth(20) // Deep scan to find all files
                     .into_iter()
-                    .filter_map(|e| e.ok()) 
+                    .filter_map(|e| e.ok())
                 {
                     if entry.file_type().is_file() {
                         if let Some(ext) = entry.path().extension() {
@@ -109,7 +111,9 @@ impl GlobalDiscovery {
                     }
                 }
                 results
-            }).await.unwrap_or_default();
+            })
+            .await
+            .unwrap_or_default();
 
             new_index.extend(found);
         }
@@ -117,7 +121,10 @@ impl GlobalDiscovery {
         let count = new_index.len();
         let mut index = self.index.lock().await;
         *index = new_index;
-        info!("[DISCOVERY] ✅ Scan complete. Indexed {} media files.", count);
+        info!(
+            "[DISCOVERY] ✅ Scan complete. Indexed {} media files.",
+            count
+        );
         count
     }
 
@@ -125,9 +132,16 @@ impl GlobalDiscovery {
     pub async fn find(&self, query: &str) -> Vec<DiscoveredFile> {
         let query_lower = query.to_lowercase();
         let index = self.index.lock().await;
-        
-        index.iter()
-            .filter(|f| f.name.to_lowercase().contains(&query_lower) || f.path.to_string_lossy().to_lowercase().contains(&query_lower))
+
+        index
+            .iter()
+            .filter(|f| {
+                f.name.to_lowercase().contains(&query_lower)
+                    || f.path
+                        .to_string_lossy()
+                        .to_lowercase()
+                        .contains(&query_lower)
+            })
             .cloned()
             .collect()
     }

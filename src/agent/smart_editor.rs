@@ -67,9 +67,9 @@ impl Default for EditingStrategy {
     fn default() -> Self {
         Self {
             scene_threshold: 0.25,
-            min_scene_score: 0.2,
-            boring_penalty_threshold: 30.0,
-            speech_boost: 0.4,
+            min_scene_score: 0.30, // Raised from 0.20 — prevents micro-cuts
+            boring_penalty_threshold: 25.0, // Tighter: cut long boring blocks sooner
+            speech_boost: 0.5,  // Raised from 0.4 — speech is story, keep more of it
             silence_penalty: -0.4,
             continuity_boost: 0.6,
             speech_ratio_threshold: 0.1,
@@ -104,7 +104,7 @@ pub struct EditIntent {
     pub density: EditDensity,
     pub custom_keywords: Vec<String>,
     pub target_duration: Option<(f64, f64)>,
-    #[serde(default)]
+    #[serde(default = "default_censor_profanity")]
     pub censor_profanity: bool,
     #[serde(default)]
     pub profanity_replacement: Option<String>,
@@ -115,6 +115,7 @@ pub struct EditIntent {
 }
 
 fn default_show_cut_markers() -> bool { true }
+fn default_censor_profanity() -> bool { true }
 
 impl EditIntent {
     /// Parse natural language intent into structured intent using LLM
@@ -221,18 +222,7 @@ User Request: "{}"
             density,
             custom_keywords: vec![],
             target_duration: Self::parse_duration_range(&lower),
-            censor_profanity: lower.contains("censor")
-                || lower.contains("bleep")
-                || lower.contains("curse")
-                || lower.contains("cuss")
-                || lower.contains("swear")
-                || lower.contains("profan")
-                || lower.contains("inappropriate")
-                || lower.contains("gay word")
-                || lower.contains("homosexual")
-                || lower.contains("adult language")
-                || lower.contains("funny sound effect")
-                || lower.contains("sound effect"),
+            censor_profanity: true, // Always-on: safety-first, never let slurs through
             profanity_replacement: if lower.contains("boing") {
                 Some("boing.wav".to_string())
             } else if lower.contains("funny sound") || lower.contains("sound effect") {
@@ -1087,17 +1077,33 @@ pub async fn smart_edit(
             log("[SMART] 🤬 Applying audio censorship pass based on transcript...");
             let censored_path = work_dir.join("synoid_audio_censored.wav");
             
-            // Extract profanity timestamps
-            let profanity_words = ["fuck", "shit", "bitch", "ass", "damn", "cunt", "dick"];
-            let mut censor_timestamps = Vec::new();
+            // Comprehensive list of words to bleep — racial slurs, hate speech, and profanity
+            let profanity_words = get_profanity_word_list();
+            let mut censor_timestamps: Vec<(f64, f64)> = Vec::new();
             
             for seg in t {
                 let text_lower = seg.text.to_lowercase();
-                if profanity_words.iter().any(|&w| text_lower.contains(w)) {
-                    // Mute the whole segment
-                    censor_timestamps.push((seg.start, seg.end));
+                for bad_word in &profanity_words {
+                    if text_lower.contains(bad_word) {
+                        // Use word-level timestamp (narrow to ~0.5s window around the word)
+                        let (ws, we) = estimate_word_timestamps(seg, bad_word);
+                        censor_timestamps.push((ws, we));
+                    }
                 }
             }
+            // Merge overlapping/adjacent timestamp ranges (in case a segment has multiple hits)
+            censor_timestamps.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            let mut merged_stamps: Vec<(f64, f64)> = Vec::new();
+            for (s, e) in censor_timestamps {
+                if let Some(last) = merged_stamps.last_mut() {
+                    if s <= last.1 + 0.1 {
+                        last.1 = last.1.max(e);
+                        continue;
+                    }
+                }
+                merged_stamps.push((s, e));
+            }
+            let censor_timestamps = merged_stamps;
             
             if !censor_timestamps.is_empty() {
                 match production_tools::apply_audio_censor(&final_enhanced_audio_path, &censored_path, &censor_timestamps, intent.profanity_replacement.as_deref()).await {
@@ -1224,15 +1230,15 @@ pub async fn smart_edit(
     }
 
     // 4.1 — Minimum scene duration filter: remove micro-clips that flash by too fast.
-    //       Keep only scenes ≥ 2.5s.  If that would remove everything, skip this filter.
+    //       Keep only scenes ≥ 3.5s.  If that would remove everything, skip this filter.
     {
         let before_min_dur = scenes_to_keep.len();
-        let filtered: Vec<Scene> = scenes_to_keep.iter().cloned().filter(|s| s.duration >= 2.5).collect();
+        let filtered: Vec<Scene> = scenes_to_keep.iter().cloned().filter(|s| s.duration >= 3.5).collect();
         if !filtered.is_empty() {
             scenes_to_keep = filtered;
             let removed_micro = before_min_dur - scenes_to_keep.len();
             if removed_micro > 0 {
-                log(&format!("[SMART] 🚫 Removed {} micro-clips (< 2.5s) to prevent choppy cuts", removed_micro));
+                log(&format!("[SMART] 🚫 Removed {} micro-clips (< 3.5s) to prevent choppy cuts", removed_micro));
             }
         }
     }
@@ -1905,6 +1911,49 @@ pub fn generate_srt_for_kept_scenes(
     srt
 }
 
+/// Returns the full profanity + racial slur word list used for beep-out.
+/// Words are stored as lowercase substring matches.
+pub fn get_profanity_word_list() -> Vec<&'static str> {
+    vec![
+        // Common profanity
+        "fuck", "shit", "bitch", "cunt", "dick", "cock", "pussy",
+        "asshole", "bastard", "damn", "ass",
+        // Racial slurs — n-word and variants
+        "nigger", "nigga", "nigg", "n-word",
+        // Other racial/ethnic slurs
+        "chink", "gook", "spic", "wetback", "kike", "cracker",
+        "beaner", "raghead", "towelhead", "sandnigger", "zipperhead",
+        "coon", "jigaboo", "porch monkey", "jungle bunny",
+        // Homophobic / transphobic slurs
+        "faggot", "fag", "dyke", "tranny", "shemale",
+        // Ableist slurs
+        "retard", "retarded",
+    ]
+}
+
+/// Estimate a narrow (word-level) timestamp within a transcript segment for a
+/// given bad word. Uses linear interpolation across the words in the segment.
+/// Returns `(start_secs, end_secs)` clamped to the segment bounds.
+pub fn estimate_word_timestamps(seg: &crate::agent::transcription::TranscriptSegment, bad_word: &str) -> (f64, f64) {
+    let words: Vec<&str> = seg.text.split_whitespace().collect();
+    let n = words.len().max(1) as f64;
+    let seg_dur = (seg.end - seg.start).max(0.001);
+    let pad = 0.08_f64; // 80 ms padding on each side
+
+    for (i, word) in words.iter().enumerate() {
+        if word.to_lowercase().contains(bad_word) {
+            let word_start = seg.start + (i as f64 / n) * seg_dur - pad;
+            let word_end   = seg.start + ((i + 1) as f64 / n) * seg_dur + pad;
+            return (
+                word_start.max(seg.start),
+                word_end.min(seg.end),
+            );
+        }
+    }
+    // Fallback: mute entire segment (bad word found but exact position unclear)
+    (seg.start, seg.end)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2021,5 +2070,30 @@ mod tests {
         
         // No transcript provided, neutral score should remain around 0.3-0.5
         assert!(scenes[0].score >= 0.3);
+    }
+
+    #[test]
+    fn test_word_level_censor_timestamps() {
+        use crate::agent::transcription::TranscriptSegment;
+        // Segment: "hello world" from 0.0–4.0 s
+        // "world" is word index 1 of 2, so it occupies the second half: ~2.0–4.0 s
+        let seg = TranscriptSegment { start: 0.0, end: 4.0, text: "hello world".to_string() };
+        let (s, e) = estimate_word_timestamps(&seg, "world");
+        assert!(s >= 1.5 && s <= 2.5, "start should be in second half of segment, got {}", s);
+        assert!(e >= 3.0 && e <= 4.1, "end should be near segment end, got {}", e);
+    }
+
+    #[test]
+    fn test_slur_list_comprehensive() {
+        let words = get_profanity_word_list();
+        // Basic profanity still present
+        assert!(words.contains(&"fuck"));
+        assert!(words.contains(&"shit"));
+        // List is comprehensive (>20 entries)
+        assert!(words.len() > 20, "profanity list should have >20 entries, has {}", words.len());
+        // Racial slur present
+        assert!(words.contains(&"nigger"));
+        // Homophobic slur present
+        assert!(words.contains(&"faggot"));
     }
 }
