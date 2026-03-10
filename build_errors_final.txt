@@ -1,0 +1,73 @@
+   Compiling synoid-core v0.1.1 (D:\SYNOID)
+warning: unused import: `warn`
+  --> src\agent\gpt_oss_bridge.rs:10:21
+   |
+10 | use tracing::{info, warn};
+   |                     ^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unreachable pattern
+   --> src\agent\super_engine.rs:206:13
+    |
+203 |             Intent::DiscoverFile { query } => {
+    |             ------------------------------ matches all the relevant values
+...
+206 |             Intent::DiscoverFile { query } => Ok(format!("Searching for: {}", query)),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no value can reach this
+    |
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+error[E0599]: no method named `transcribe_audio` found for struct `SynoidAgent` in the current scope
+  --> src\agent\transcription.rs:80:37
+   |
+80 |         if let Ok(json_str) = agent.transcribe_audio(audio_path).await {
+   |                                     ^^^^^^^^^^^^^^^^ method not found in `SynoidAgent`
+   |
+  ::: src\agent\gpt_oss_bridge.rs:12:1
+   |
+12 | pub struct SynoidAgent {
+   | ---------------------- method `transcribe_audio` not found for this struct
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+  --> src\agent\transcription.rs:80:19
+   |
+80 |         if let Ok(json_str) = agent.transcribe_audio(audio_path).await {
+   |                   ^^^^^^^^ doesn't have a size known at compile-time
+   |
+   = help: the trait `Sized` is not implemented for `str`
+   = note: all local variables must have a statically known size
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+   --> src\agent\transcription.rs:80:16
+    |
+ 80 |         if let Ok(json_str) = agent.transcribe_audio(audio_path).await {
+    |                ^^^^^^^^^^^^ doesn't have a size known at compile-time
+    |
+    = help: the trait `Sized` is not implemented for `str`
+note: required by a bound in `std::prelude::v1::Ok`
+   --> C:\Users\xing\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\result.rs:557:17
+    |
+557 | pub enum Result<T, E> {
+    |                 ^ required by this bound in `std::prelude::v1::Ok`
+...
+561 |     Ok(#[stable(feature = "rust1", since = "1.0.0")] T),
+    |     -- required by a bound in this tuple variant
+
+error[E0277]: the size for values of type `str` cannot be known at compilation time
+   --> src\agent\transcription.rs:80:66
+    |
+ 80 |         if let Ok(json_str) = agent.transcribe_audio(audio_path).await {
+    |                                                                  ^^^^^ doesn't have a size known at compile-time
+    |
+    = help: the trait `Sized` is not implemented for `str`
+note: required by an implicit `Sized` bound in `std::result::Result`
+   --> C:\Users\xing\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\result.rs:557:17
+    |
+557 | pub enum Result<T, E> {
+    |                 ^ required by the implicit `Sized` requirement on this type parameter in `Result`
+
+Some errors have detailed explanations: E0277, E0599.
+For more information about an error, try `rustc --explain E0277`.
+warning: `synoid-core` (lib) generated 2 warnings
+error: could not compile `synoid-core` (lib) due to 4 previous errors; 2 warnings emitted

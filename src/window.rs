@@ -1045,45 +1045,6 @@ impl SynoidApp {
         }
     }
 
-    fn render_discovery_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
-        ui.heading(egui::RichText::new("🔎 Global Discovery").color(COLOR_ACCENT_BLUE));
-        ui.separator();
-        ui.add_space(10.0);
-
-        ui.label("Search for files:");
-        ui.text_edit_singleline(&mut state.discovery_query);
-        ui.add_space(10.0);
-
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🔍 Search").size(16.0))
-                    .fill(COLOR_ACCENT_BLUE),
-            )
-            .clicked()
-        {
-            let core = self.core.clone();
-            let query = state.discovery_query.clone();
-            let ui_ptr = self.ui_state.clone();
-
-            tokio::spawn(async move {
-                let results = core.discover_files(&query).await;
-                if let Ok(mut s) = ui_ptr.lock() {
-                    s.discovered_files = results;
-                }
-            });
-        }
-
-        if !state.discovered_files.is_empty() {
-            ui.add_space(10.0);
-            ui.group(|ui| {
-                ui.label(format!("Found {} file(s):", state.discovered_files.len()));
-                for file in &state.discovered_files {
-                    ui.label(file.path.to_string_lossy().as_ref());
-                }
-            });
-        }
-    }
-
     fn render_audio_mixer_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🎚️ Audio Mixer").color(COLOR_ACCENT_ORANGE));
         ui.separator();

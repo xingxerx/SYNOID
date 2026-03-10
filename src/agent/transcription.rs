@@ -78,7 +78,9 @@ impl TranscriptionEngine {
         );
 
         if let Ok(json_str) = agent.transcribe_audio(audio_path).await {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json_str) {
+            info!("[TRANSCRIBE] AI Transcription Succeeded.");
+            let json_string: String = json_str;
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json_string) {
                 if let Some(segments_arr) = val.get("segments").and_then(|v| v.as_array()) {
                     let mut segments = Vec::new();
                     for seg in segments_arr {

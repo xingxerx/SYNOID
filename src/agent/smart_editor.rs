@@ -153,15 +153,11 @@ impl EditIntent {
     /// Routes through Groq (fast model) when available, Ollama as fallback.
     pub async fn from_llm(text: &str) -> Self {
         use crate::agent::gpt_oss_bridge::SynoidAgent;
-<<<<<<< HEAD
         // Use the multi-provider bridge; standard fast JSON intent parser
-        let agent = SynoidAgent::new("http://localhost:11434", "llama-3.1-8b-instant");
-=======
         let api_url = std::env::var("OLLAMA_API_URL")
             .unwrap_or_else(|_| "http://localhost:11434".to_string());
         // Uses Groq fast model via multi-provider when GROQ_API_KEY is set
-        let agent = SynoidAgent::new(&api_url, "llama3:latest");
->>>>>>> c55b0d9e6ebf2105e2d2c161f2b2839c68f38981
+        let agent = SynoidAgent::new(&api_url, "llama-3.1-8b-instant");
 
         let prompt = format!(
             r#"You are a video editing AI assistant. Convert the user's natural language request into a JSON configuration for the EditIntent struct.

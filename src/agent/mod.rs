@@ -43,7 +43,4 @@ pub mod vision_tools;
 pub mod multicam; // AI Multicam Sync & SmartSwitch
 pub mod upscale_engine; // SeedVR2 / Real-ESRGAN / Lanczos upscaling
 
-pub mod llm_provider;     // Multi-provider LLM bridge (Groq + Google AI Studio + Ollama)
-pub mod token_optimizer;  // MCP Token Optimizer (free-tier budget tracking)
-
 pub mod core; // Exposed Core Logic

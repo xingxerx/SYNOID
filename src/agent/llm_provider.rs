@@ -1,131 +1,5 @@
 // SYNOID Multi-Provider LLM Bridge
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
-<<<<<<< HEAD
-
-use crate::agent::token_optimizer::TokenOptimizer;
-use serde_json::json;
-use std::env;
-use std::sync::Arc;
-use tracing::warn;
-
-pub struct MultiProviderLlm {
-    client: reqwest::Client,
-    optimizer: Arc<TokenOptimizer>,
-    groq_api_key: Option<String>,
-    google_api_key: Option<String>,
-    ollama_url: String,
-}
-
-impl MultiProviderLlm {
-    pub fn new() -> Self {
-        // Load from env, or use defaults
-        let groq_api_key = env::var("GROQ_API_KEY").ok();
-        let google_api_key = env::var("GOOGLE_AI_KEY").ok();
-        let ollama_url =
-            env::var("SYNOID_API_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
-
-        Self {
-            client: reqwest::Client::new(),
-            optimizer: Arc::new(TokenOptimizer::new()),
-            groq_api_key,
-            google_api_key,
-            ollama_url,
-        }
-    }
-
-    // Reasoning capabilities (llama-3.3-70b-versatile)
-    pub async fn reason(&self, request: &str) -> Result<String, String> {
-        match self.call_groq("llama-3.3-70b-versatile", request).await {
-            Ok(res) => Ok(res),
-            Err(e) => {
-                warn!(
-                    "[LLM_BRIDGE] Groq reason failed: {}. Falling back to Ollama.",
-                    e
-                );
-                self.call_ollama("llama3", request).await
-            }
-        }
-    }
-
-    // Fast Request parser (llama-3.1-8b-instant)
-    pub async fn fast_request(&self, request: &str) -> Result<String, String> {
-        match self.call_groq("llama-3.1-8b-instant", request).await {
-            Ok(res) => Ok(res),
-            Err(e) => {
-                warn!(
-                    "[LLM_BRIDGE] Groq fast_request failed: {}. Falling back to Ollama.",
-                    e
-                );
-                self.call_ollama("llama3", request).await
-            }
-        }
-    }
-
-    // Vision processing with Google Gemini
-    pub async fn vision_request(&self, prompt: &str, image_b64: &str) -> Result<String, String> {
-        match self
-            .call_google("gemini-2.5-flash", prompt, image_b64)
-            .await
-        {
-            Ok(res) => Ok(res),
-            Err(e) => {
-                warn!(
-                    "[LLM_BRIDGE] Gemini vision failed: {}. Falling back to Ollama.",
-                    e
-                );
-                self.call_ollama_vision("llava", prompt, image_b64).await
-            }
-        }
-    }
-
-    // Audio Transcription (Whisper API via Groq)
-    pub async fn audio_transcription(
-        &self,
-        audio_path: &std::path::Path,
-    ) -> Result<String, String> {
-        let api_key = self.groq_api_key.as_ref().ok_or("GROQ_API_KEY not set")?;
-
-        if !self.optimizer.can_make_request("groq") {
-            return Err("Groq rate limits exceeded".into());
-        }
-
-        let file_bytes = std::fs::read(audio_path).map_err(|e| e.to_string())?;
-        let file_part = reqwest::multipart::Part::bytes(file_bytes)
-            .file_name("audio.wav")
-            .mime_str("audio/wav")
-            .map_err(|e| e.to_string())?;
-
-        let form = reqwest::multipart::Form::new()
-            .text("model", "whisper-large-v3-turbo")
-            .text("response_format", "verbose_json")
-            .part("file", file_part);
-
-        let response = self
-            .client
-            .post("https://api.groq.com/openai/v1/audio/transcriptions")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .multipart(form)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if response.status().is_success() {
-            let json_text = response.text().await.map_err(|e| e.to_string())?;
-            // We return the raw string so the caller can parse the segments JSON
-            self.optimizer.record_usage("groq", 1000); // flat token cost for audio
-            Ok(json_text)
-        } else {
-            Err(format!("Groq Whisper API error: {}", response.status()))
-        }
-    }
-
-    async fn call_groq(&self, model: &str, prompt: &str) -> Result<String, String> {
-        let api_key = self.groq_api_key.as_ref().ok_or("GROQ_API_KEY not set")?;
-
-        if !self.optimizer.can_make_request("groq") {
-            return Err("Groq rate limits exceeded".into());
-        }
-=======
 //
 // Routes LLM requests to the best available provider:
 //   - Groq (primary): Reasoning + Fast tasks via OpenAI-compatible API
@@ -173,7 +47,7 @@ pub struct ProviderConfig {
     /// Groq fast model (default: llama-3.1-8b-instant)
     pub groq_fast_model: String,
     /// Google AI Studio API key (from GOOGLE_AI_KEY env var)
-    pub google_api_key: Option<String>,
+    pub google_ai_key: Option<String>,
     /// Google vision model (default: gemini-2.0-flash)
     pub google_vision_model: String,
     /// Ollama API URL (fallback)
@@ -190,7 +64,7 @@ impl Default for ProviderConfig {
                 .unwrap_or_else(|_| "llama-3.3-70b-versatile".to_string()),
             groq_fast_model: std::env::var("GROQ_FAST_MODEL")
                 .unwrap_or_else(|_| "llama-3.1-8b-instant".to_string()),
-            google_api_key: std::env::var("GOOGLE_AI_KEY").ok(),
+            google_ai_key: std::env::var("GOOGLE_AI_KEY").ok(),
             google_vision_model: std::env::var("GOOGLE_VISION_MODEL")
                 .unwrap_or_else(|_| "gemini-2.0-flash".to_string()),
             ollama_url: std::env::var("SYNOID_API_URL")
@@ -208,7 +82,7 @@ impl ProviderConfig {
             providers.push(LlmProvider::Groq);
             providers.push(LlmProvider::GroqFast);
         }
-        if self.google_api_key.is_some() {
+        if self.google_ai_key.is_some() {
             providers.push(LlmProvider::GoogleVision);
         }
         providers.push(LlmProvider::Ollama); // Always available as fallback
@@ -244,12 +118,13 @@ impl MultiProviderLlm {
     /// Send a reasoning request (text-only) to the best available provider.
     /// Priority: Groq → Ollama
     pub async fn reason(&self, request: &str) -> Result<String, String> {
-        // Estimate ~500 tokens for a typical reasoning request
         let est_tokens = estimate_tokens(request) + 500;
 
-        // Try Groq first
         if self.config.groq_api_key.is_some() && self.optimizer.can_use("groq", est_tokens) {
-            match self.call_groq(request, &self.config.groq_reasoning_model).await {
+            match self
+                .call_groq(request, &self.config.groq_reasoning_model)
+                .await
+            {
                 Ok((response, tokens)) => {
                     self.optimizer.record("groq", tokens);
                     return Ok(response);
@@ -260,7 +135,6 @@ impl MultiProviderLlm {
             }
         }
 
-        // Fallback to Ollama
         self.call_ollama(request).await
     }
 
@@ -269,7 +143,6 @@ impl MultiProviderLlm {
     pub async fn fast_request(&self, request: &str) -> Result<String, String> {
         let est_tokens = estimate_tokens(request) + 300;
 
-        // Try Groq fast model
         if self.config.groq_api_key.is_some() && self.optimizer.can_use("groq_fast", est_tokens) {
             match self.call_groq(request, &self.config.groq_fast_model).await {
                 Ok((response, tokens)) => {
@@ -282,21 +155,15 @@ impl MultiProviderLlm {
             }
         }
 
-        // Fallback to regular reasoning
         self.reason(request).await
     }
 
     /// Send a vision request (frame analysis) to Google AI Studio.
     /// Priority: Google AI Studio → Ollama VLM
-    pub async fn vision_request(
-        &self,
-        prompt: &str,
-        image_b64: &str,
-    ) -> Result<String, String> {
-        let est_tokens = estimate_tokens(prompt) + 1000; // Vision uses more tokens
+    pub async fn vision_request(&self, prompt: &str, image_b64: &str) -> Result<String, String> {
+        let est_tokens = estimate_tokens(prompt) + 1000;
 
-        // Try Google AI Studio
-        if self.config.google_api_key.is_some()
+        if self.config.google_ai_key.is_some()
             && self.optimizer.can_use("google_vision", est_tokens)
         {
             match self.call_google_vision(prompt, image_b64).await {
@@ -305,13 +172,59 @@ impl MultiProviderLlm {
                     return Ok(response);
                 }
                 Err(e) => {
-                    warn!("[LLM] Google Vision failed: {}, falling back to Ollama VLM", e);
+                    warn!(
+                        "[LLM] Google Vision failed: {}, falling back to Ollama VLM",
+                        e
+                    );
                 }
             }
         }
 
-        // Fallback to Ollama VLM
         self.call_ollama_vision(prompt, image_b64).await
+    }
+
+    /// Audio Transcription (Whisper API via Groq)
+    pub async fn audio_transcription(
+        &self,
+        audio_path: &std::path::Path,
+    ) -> Result<String, String> {
+        let api_key = self
+            .config
+            .groq_api_key
+            .as_ref()
+            .ok_or("GROQ_API_KEY not set")?;
+
+        if !self.optimizer.can_use("groq", 1000) {
+            return Err("Groq rate limits exceeded".into());
+        }
+
+        let file_bytes = std::fs::read(audio_path).map_err(|e| e.to_string())?;
+        let file_part = reqwest::multipart::Part::bytes(file_bytes)
+            .file_name("audio.wav")
+            .mime_str("audio/wav")
+            .map_err(|e| e.to_string())?;
+
+        let form = reqwest::multipart::Form::new()
+            .text("model", "whisper-large-v3-turbo")
+            .text("response_format", "verbose_json")
+            .part("file", file_part);
+
+        let response = self
+            .client
+            .post("https://api.groq.com/openai/v1/audio/transcriptions")
+            .header("Authorization", format!("Bearer {}", api_key))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if response.status().is_success() {
+            let json_text = response.text().await.map_err(|e| e.to_string())?;
+            self.optimizer.record("groq", 1000);
+            Ok(json_text)
+        } else {
+            Err(format!("Groq Whisper API error: {}", response.status()))
+        }
     }
 
     /// Get token usage status for all providers.
@@ -324,7 +237,6 @@ impl MultiProviderLlm {
     /// Call Groq's OpenAI-compatible API.
     async fn call_groq(&self, request: &str, model: &str) -> Result<(String, u64), String> {
         let api_key = self.config.groq_api_key.as_ref().ok_or("No Groq API key")?;
->>>>>>> c55b0d9e6ebf2105e2d2c161f2b2839c68f38981
 
         let payload = json!({
             "model": model,
@@ -335,65 +247,12 @@ impl MultiProviderLlm {
                 },
                 {
                     "role": "user",
-<<<<<<< HEAD
-                    "content": prompt
-=======
                     "content": request
->>>>>>> c55b0d9e6ebf2105e2d2c161f2b2839c68f38981
                 }
             ],
             "temperature": 0.7
         });
 
-<<<<<<< HEAD
-        // roughly guess tokens (characters / 4 * 2 for input+output)
-        let estimated_tokens = (prompt.len() as u64) / 2;
-
-        let response = self
-            .client
-            .post("https://api.groq.com/openai/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if response.status().is_success() {
-            let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
-            let content = json["choices"][0]["message"]["content"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
-
-            self.optimizer
-                .record_usage("groq", estimated_tokens + (content.len() as u64 / 4));
-            Ok(content)
-        } else {
-            Err(format!("Groq API error: {}", response.status()))
-        }
-    }
-
-    async fn call_google(
-        &self,
-        _model: &str,
-        prompt: &str,
-        image_b64: &str,
-    ) -> Result<String, String> {
-        let api_key = self
-            .google_api_key
-            .as_ref()
-            .ok_or("GOOGLE_AI_KEY not set")?;
-
-        if !self.optimizer.can_make_request("google") {
-            return Err("Google rate limits exceeded".into());
-        }
-
-        // Format for Gemini 2.0 Flash REST API
-        let payload = json!({
-            "contents": [{
-                "parts": [
-                    { "text": prompt },
-=======
         let resp = self
             .client
             .post("https://api.groq.com/openai/v1/chat/completions")
@@ -417,7 +276,6 @@ impl MultiProviderLlm {
             .unwrap_or("Error: Empty response")
             .to_string();
 
-        // Extract token usage from response
         let tokens_used = json["usage"]["total_tokens"].as_u64().unwrap_or(0);
 
         info!("[LLM] Groq ({}) used {} tokens", model, tokens_used);
@@ -432,7 +290,7 @@ impl MultiProviderLlm {
     ) -> Result<(String, u64), String> {
         let api_key = self
             .config
-            .google_api_key
+            .google_ai_key
             .as_ref()
             .ok_or("No Google AI key")?;
 
@@ -445,10 +303,7 @@ impl MultiProviderLlm {
         let payload = json!({
             "contents": [{
                 "parts": [
-                    {
-                        "text": prompt
-                    },
->>>>>>> c55b0d9e6ebf2105e2d2c161f2b2839c68f38981
+                    { "text": prompt },
                     {
                         "inline_data": {
                             "mime_type": "image/jpeg",
@@ -456,15 +311,6 @@ impl MultiProviderLlm {
                         }
                     }
                 ]
-<<<<<<< HEAD
-            }]
-        });
-
-        let estimated_tokens = 500; // rough guess for image + text
-
-        let url = format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={}", api_key);
-        let response = self
-=======
             }],
             "generationConfig": {
                 "temperature": 0.4,
@@ -473,74 +319,12 @@ impl MultiProviderLlm {
         });
 
         let resp = self
->>>>>>> c55b0d9e6ebf2105e2d2c161f2b2839c68f38981
             .client
             .post(&url)
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()
             .await
-<<<<<<< HEAD
-            .map_err(|e| e.to_string())?;
-
-        if response.status().is_success() {
-            let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
-
-            // Navigate Gemini's response structure
-            let content = json["candidates"][0]["content"]["parts"][0]["text"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
-
-            self.optimizer
-                .record_usage("google", estimated_tokens + (content.len() as u64 / 4));
-            Ok(content)
-        } else {
-            Err(format!("Google API error: {}", response.status()))
-        }
-    }
-
-    async fn call_ollama(&self, model: &str, prompt: &str) -> Result<String, String> {
-        let payload = json!({
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "stream": false
-        });
-
-        let endpoint = format!("{}/api/chat", self.ollama_url.trim_end_matches("/v1"));
-        let response = self
-            .client
-            .post(&endpoint)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if response.status().is_success() {
-            let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
-            Ok(json["message"]["content"]
-                .as_str()
-                .unwrap_or("")
-                .to_string())
-        } else {
-            Err(format!("Ollama API error: {}", response.status()))
-        }
-    }
-
-    async fn call_ollama_vision(
-        &self,
-        model: &str,
-        prompt: &str,
-        image_b64: &str,
-    ) -> Result<String, String> {
-        let payload = json!({
-            "model": model,
-=======
             .map_err(|e| format!("Google Vision request failed: {}", e))?;
 
         if !resp.status().is_success() {
@@ -556,12 +340,14 @@ impl MultiProviderLlm {
             .unwrap_or("")
             .to_string();
 
-        // Google reports token count in usageMetadata
         let tokens_used = json["usageMetadata"]["totalTokenCount"]
             .as_u64()
             .unwrap_or(0);
 
-        info!("[LLM] Google Vision ({}) used {} tokens", model, tokens_used);
+        info!(
+            "[LLM] Google Vision ({}) used {} tokens",
+            model, tokens_used
+        );
         Ok((content, tokens_used))
     }
 
@@ -605,7 +391,10 @@ impl MultiProviderLlm {
                 }
             }
             Err(e) => {
-                warn!("[LLM] Ollama also unreachable ({}), entering offline mode", e);
+                warn!(
+                    "[LLM] Ollama also unreachable ({}), entering offline mode",
+                    e
+                );
                 Ok(format!("(Offline Mode) Mock response for: {}", request))
             }
         }
@@ -613,32 +402,19 @@ impl MultiProviderLlm {
 
     /// Call local Ollama with vision (VLM fallback).
     async fn call_ollama_vision(&self, prompt: &str, image_b64: &str) -> Result<String, String> {
-        let base = self.config.ollama_url.trim_end_matches('/').trim_end_matches("/v1");
+        let base = self
+            .config
+            .ollama_url
+            .trim_end_matches('/')
+            .trim_end_matches("/v1");
 
         let body = json!({
             "model": "llava:latest",
->>>>>>> c55b0d9e6ebf2105e2d2c161f2b2839c68f38981
             "prompt": prompt,
             "images": [image_b64],
             "stream": false
         });
 
-<<<<<<< HEAD
-        let endpoint = format!("{}/api/generate", self.ollama_url.trim_end_matches("/v1"));
-        let response = self
-            .client
-            .post(&endpoint)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if response.status().is_success() {
-            let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
-            Ok(json["response"].as_str().unwrap_or("").to_string())
-        } else {
-            Err(format!("Ollama Vision API error: {}", response.status()))
-=======
         match self
             .client
             .post(format!("{}/api/generate", base))
@@ -649,28 +425,17 @@ impl MultiProviderLlm {
         {
             Ok(resp) => {
                 let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-                Ok(json["response"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string())
+                Ok(json["response"].as_str().unwrap_or("").to_string())
             }
             Err(e) => {
                 warn!("[LLM] Ollama VLM also unavailable: {}", e);
                 Ok(String::new())
             }
->>>>>>> c55b0d9e6ebf2105e2d2c161f2b2839c68f38981
         }
     }
 }
 
-<<<<<<< HEAD
-impl Default for MultiProviderLlm {
-    fn default() -> Self {
-        Self::new()
-    }
-=======
 /// Rough token estimate: ~4 chars per token for English text.
 fn estimate_tokens(text: &str) -> u64 {
     (text.len() as u64) / 4
->>>>>>> c55b0d9e6ebf2105e2d2c161f2b2839c68f38981
 }
