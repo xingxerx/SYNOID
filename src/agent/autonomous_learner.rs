@@ -278,6 +278,8 @@ impl AutonomousLearner {
                                             color_grade_style: "analyzed_style".to_string(),
                                             success_rating: 5, // Self-reward for successful analysis
                                             source_video: Some(downloaded.local_path.to_string_lossy().to_string()),
+                                            kept_ratio: 0.5,
+                                            outcome_xp: 0.8,
                                         };
                                         brain_lock.learning_kernel.memorize(topic, pattern);
 
@@ -352,6 +354,8 @@ impl AutonomousLearner {
                                 color_grade_style: "algorithmic".to_string(),
                                 success_rating: 5,
                                 source_video: Some(repo_url.clone()),
+                                kept_ratio: 0.5,
+                                outcome_xp: 0.9,
                             };
                             brain_lock.learning_kernel.memorize(&format!("algo_{}", concept.file_type), pattern);
                             brain_lock.neuroplasticity.record_success();
@@ -396,6 +400,8 @@ impl AutonomousLearner {
                                         color_grade_style: "theoretical".to_string(),
                                         success_rating: 5,
                                         source_video: Some(wiki_url.clone()),
+                                        kept_ratio: 0.5,
+                                        outcome_xp: 0.85,
                                     };
                                     brain_lock
                                         .learning_kernel
@@ -431,6 +437,8 @@ impl AutonomousLearner {
                                         color_grade_style: "learned_from_web".to_string(),
                                         success_rating: 4,
                                         source_video: Some(res_title.clone()),
+                                        kept_ratio: 0.5,
+                                        outcome_xp: 0.7,
                                     };
                                 brain_lock.learning_kernel.memorize(&tag, pattern);
                                 brain_lock.neuroplasticity.record_success();
@@ -465,8 +473,8 @@ impl AutonomousLearner {
     }
 
     /// NEW: Learn from a recently completed manual or queued edit job
-    pub async fn learn_from_edit(&self, intent: &str, input_path: &std::path::Path, duration: f64) {
-        info!("[LEARNER] 📈 Analyzing completed edit: '{}' (Duration: {:.2}s)", intent, duration);
+    pub async fn learn_from_edit(&self, intent: &str, input_path: &std::path::Path, duration: f64, kept_ratio: f64) {
+        info!("[LEARNER] 📈 Analyzing completed edit: '{}' (Duration: {:.2}s, Kept Ratio: {:.2})", intent, duration, kept_ratio);
         
         // 1. Scene density analysis of the result
         let mut avg_scene_duration = duration / 5.0; // Default fallback
@@ -477,10 +485,20 @@ impl AutonomousLearner {
             }
         }
 
+        // Calculate Quality based on kept_ratio.
+        // A good edit is balanced (ratio 0.3-0.7 gives 1.0 XP). Too low or high means extreme edits, which give less XP.
+        let quality = if kept_ratio >= 0.3 && kept_ratio <= 0.7 {
+            1.0
+        } else if kept_ratio < 0.15 || kept_ratio > 0.9 {
+            0.2
+        } else {
+            0.6 // Moderate
+        };
+
         let mut brain_lock = self.brain.lock().await;
         
-        // Record success in neuroplasticity
-        brain_lock.neuroplasticity.record_success();
+        // Record success in neuroplasticity with quality weight
+        brain_lock.neuroplasticity.record_success_with_quality(quality);
         
         // Extract style if possible or just update the frequency of the intent
         let pattern = crate::agent::learning::EditingPattern {
@@ -491,15 +509,17 @@ impl AutonomousLearner {
             color_grade_style: "feedback_learned".to_string(),
             success_rating: 5,
             source_video: Some(input_path.to_string_lossy().to_string()),
+            kept_ratio,
+            outcome_xp: quality,
         };
         
         brain_lock.learning_kernel.memorize(intent, pattern);
-        info!("[LEARNER] 🧠 Knowledge base updated with feedback from '{}'", intent);
+        info!("[LEARNER] 🧠 Knowledge base updated with feedback from '{}' (Quality XP: {:.2})", intent, quality);
         
         // Potential: If duration was very short, maybe speed up the next one?
         if duration < 10.0 {
             info!("[LEARNER] ⚡ Detecting fast workflow. Boosting adaptive speed.");
-            brain_lock.neuroplasticity.record_success(); // Double boost
+            brain_lock.neuroplasticity.record_success_with_quality(quality); // Double boost
         }
     }
 }

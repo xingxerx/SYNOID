@@ -203,6 +203,7 @@ impl SuperEngine {
             Intent::DiscoverFile { query } => {
                 Ok(format!("DISCOVERY_MODE:{}", query))
             }
+            Intent::DiscoverFile { query } => Ok(format!("Searching for: {}", query)),
             Intent::Orchestrate { .. } => unreachable!("Handled in process_command"),
             Intent::Unknown { .. } => unreachable!("Handled in process_command"),
         }

@@ -5,8 +5,8 @@
 // It maintains state, manages long-running processes, and routes intent.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::info;
 
@@ -18,9 +18,8 @@ use crate::agent::production_tools;
 use crate::agent::source_tools;
 use crate::agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipeline};
 
-
 use crate::agent::autonomous_learner::AutonomousLearner;
-use crate::agent::editor_queue::{VideoEditorQueue, EditJob, JobStatus};
+use crate::agent::editor_queue::{EditJob, JobStatus, VideoEditorQueue};
 use crate::gpu_backend;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,7 +69,11 @@ impl HciTracker {
         let d = self.director_decisions.load(Ordering::Relaxed) as f64;
         let a = self.ai_decisions.load(Ordering::Relaxed) as f64;
         let total = d + a;
-        if total == 0.0 { 100.0 } else { (d / total * 100.0).round() }
+        if total == 0.0 {
+            100.0
+        } else {
+            (d / total * 100.0).round()
+        }
     }
 
     /// Formatted status line for the GUI.
@@ -99,8 +102,6 @@ pub struct AgentCore {
     pub cortex: Arc<AsyncMutex<MotorCortex>>,
     pub discovery: Arc<GlobalDiscovery>,
 
-
-
     // Unified Pipeline (Async Mutex)
     pub pipeline: Arc<AsyncMutex<Option<UnifiedPipeline>>>,
 
@@ -111,7 +112,8 @@ pub struct AgentCore {
     pub editor_queue: Arc<VideoEditorQueue>,
 
     // Video Editing Agent (The high-level orchestrator)
-    pub video_editing_agent: Arc<Mutex<Option<crate::agent::video_editing_agent::VideoEditingAgent>>>,
+    pub video_editing_agent:
+        Arc<Mutex<Option<crate::agent::video_editing_agent::VideoEditingAgent>>>,
 
     // Human Control Index tracker
     pub hci: Arc<HciTracker>,
@@ -132,7 +134,9 @@ impl AgentCore {
 
             pipeline: Arc::new(AsyncMutex::new(None)),
             autonomous_learner: Arc::new(Mutex::new(None)), // Lazy init
-            editor_queue: Arc::new(VideoEditorQueue::new(Arc::new(AsyncMutex::new(Brain::new(api_url, "llama3:latest"))))),
+            editor_queue: Arc::new(VideoEditorQueue::new(Arc::new(AsyncMutex::new(
+                Brain::new(api_url, "llama3:latest"),
+            )))),
             video_editing_agent: Arc::new(Mutex::new(None)), // Lazy init
             hci: Arc::new(HciTracker::new()),
         }
@@ -142,7 +146,9 @@ impl AgentCore {
         let mut vea = self.video_editing_agent.lock().unwrap();
         if vea.is_none() {
             self.log("[CORE] 🤖 Initializing Video Editing Agent...");
-            *vea = Some(crate::agent::video_editing_agent::VideoEditingAgent::new(self.brain.clone()));
+            *vea = Some(crate::agent::video_editing_agent::VideoEditingAgent::new(
+                self.brain.clone(),
+            ));
         }
     }
 
@@ -166,7 +172,7 @@ impl AgentCore {
     pub async fn get_hive_status(&self) -> String {
         let brain = self.brain.lock().await;
         format!(
-            "🧠 Reasoning: {}\n⚡ Fast: {}\n📚 Models Loaded: {}", 
+            "🧠 Reasoning: {}\n⚡ Fast: {}\n📚 Models Loaded: {}",
             brain.hive_mind.get_reasoning_model(),
             brain.hive_mind.get_fast_model(),
             brain.hive_mind.models.len()
@@ -185,11 +191,17 @@ impl AgentCore {
         self.log("[CORE] 🔎 Initiating system-wide media scan...");
         self.set_status("🔎 Scanning System...");
         let count = self.discovery.scan().await;
-        self.log(&format!("[CORE] ✅ System scan complete. {} files indexed.", count));
+        self.log(&format!(
+            "[CORE] ✅ System scan complete. {} files indexed.",
+            count
+        ));
         self.set_status("⚡ Ready");
     }
 
-    pub async fn discover_files(&self, query: &str) -> Vec<crate::agent::global_discovery::DiscoveredFile> {
+    pub async fn discover_files(
+        &self,
+        query: &str,
+    ) -> Vec<crate::agent::global_discovery::DiscoveredFile> {
         self.log(&format!("[CORE] 🔎 Searching system for: '{}'", query));
         self.discovery.find(query).await
     }
@@ -233,19 +245,25 @@ impl AgentCore {
     // --- Core Logic Methods ---
 
     fn sanitize_input(input: &str) -> String {
-        let mut s = input.trim().to_string();
-        
-        // Remove surrounding quotes if they exist
-        if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
-            s.remove(0);
-            s.pop();
-        }
+        let s = input.trim().to_string();
 
         // Remove hidden control characters (e.g., \u{202a} Left-to-Right Embedding)
         // This is common when copying paths from Windows Explorer property dialogs.
-        s.chars()
+        let filtered: String = s
+            .chars()
             .filter(|c| !c.is_control() && *c != '\u{202a}' && *c != '\u{202b}' && *c != '\u{202c}')
-            .collect()
+            .collect();
+
+        let mut result = filtered;
+
+        // Remove surrounding quotes if they exist
+        if (result.starts_with('"') && result.ends_with('"'))
+            || (result.starts_with('\'') && result.ends_with('\''))
+        {
+            result.remove(0);
+            result.pop();
+        }
+        result
     }
 
     pub async fn process_youtube_intent(
@@ -258,8 +276,8 @@ impl AgentCore {
         chunk_minutes: u32,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if chunk_minutes > 0 && chunk_minutes < 600 {
-             // Just logging for now as chunking logic is complex and requires ffmpeg splitting
-             self.log(&format!("[CORE] ℹ️ Note: Long video chunking ({} mins) requested but experimental. Proceeding with full video.", chunk_minutes));
+            // Just logging for now as chunking logic is complex and requires ffmpeg splitting
+            self.log(&format!("[CORE] ℹ️ Note: Long video chunking ({} mins) requested but experimental. Proceeding with full video.", chunk_minutes));
         }
 
         // Human issued this command explicitly
@@ -272,19 +290,25 @@ impl AgentCore {
         let path_obj = Path::new(&sanitized_url);
 
         // Check if input is a local file string or has a drive letter
-        let is_local = path_obj.exists() 
+        let is_local = path_obj.exists()
             || (sanitized_url.len() > 1 && sanitized_url.chars().nth(1) == Some(':'))
             || sanitized_url.starts_with("\\\\"); // UNC Path Support
 
         let (title, local_path) = if is_local {
             if !path_obj.exists() {
-                 let msg = format!("[CORE] ❌ Local file check failed: '{}' not found.", sanitized_url);
-                 self.log(&msg);
-                 return Err(msg.into());
+                let msg = format!(
+                    "[CORE] ❌ Local file check failed: '{}' not found.",
+                    sanitized_url
+                );
+                self.log(&msg);
+                return Err(msg.into());
             }
-            
+
             let final_path = if path_obj.is_dir() {
-                self.log(&format!("[CORE] 📂 Input is a directory. Scanning for video files in {:?}", path_obj));
+                self.log(&format!(
+                    "[CORE] 📂 Input is a directory. Scanning for video files in {:?}",
+                    path_obj
+                ));
                 let mut video_file = None;
                 if let Ok(entries) = std::fs::read_dir(path_obj) {
                     for entry in entries.flatten() {
@@ -292,22 +316,29 @@ impl AgentCore {
                         if path.is_file() {
                             if let Some(ext) = path.extension() {
                                 let ext_str = ext.to_string_lossy().to_lowercase();
-                                if ["mp4", "mkv", "avi", "mov", "webm"].contains(&ext_str.as_str()) {
+                                if ["mp4", "mkv", "avi", "mov", "webm"].contains(&ext_str.as_str())
+                                {
                                     // Prefer files that contain "copy" or match part of the intent if possible?
                                     // For now, let's just pick the first one we find.
                                     video_file = Some(path);
-                                    break; 
+                                    break;
                                 }
                             }
                         }
                     }
                 }
-                
+
                 if let Some(found) = video_file {
-                    self.log(&format!("[CORE] 🎯 Automatically selected video: {:?}", found.file_name().unwrap_or_default()));
+                    self.log(&format!(
+                        "[CORE] 🎯 Automatically selected video: {:?}",
+                        found.file_name().unwrap_or_default()
+                    ));
                     found
                 } else {
-                    let msg = format!("[CORE] ❌ No video files found in directory: {:?}", path_obj);
+                    let msg = format!(
+                        "[CORE] ❌ No video files found in directory: {:?}",
+                        path_obj
+                    );
                     self.log(&msg);
                     return Err(msg.into());
                 }
@@ -317,8 +348,12 @@ impl AgentCore {
 
             self.log(&format!("[CORE] 📁 Using local file: {:?}", final_path));
             (
-                final_path.file_name().unwrap_or_default().to_string_lossy().to_string(),
                 final_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                final_path,
             )
         } else {
             if !source_tools::check_ytdlp().await {
@@ -343,7 +378,10 @@ impl AgentCore {
         // Ensure the output directory exists
         if let Some(parent) = out_path.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
-                self.log(&format!("[CORE] ⚠️ Could not create output directory {:?}: {}", parent, e));
+                self.log(&format!(
+                    "[CORE] ⚠️ Could not create output directory {:?}: {}",
+                    parent, e
+                ));
             }
         }
 
@@ -360,15 +398,17 @@ impl AgentCore {
                     let recalled = brain.learning_kernel.recall_pattern(intent);
                     // Check if recalled pattern is just default (success_rating 3) or learned (rating > 3 or specific tag)
                     if recalled.intent_tag != "general" || recalled.success_rating > 3 {
-                        self.log(&format!("[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
-                             recalled.intent_tag, recalled.avg_scene_duration));
+                        self.log(&format!(
+                            "[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
+                            recalled.intent_tag, recalled.avg_scene_duration
+                        ));
                         pattern = Some(recalled);
                     }
                 }
             }
 
-            use uuid::Uuid;
             use std::time::Instant;
+            use uuid::Uuid;
 
             let job = EditJob {
                 id: Uuid::new_v4(),
@@ -399,7 +439,11 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn process_research(&self, topic: &str, limit: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn process_research(
+        &self,
+        topic: &str,
+        limit: usize,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status(&format!("🕵️ Researching: {}", topic));
         self.log(&format!("[CORE] Researching topic: {}", topic));
 
@@ -486,7 +530,10 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn process_brain_request(&self, request: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn process_brain_request(
+        &self,
+        request: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("🧠 Thinking...");
         self.log(&format!("[CORE] Brain Request: {}", request));
 
@@ -500,7 +547,11 @@ impl AgentCore {
                     if matches.is_empty() {
                         self.log(&format!("[CORE] 🔍 No files found for '{}'", query));
                     } else {
-                        self.log(&format!("[CORE] 🔍 Found {} matches for '{}'", matches.len(), query));
+                        self.log(&format!(
+                            "[CORE] 🔍 Found {} matches for '{}'",
+                            matches.len(),
+                            query
+                        ));
                         for m in matches.iter().take(5) {
                             self.log(&format!("   - {:?}", m.path));
                         }
@@ -535,8 +586,8 @@ impl AgentCore {
         // 2. Execute — Queue through VideoEditorQueue
         self.set_status("📥 Edit Queued");
         use crate::agent::editor_queue::{EditJob, JobStatus};
-        use uuid::Uuid;
         use std::time::Instant;
+        use uuid::Uuid;
 
         // Query Brain for Learned Pattern
         let mut pattern = None;
@@ -545,8 +596,10 @@ impl AgentCore {
             if intent.len() > 3 {
                 let recalled = brain.learning_kernel.recall_pattern(intent);
                 if recalled.intent_tag != "general" || recalled.success_rating > 3 {
-                    self.log(&format!("[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
-                         recalled.intent_tag, recalled.avg_scene_duration));
+                    self.log(&format!(
+                        "[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
+                        recalled.intent_tag, recalled.avg_scene_duration
+                    ));
                     pattern = Some(recalled);
                 }
             }
@@ -566,7 +619,10 @@ impl AgentCore {
         };
 
         let job_id = self.editor_queue.add_job(job).await;
-        self.log(&format!("[CORE] 📥 Embodied intent queued. Job ID: {}", job_id));
+        self.log(&format!(
+            "[CORE] 📥 Embodied intent queued. Job ID: {}",
+            job_id
+        ));
 
         // The AI will autonomously process the queued job
         self.record_ai_decision();
@@ -581,7 +637,11 @@ impl AgentCore {
         Ok(())
     }
 
-    pub async fn learn_style(&self, input: &Path, name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn learn_style(
+        &self,
+        input: &Path,
+        name: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.set_status(&format!("🎓 Learning '{}'...", name));
 
         // Use Brain's learning logic directly
@@ -599,35 +659,104 @@ impl AgentCore {
         Ok(())
     }
 
+    pub async fn record_user_rating(&self, job_id: uuid::Uuid, stars: u8) {
+        let quality = match stars {
+            1 => 0.1,
+            2 => 0.3,
+            3 => 0.6,
+            4 => 0.8,
+            5 => 1.0,
+            _ => 0.5,
+        };
 
+        self.log(&format!(
+            "[CORE] ⭐ User rated Job {} as {} stars (Quality: {:.1})",
+            job_id, stars, quality
+        ));
 
+        // Find the job to get its intent and input path
+        let jobs = self.editor_queue.list_jobs_detailed().await;
+        if let Some(job) = jobs.iter().find(|j| j.id == job_id) {
+            // Re-trigger learner with the official user-vetted quality
+            let learner =
+                crate::agent::autonomous_learner::AutonomousLearner::new(self.brain.clone());
+            // We use a simplified learn_from_edit or a new one?
+            // Let's use the one we updated, but since we don't have duration here easily
+            // we use values from the job if available.
+            if let crate::agent::editor_queue::JobStatus::Completed {
+                duration_secs,
+                kept_ratio,
+                ..
+            } = job.status
+            {
+                learner
+                    .learn_from_edit(&job.intent, &job.input, duration_secs, kept_ratio)
+                    .await;
 
+                // Override the outcome_xp in the specific pattern
+                let mut brain = self.brain.lock().await;
+                let mut pattern = brain.learning_kernel.recall_pattern(&job.intent);
+                pattern.success_rating = stars as u32;
+                pattern.outcome_xp = quality;
+                brain.learning_kernel.memorize(&job.intent, pattern);
 
-    pub async fn get_video_frame(&self, path: &Path, time_secs: f64) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+                // Additional XP reward for user satisfaction
+                if stars >= 4 {
+                    brain.neuroplasticity.record_success_with_quality(quality);
+                }
+            }
+        }
+    }
+
+    pub async fn list_jobs(&self) -> Vec<crate::agent::editor_queue::EditJob> {
+        self.editor_queue.list_jobs_detailed().await
+    }
+
+    pub async fn get_video_frame(
+        &self,
+        path: &Path,
+        time_secs: f64,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         let safe_input = production_tools::safe_arg_path(path);
-        
+
         // Extract 1 frame at the given timestamp as a JPG
         let output = tokio::process::Command::new("ffmpeg")
             .arg("-ss")
             .arg(time_secs.to_string())
             .arg("-i")
             .arg(&safe_input)
-            .args(["-frames:v", "1", "-f", "image2pipe", "-vcodec", "mjpeg", "-"])
+            .args([
+                "-frames:v",
+                "1",
+                "-f",
+                "image2pipe",
+                "-vcodec",
+                "mjpeg",
+                "-",
+            ])
             .output()
             .await?;
 
         if !output.status.success() {
-            return Err(format!("FFmpeg frame extraction failed: {:?}", String::from_utf8_lossy(&output.stderr)).into());
+            return Err(format!(
+                "FFmpeg frame extraction failed: {:?}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
         }
 
         Ok(output.stdout)
     }
 
-
-
-    pub async fn get_suggestions(&self, input: &Path) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_suggestions(
+        &self,
+        input: &Path,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
         self.set_status("💡 Generating Suggestions...");
-        self.log(&format!("[CORE] Analyzing {:?} for creative suggestions...", input));
+        self.log(&format!(
+            "[CORE] Analyzing {:?} for creative suggestions...",
+            input
+        ));
 
         let mut brain = self.brain.lock().await;
         // Bypassing fully deep visual scan for speed, just use local path info
@@ -639,18 +768,26 @@ impl AgentCore {
         match brain.process(&prompt).await {
             Ok(res) => {
                 // Split multi-line response or just return it as a list
-                let suggestions = res.lines()
-                    .map(|l| l.trim_matches(|c: char| c.is_numeric() || c == '.' || c == ' ' ).to_string())
+                let suggestions = res
+                    .lines()
+                    .map(|l| {
+                        l.trim_matches(|c: char| c.is_numeric() || c == '.' || c == ' ')
+                            .to_string()
+                    })
                     .filter(|s| !s.is_empty())
                     .take(3)
                     .collect();
                 Ok(suggestions)
             }
-            Err(e) => Err(e.into())
+            Err(e) => Err(e.into()),
         }
     }
 
-    pub async fn get_audio_tracks(&self, input: &Path) -> Result<Vec<crate::agent::audio_tools::AudioTrack>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn get_audio_tracks(
+        &self,
+        input: &Path,
+    ) -> Result<Vec<crate::agent::audio_tools::AudioTrack>, Box<dyn std::error::Error + Send + Sync>>
+    {
         crate::agent::audio_tools::get_audio_tracks(input).await
     }
 
@@ -680,8 +817,6 @@ impl AgentCore {
         self.hci.score()
     }
 
-
-
     // --- Unified Pipeline ---
 
     pub async fn run_unified_pipeline(
@@ -702,8 +837,10 @@ impl AgentCore {
             if intent_str.len() > 3 {
                 let recalled = brain.learning_kernel.recall_pattern(intent_str);
                 if recalled.intent_tag != "general" || recalled.success_rating > 3 {
-                    self.log(&format!("[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
-                         recalled.intent_tag, recalled.avg_scene_duration));
+                    self.log(&format!(
+                        "[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
+                        recalled.intent_tag, recalled.avg_scene_duration
+                    ));
                     pattern = Some(recalled);
                 }
             }
@@ -722,7 +859,9 @@ impl AgentCore {
             self.log("[CORE] Initializing GPU Pipeline...");
             *pipeline_guard = Some(UnifiedPipeline::new().await);
         }
-        let pipeline = pipeline_guard.as_ref().expect("[CORE] Pipeline should be initialized at this point");
+        let pipeline = pipeline_guard
+            .as_ref()
+            .expect("[CORE] Pipeline should be initialized at this point");
 
         // Config
         let self_clone = self.clone();
@@ -800,9 +939,9 @@ impl AgentCore {
 
         let mut learner_guard = self.autonomous_learner.lock().unwrap();
         if learner_guard.is_none() {
-             // Create new learner sharing the same brain
-             let learner = AutonomousLearner::new(self.brain.clone());
-             *learner_guard = Some(learner);
+            // Create new learner sharing the same brain
+            let learner = AutonomousLearner::new(self.brain.clone());
+            *learner_guard = Some(learner);
         }
 
         if let Some(learner) = learner_guard.as_ref() {
@@ -829,25 +968,31 @@ mod tests {
     fn test_sanitize_input() {
         // Test trimming
         assert_eq!(AgentCore::sanitize_input("  test  "), "test");
-        
+
         // Test surrounding quotes
         assert_eq!(AgentCore::sanitize_input("\"C:\\Path\""), "C:\\Path");
         assert_eq!(AgentCore::sanitize_input("'C:\\Path'"), "C:\\Path");
 
         // Test hidden control characters (LRE \u{202a})
         let input = "\u{202a}C:\\Users\\xing\\Videos\\test.mp4";
-        assert_eq!(AgentCore::sanitize_input(input), "C:\\Users\\xing\\Videos\\test.mp4");
+        assert_eq!(
+            AgentCore::sanitize_input(input),
+            "C:\\Users\\xing\\Videos\\test.mp4"
+        );
 
         // Test combination
         let complex = "  \u{202a}\"C:\\Path With Spaces\\test.mp4\"  ";
-        assert_eq!(AgentCore::sanitize_input(complex), "C:\\Path With Spaces\\test.mp4");
+        assert_eq!(
+            AgentCore::sanitize_input(complex),
+            "C:\\Path With Spaces\\test.mp4"
+        );
     }
 
     #[test]
     fn test_is_local_robustness() {
         // This is a bit tricky because Path::exists() depends on the FS.
         // But we can test the string-based logic.
-        
+
         let drive_path = "C:\\Videos\\test.mp4";
         assert!(drive_path.len() > 1 && drive_path.chars().nth(1) == Some(':'));
 

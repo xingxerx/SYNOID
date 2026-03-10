@@ -109,3 +109,60 @@ async fn test_compress_video_integration() {
     let _ = std::fs::remove_file(input_path);
     let _ = std::fs::remove_file(output_path);
 }
+
+#[tokio::test]
+async fn test_burn_subtitles_integration() {
+    let input_path = PathBuf::from("test_sub_input.mp4");
+    let srt_path = PathBuf::from("test_sub.srt");
+    let output_path = PathBuf::from("test_sub_output.mp4");
+
+    // Cleanup prior runs
+    for p in [&input_path, &srt_path, &output_path] {
+        if p.exists() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    // Create a 5-second synthetic video + audio
+    let status = Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=5:size=1280x720:rate=30",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=5",
+            "-c:v",
+            "libx264",
+            "-c:a",
+            "aac",
+            "-shortest",
+            "test_sub_input.mp4",
+        ])
+        .output()
+        .expect("ffmpeg spawn failed");
+    assert!(
+        status.status.success(),
+        "Failed to create test video: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+
+    // Write a minimal SRT
+    std::fs::write(
+        &srt_path,
+        "1\n00:00:00,000 --> 00:00:03,000\nHello World\n\n2\n00:00:03,000 --> 00:00:05,000\nTest Subtitle\n\n"
+    ).unwrap();
+
+    // Run burn_subtitles — this uses tokio::process::Command, no shell involved
+    let result = production_tools::burn_subtitles(&input_path, &srt_path, &output_path).await;
+
+    // Cleanup before asserting so we don't leave files on failure
+    for p in [&input_path, &srt_path, &output_path] {
+        let _ = std::fs::remove_file(p);
+    }
+
+    assert!(result.is_ok(), "burn_subtitles failed: {:?}", result.err());
+}

@@ -140,6 +140,7 @@ pub struct UiState {
     pub discovered_files: Vec<crate::agent::global_discovery::DiscoveredFile>,
     pub is_scanning: bool,
     pub discovery_query: String,
+    pub recent_jobs: Vec<crate::agent::editor_queue::EditJob>,
 }
 
 
@@ -182,10 +183,12 @@ impl SynoidApp {
         tokio::spawn(async move {
             loop {
                 let status = core_clone.get_hive_status().await;
+                let jobs = core_clone.list_jobs().await;
                 if let Ok(mut state) = ui_state_clone.lock() {
                     state.hive_mind_status = status;
+                    state.recent_jobs = jobs;
                 }
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             }
         });
 
@@ -408,9 +411,77 @@ impl SynoidApp {
             });
         }
 
+        // ── Recent Job Activity ─────────────────────────────────────────────
+        ui.add_space(20.0);
+        self.render_job_history(ui, state);
+
         // ── Human Control Index ──────────────────────────────────────────────
         ui.add_space(20.0);
         self.render_hci_panel(ui);
+    }
+
+    fn render_job_history(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.group(|ui| {
+            ui.horizontal(|ui| {
+                ui.heading("🎬 Recent Job History");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("🗑 Clear Completed").clicked() {
+                        let core = self.core.clone();
+                        tokio::spawn(async move { let _ = core.editor_queue.clear_completed().await; });
+                    }
+                });
+            });
+            ui.separator();
+            ui.add_space(5.0);
+
+            if state.recent_jobs.is_empty() {
+                ui.label(egui::RichText::new("No active or recent jobs.").color(COLOR_TEXT_SECONDARY).italics());
+            } else {
+                egui::ScrollArea::vertical().max_height(350.0).show(ui, |ui| {
+                    for job in state.recent_jobs.iter().rev() {
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                let status_color = match job.status {
+                                    crate::agent::editor_queue::JobStatus::Queued => egui::Color32::from_rgb(150, 150, 150),
+                                    crate::agent::editor_queue::JobStatus::Processing { .. } => COLOR_ACCENT_BLUE,
+                                    crate::agent::editor_queue::JobStatus::Completed { .. } => COLOR_ACCENT_GREEN,
+                                    crate::agent::editor_queue::JobStatus::Failed(_) => COLOR_ACCENT_RED,
+                                };
+                                
+                                ui.label(egui::RichText::new(format!("Job {}", &job.id.to_string()[..8])).strong());
+                                ui.label(egui::RichText::new(format!("{:?}", job.status)).color(status_color));
+                                
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(format!("{:.1}s", job.created_at.elapsed().as_secs_f32()));
+                                });
+                            });
+                            
+                            ui.label(egui::RichText::new(&job.intent).small().color(COLOR_TEXT_SECONDARY));
+                            
+                            if let crate::agent::editor_queue::JobStatus::Completed { kept_ratio, duration_secs, .. } = job.status {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("Kept: {:.0}% | Final: {:.1}s", kept_ratio * 100.0, duration_secs)).small());
+                                    
+                                    ui.add_space(10.0);
+                                    ui.label("Rate Edit:");
+                                    for i in 1..=5 {
+                                        let star = if i <= 3 { "⭐" } else { "☆" }; // Placeholder or real
+                                        if ui.button(format!("{} {}", i, star)).clicked() {
+                                            let core = self.core.clone();
+                                            let job_id = job.id;
+                                            tokio::spawn(async move {
+                                                core.record_user_rating(job_id, i as u8).await;
+                                            });
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                        ui.add_space(4.0);
+                    }
+                });
+            }
+        });
     }
 
     /// HCI (Human Control Index) authorship score panel.
@@ -736,6 +807,41 @@ impl SynoidApp {
         ui.label(egui::RichText::new("Note: 'Execute Intent' uses full embodied reasoning. 'Optimized Edit' is faster for specific requests.").small().color(COLOR_TEXT_SECONDARY));
     }
 
+    fn render_discovery_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.heading(egui::RichText::new("🔍 Global File Discovery").color(COLOR_ACCENT_BLUE));
+        ui.separator();
+        ui.add_space(10.0);
+
+        ui.label("Search for media files across your system:");
+        ui.horizontal(|ui| {
+            let resp = ui.text_edit_singleline(&mut state.intent);
+            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                let core = self.core.clone();
+                let query = state.intent.clone();
+                tokio::spawn(async move {
+                    let _ = core.process_brain_request(&format!("find video {}", query)).await;
+                });
+            }
+        });
+
+        ui.add_space(20.0);
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("Search Results").strong());
+            if state.discovered_files.is_empty() {
+                ui.label("No files discovered yet. Type a query above.");
+            } else {
+                for file in &state.discovered_files {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("📄 {}", file.name));
+                        if ui.button("📂 Use").clicked() {
+                            state.input_path = file.path.to_string_lossy().to_string();
+                        }
+                    });
+                }
+            }
+        });
+    }
+
     fn render_learn_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🎓 Learn Style").color(COLOR_ACCENT_GREEN));
         ui.separator();
@@ -761,9 +867,57 @@ impl SynoidApp {
         ui.text_edit_singleline(&mut state.style_name);
         ui.add_space(20.0);
 
+        ui.label("YouTube / Reference URL:");
+        ui.text_edit_singleline(&mut state.youtube_url);
+        
+        let download_enabled = state.youtube_url.starts_with("http");
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("🎓 Analyze & Learn").size(16.0))
+                egui::Button::new(egui::RichText::new("📥 Download Safe Video to Academy").size(14.0))
+                    .fill(if download_enabled { COLOR_ACCENT_BLUE } else { egui::Color32::from_rgb(80, 80, 80) }),
+            )
+            .clicked()
+            && download_enabled
+        {
+            let core = self.core.clone();
+            let url = state.youtube_url.clone();
+            
+            tokio::spawn(async move {
+                // 1. Guard check
+                if let Err(e) = crate::agent::download_guard::DownloadGuard::validate_url(&url) {
+                    tracing::warn!("[GUI] Download blocked by Sentinel: {}", e);
+                    return;
+                }
+                
+                // 2. Setup Academy dir
+                let academy_dir = std::path::Path::new("D:\\SYNOID\\Academy");
+                let _ = tokio::fs::create_dir_all(academy_dir).await;
+                
+                // 3. Download
+                tracing::info!("[GUI] Fetching reference video for Academy: {}", url);
+                if let Ok(info) = crate::agent::source_tools::download_youtube(&url, academy_dir, None).await {
+                    // 4. Validate downloaded file
+                    let local_path = info.local_path;
+                    if let Err(e) = crate::agent::download_guard::DownloadGuard::validate_downloaded_file(&local_path) {
+                        tracing::warn!("[GUI] Downloaded file blocked by Sentinel: {}", e);
+                        let _ = tokio::fs::remove_file(local_path).await;
+                        return;
+                    }
+                    
+                    // 5. Learn immediately
+                    tracing::info!("[GUI] Download complete! Extracting neural style templates into Brain...");
+                    let _ = core.learn_style(&local_path, &info.title).await;
+                } else {
+                    tracing::error!("[GUI] Failed to fetch video from YouTube.");
+                }
+            });
+        }
+        
+        ui.add_space(20.0);
+
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🎓 Analyze Local File & Learn").size(16.0))
                     .fill(COLOR_ACCENT_GREEN),
             )
             .clicked()

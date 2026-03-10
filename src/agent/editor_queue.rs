@@ -1,13 +1,13 @@
 // SYNOID Video Editor Queue
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-use tracing::{info, error};
-use uuid::Uuid;
-use serde::{Serialize, Deserialize};
 use std::time::Instant;
+use tokio::sync::{mpsc, Mutex};
+use tracing::{error, info};
+use uuid::Uuid;
 
 use crate::agent::brain::Brain;
 use crate::agent::smart_editor;
@@ -18,7 +18,11 @@ use crate::agent::transcription::TranscriptSegment;
 pub enum JobStatus {
     Queued,
     Processing,
-    Completed { duration_secs: f64, mb_size: f64 },
+    Completed {
+        duration_secs: f64,
+        mb_size: f64,
+        kept_ratio: f64,
+    },
     Failed(String),
 }
 
@@ -46,10 +50,10 @@ impl VideoEditorQueue {
     pub fn new(brain: Arc<Mutex<Brain>>) -> Self {
         let jobs = Arc::new(Mutex::new(Vec::<EditJob>::new()));
         let (tx, mut rx) = mpsc::unbounded_channel::<Uuid>();
-        
+
         let jobs_worker = jobs.clone();
         let brain_worker = brain.clone();
-        
+
         // Spawn the worker loop
         tokio::spawn(async move {
             info!("[QUEUE] Video Editor worker started.");
@@ -67,17 +71,19 @@ impl VideoEditorQueue {
 
                 if let Some(mut job) = job_opt {
                     info!("[QUEUE] Processing Job {}: {:?}", job_id, job.input);
-                    
-                    let result: Result<String, Box<dyn std::error::Error + Send + Sync>> = smart_editor::smart_edit(
-                        &job.input,
-                        &job.intent,
-                        &job.output,
-                        job.funny_mode,
-                        None,
-                        job.pre_scanned_scenes.take(),
-                        job.pre_scanned_transcript.take(),
-                        job.learned_pattern.take(),
-                    ).await;
+
+                    let result: Result<String, Box<dyn std::error::Error + Send + Sync>> =
+                        smart_editor::smart_edit(
+                            &job.input,
+                            &job.intent,
+                            &job.output,
+                            job.funny_mode,
+                            None,
+                            job.pre_scanned_scenes.take(),
+                            job.pre_scanned_transcript.take(),
+                            job.learned_pattern.take(),
+                        )
+                        .await;
 
                     let mut jobs = jobs_worker.lock().await;
                     if let Some(final_job) = jobs.iter_mut().find(|j| j.id == job_id) {
@@ -85,16 +91,32 @@ impl VideoEditorQueue {
                             Ok(summary) => {
                                 info!("[QUEUE] Job {} completed: {}", job_id, summary);
                                 let duration = job.created_at.elapsed().as_secs_f64();
-                                final_job.status = JobStatus::Completed { 
+
+                                // Extract kept_ratio from smart_edit summary
+                                let mut kept_ratio = 0.5;
+                                if let Some(idx) = summary.find("(kept_ratio: ") {
+                                    let substr = &summary[idx + 13..];
+                                    if let Some(end_idx) = substr.find(")") {
+                                        if let Ok(parsed) = substr[..end_idx].parse::<f64>() {
+                                            kept_ratio = parsed;
+                                        }
+                                    }
+                                }
+
+                                final_job.status = JobStatus::Completed {
                                     duration_secs: duration,
-                                    mb_size: 0.0 
+                                    mb_size: 0.0,
+                                    kept_ratio,
                                 };
 
                                 // FEEDBACK LOOP: Provide result to AutonomousLearner (via brain)
-                                // We create a temporary learner wrapper or call brain directly
-                                // Ideally this should be cleaner, but for now we construct it
-                                let learner = crate::agent::autonomous_learner::AutonomousLearner::new(brain_worker.clone());
-                                learner.learn_from_edit(&job.intent, &job.input, duration).await;
+                                let learner =
+                                    crate::agent::autonomous_learner::AutonomousLearner::new(
+                                        brain_worker.clone(),
+                                    );
+                                learner
+                                    .learn_from_edit(&job.intent, &job.input, duration, kept_ratio)
+                                    .await;
                             }
                             Err(e) => {
                                 error!("[QUEUE] Job {} failed: {}", job_id, e);
@@ -128,5 +150,15 @@ impl VideoEditorQueue {
     pub async fn list_jobs(&self) -> Vec<(Uuid, JobStatus)> {
         let jobs = self.jobs.lock().await;
         jobs.iter().map(|j| (j.id, j.status.clone())).collect()
+    }
+
+    pub async fn list_jobs_detailed(&self) -> Vec<EditJob> {
+        let jobs = self.jobs.lock().await;
+        jobs.clone()
+    }
+
+    pub async fn clear_completed(&self) {
+        let mut jobs = self.jobs.lock().await;
+        jobs.retain(|j| !matches!(j.status, JobStatus::Completed { .. } | JobStatus::Failed(_)));
     }
 }

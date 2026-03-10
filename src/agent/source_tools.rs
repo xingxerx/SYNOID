@@ -12,6 +12,51 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::info;
 
+/// Find the Deno binary path to pass to yt-dlp's --js-runtimes flag.
+/// yt-dlp needs a JS runtime to bypass YouTube's bot check.
+fn find_deno_path() -> Option<String> {
+    // Common Windows install locations for Deno (winget installs here)
+    let candidates = [
+        // winget default for current user
+        format!(
+            "{}\\deno.exe",
+            std::env::var("LOCALAPPDATA").unwrap_or_default() + "\\Programs\\deno"
+        ),
+        format!(
+            "{}\\deno\\deno.exe",
+            std::env::var("USERPROFILE").unwrap_or_default() + "\\.deno\\bin"
+        ),
+        // PATH-based: try to resolve via `where deno`
+    ];
+
+    for path in &candidates {
+        if std::path::Path::new(path).exists() {
+            tracing::info!("[SOURCE] 🦕 Found Deno at: {}", path);
+            return Some(path.clone());
+        }
+    }
+
+    // Try resolving via PATH using `where` (Windows) or `which` (unix)
+    let resolver = if cfg!(windows) { "where" } else { "which" };
+    if let Ok(out) = std::process::Command::new(resolver).arg("deno").output() {
+        if out.status.success() {
+            let path = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if !path.is_empty() {
+                tracing::info!("[SOURCE] 🦕 Found Deno via {}: {}", resolver, path);
+                return Some(path);
+            }
+        }
+    }
+
+    tracing::warn!("[SOURCE] ⚠️ Deno not found. yt-dlp JS runtime unavailable.");
+    None
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SourceInfo {
@@ -29,32 +74,53 @@ pub struct SourceInfo {
 /// interpreter if none have yt-dlp, so we don't get "No such file or directory".
 pub async fn get_python_command() -> String {
     // 1. Check standalone 'yt-dlp' binary first
-    let standalone_candidates = ["yt-dlp", "/usr/bin/yt-dlp", "/usr/local/bin/yt-dlp", "~/.local/bin/yt-dlp"];
+    let standalone_candidates = [
+        "yt-dlp",
+        "/usr/bin/yt-dlp",
+        "/usr/local/bin/yt-dlp",
+        "~/.local/bin/yt-dlp",
+    ];
     for &bin in &standalone_candidates {
         // Toki's Command on Windows might fail to execute python scripts with shebangs if running in some mixed WSL setups.
         // First try it natively.
         match Command::new(bin).arg("--version").output().await {
             Ok(output) => {
                 if output.status.success() {
-                     tracing::info!("[SOURCE] ✅ Found standalone 'yt-dlp' binary at '{}'", bin);
-                     return bin.to_string();
+                    tracing::info!("[SOURCE] ✅ Found standalone 'yt-dlp' binary at '{}'", bin);
+                    return bin.to_string();
                 } else {
-                     tracing::warn!("[SOURCE] '{}' binary exists but --version failed: {}", bin, String::from_utf8_lossy(&output.stderr));
+                    tracing::warn!(
+                        "[SOURCE] '{}' binary exists but --version failed: {}",
+                        bin,
+                        String::from_utf8_lossy(&output.stderr)
+                    );
                 }
-            },
+            }
             Err(e) => {
-                 tracing::warn!("[SOURCE] Command '{}' failed to execute directly: {}", bin, e);
-                 // If execution failed (e.g., Exec format error or not found), try explicitly with python3
-                 if e.kind() != std::io::ErrorKind::NotFound {
-                     tracing::info!("[SOURCE] Trying to execute '{}' via python3...", bin);
-                     if let Ok(py_out) = Command::new("python3").arg(bin).arg("--version").output().await {
-                         if py_out.status.success() {
-                             tracing::info!("[SOURCE] ✅ Found standalone 'yt-dlp' binary via python3 at '{}'", bin);
-                             // Return special syntax for our command builder later
-                             return format!("python3|{}", bin);
-                         }
-                     }
-                 }
+                tracing::warn!(
+                    "[SOURCE] Command '{}' failed to execute directly: {}",
+                    bin,
+                    e
+                );
+                // If execution failed (e.g., Exec format error or not found), try explicitly with python3
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::info!("[SOURCE] Trying to execute '{}' via python3...", bin);
+                    if let Ok(py_out) = Command::new("python3")
+                        .arg(bin)
+                        .arg("--version")
+                        .output()
+                        .await
+                    {
+                        if py_out.status.success() {
+                            tracing::info!(
+                                "[SOURCE] ✅ Found standalone 'yt-dlp' binary via python3 at '{}'",
+                                bin
+                            );
+                            // Return special syntax for our command builder later
+                            return format!("python3|{}", bin);
+                        }
+                    }
+                }
             }
         }
     }
@@ -68,14 +134,25 @@ pub async fn get_python_command() -> String {
                 match Command::new(&path).arg("--version").output().await {
                     Ok(out) => {
                         if out.status.success() {
-                            tracing::info!("[SOURCE] ✅ Found standalone 'yt-dlp' via 'which' at '{}'", path);
+                            tracing::info!(
+                                "[SOURCE] ✅ Found standalone 'yt-dlp' via 'which' at '{}'",
+                                path
+                            );
                             return path;
                         } else {
-                            tracing::warn!("[SOURCE] '{}' via which exists but --version failed: {}", path, String::from_utf8_lossy(&out.stderr));
+                            tracing::warn!(
+                                "[SOURCE] '{}' via which exists but --version failed: {}",
+                                path,
+                                String::from_utf8_lossy(&out.stderr)
+                            );
                         }
-                    },
+                    }
                     Err(e) => {
-                        tracing::warn!("[SOURCE] Command '{}' (from which) failed to execute: {}", path, e);
+                        tracing::warn!(
+                            "[SOURCE] Command '{}' (from which) failed to execute: {}",
+                            path,
+                            e
+                        );
                     }
                 }
             }
@@ -84,7 +161,7 @@ pub async fn get_python_command() -> String {
 
     // 2. Candidate python commands to try (in order of preference for Linux/WSL then Windows)
     let candidates = ["python3", "python", "py"]; // 'python3' first for WSL
-    
+
     let mut best_fallback = None;
 
     for cmd in candidates {
@@ -103,18 +180,25 @@ pub async fn get_python_command() -> String {
                     match Command::new(cmd).args(&module_args).output().await {
                         Ok(mod_out) => {
                             if mod_out.status.success() {
-                                tracing::info!("[SOURCE] ✅ Found valid Python with yt-dlp module: '{}'", cmd);
+                                tracing::info!(
+                                    "[SOURCE] ✅ Found valid Python with yt-dlp module: '{}'",
+                                    cmd
+                                );
                                 return cmd.to_string();
                             } else {
-                                tracing::debug!("[SOURCE] '{}' exists but yt-dlp missing: {}", cmd, String::from_utf8_lossy(&mod_out.stderr));
+                                tracing::debug!(
+                                    "[SOURCE] '{}' exists but yt-dlp missing: {}",
+                                    cmd,
+                                    String::from_utf8_lossy(&mod_out.stderr)
+                                );
                             }
-                        },
+                        }
                         Err(e) => {
-                             tracing::debug!("[SOURCE] Failed to run '{} -m yt_dlp': {}", cmd, e);
+                            tracing::debug!("[SOURCE] Failed to run '{} -m yt_dlp': {}", cmd, e);
                         }
                     }
                 }
-            },
+            }
             Err(_) => {
                 // Command likely doesn't exist, just continue
                 tracing::debug!("[SOURCE] Command '{}' not found", cmd);
@@ -127,7 +211,9 @@ pub async fn get_python_command() -> String {
         tracing::warn!("[SOURCE] ⚠️ No valid Python+yt-dlp environment found. Using '{}' as fallback (commands requiring yt-dlp will fail).", fallback);
         fallback
     } else {
-        tracing::warn!("[SOURCE] ⚠️ No valid Python environment found. Defaulting to 'python' which may fail.");
+        tracing::warn!(
+            "[SOURCE] ⚠️ No valid Python environment found. Defaulting to 'python' which may fail."
+        );
         "python".to_string()
     }
 }
@@ -135,7 +221,7 @@ pub async fn get_python_command() -> String {
 /// Check if yt-dlp is installed and accessible
 pub async fn check_ytdlp() -> bool {
     let cmd = get_python_command().await;
-    
+
     // If get_python_command returned "yt-dlp" or an absolute path to it, it's a standalone binary
     if cmd.ends_with("yt-dlp") {
         return true;
@@ -156,11 +242,17 @@ fn build_ytdlp_info_args(
     auth_browser: Option<&str>,
 ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut args = Vec::new();
-    
+
     // Only add "-m yt_dlp" if we are running via python
     if !command.ends_with("yt-dlp") {
         args.push("-m".to_string());
         args.push("yt_dlp".to_string());
+    }
+
+    // Inject Deno JS runtime if available (required for modern YouTube)
+    if let Some(deno) = find_deno_path() {
+        args.push("--js-runtimes".to_string());
+        args.push(format!("deno:{}", deno));
     }
 
     args.extend_from_slice(&[
@@ -175,13 +267,13 @@ fn build_ytdlp_info_args(
         "--no-download".to_string(),
     ]);
 
-    if let Some(browser) = auth_browser {
-        if browser.starts_with('-') {
-            return Err("Browser name cannot start with '-'".into());
-        }
-        args.push("--cookies-from-browser".to_string());
-        args.push(browser.to_string());
+    // Use provided browser or fallback to edge (most common on Windows)
+    let browser = auth_browser.unwrap_or("edge");
+    if browser.starts_with('-') {
+        return Err("Browser name cannot start with '-'".into());
     }
+    args.push("--cookies-from-browser".to_string());
+    args.push(browser.to_string());
 
     args.push("--".to_string());
     args.push(url.to_string());
@@ -202,7 +294,13 @@ fn build_ytdlp_download_args(
         args.push("-m".to_string());
         args.push("yt_dlp".to_string());
     }
-    
+
+    // Inject Deno JS runtime if available (required for modern YouTube)
+    if let Some(deno) = find_deno_path() {
+        args.push("--js-runtimes".to_string());
+        args.push(format!("deno:{}", deno));
+    }
+
     args.extend_from_slice(&[
         "-f".to_string(),
         "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best".to_string(),
@@ -210,13 +308,13 @@ fn build_ytdlp_download_args(
         safe_arg_path(output_path).to_string_lossy().to_string(),
     ]);
 
-    if let Some(browser) = auth_browser {
-        if browser.starts_with('-') {
-            return Err("Browser name cannot start with '-'".into());
-        }
-        args.push("--cookies-from-browser".to_string());
-        args.push(browser.to_string());
+    // Use provided browser or fallback to edge (most common on Windows)
+    let browser = auth_browser.unwrap_or("edge");
+    if browser.starts_with('-') {
+        return Err("Browser name cannot start with '-'".into());
     }
+    args.push("--cookies-from-browser".to_string());
+    args.push(browser.to_string());
 
     args.push("--".to_string());
     args.push(url.to_string());
@@ -307,13 +405,23 @@ pub async fn search_youtube(
     info!("[SOURCE] Searching YouTube: {}", search_query);
 
     let python = get_python_command().await;
-    
+
     let mut args = Vec::new();
     if !python.ends_with("yt-dlp") {
         args.push("-m".to_string());
         args.push("yt_dlp".to_string());
     }
-    
+
+    // Inject Deno JS runtime if available (required for modern YouTube)
+    if let Some(deno) = find_deno_path() {
+        args.push("--js-runtimes".to_string());
+        args.push(format!("deno:{}", deno));
+    }
+
+    // Use Edge cookies to bypass YouTube bot detection
+    args.push("--cookies-from-browser".to_string());
+    args.push("edge".to_string());
+
     args.extend_from_slice(&[
         "--print".to_string(),
         "%(title)s|%(id)s|%(duration)s|%(webpage_url)s".to_string(),
@@ -322,10 +430,7 @@ pub async fn search_youtube(
     ]);
     args.push(search_query);
 
-    let output = Command::new(&python)
-        .args(&args)
-        .output()
-        .await?;
+    let output = Command::new(&python).args(&args).output().await?;
 
     if !output.status.success() {
         return Err(format!(
@@ -367,7 +472,9 @@ pub async fn search_youtube(
 }
 
 /// Get video duration using ffprobe with a timeout
-pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn get_video_duration(
+    path: &Path,
+) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
     let safe_path = safe_arg_path(path);
 
     // Execute ffprobe with a timeout to prevent hanging
@@ -388,15 +495,16 @@ pub async fn get_video_duration(path: &Path) -> Result<f64, Box<dyn std::error::
             .output(),
     )
     .await
-    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "ffprobe duration check timed out"))??;
+    .map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "ffprobe duration check timed out",
+        )
+    })??;
     let duration: f64 = String::from_utf8_lossy(&output.stdout)
         .trim()
         .parse()
-        .map_err(|_| {
-            format!(
-                "Failed to parse duration from ffprobe output"
-            )
-        })?;
+        .map_err(|_| format!("Failed to parse duration from ffprobe output"))?;
     Ok(duration)
 }
 
@@ -450,10 +558,15 @@ pub async fn scan_directory_for_videos(dir: &Path) -> Vec<PathBuf> {
 
 /// Performs a free web search via DuckDuckGo (HTML scraping).
 /// This provides a search capability without requiring a paid API.
-pub async fn web_search(query: &str) -> Result<Vec<(String, String)>, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn web_search(
+    query: &str,
+) -> Result<Vec<(String, String)>, Box<dyn std::error::Error + Send + Sync>> {
     info!("[SOURCE] 🌐 Searching web for: '{}'", query);
-    
-    let url = format!("https://html.duckduckgo.com/html/?q={}", urlencoding::encode(query));
+
+    let url = format!(
+        "https://html.duckduckgo.com/html/?q={}",
+        urlencoding::encode(query)
+    );
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .build()?;
@@ -466,11 +579,15 @@ pub async fn web_search(query: &str) -> Result<Vec<(String, String)>, Box<dyn st
 
     let mut results = Vec::new();
     for result in document.select(&result_selector).take(5) {
-        let title = result.select(&title_selector).next()
+        let title = result
+            .select(&title_selector)
+            .next()
             .map(|e| e.text().collect::<String>().trim().to_string())
             .unwrap_or_else(|| "No Title".to_string());
-        
-        let snippet = result.select(&snippet_selector).next()
+
+        let snippet = result
+            .select(&snippet_selector)
+            .next()
             .map(|e| e.text().collect::<String>().trim().to_string())
             .unwrap_or_else(|| "No Snippet".to_string());
 
@@ -490,15 +607,15 @@ mod tests {
     fn test_build_ytdlp_info_args() {
         // Test with "python"
         let args =
-            build_ytdlp_info_args("python", "https://youtube.com/watch?v=123", Some("chrome")).unwrap();
+            build_ytdlp_info_args("python", "https://youtube.com/watch?v=123", Some("chrome"))
+                .unwrap();
 
         assert!(args.contains(&"-m".to_string()));
         assert!(args.contains(&"yt_dlp".to_string()));
         assert!(args.contains(&"--".to_string()));
 
         // Test with standalone "yt-dlp"
-        let args_standalone =
-            build_ytdlp_info_args("yt-dlp", "https://youtube.com", None).unwrap();
+        let args_standalone = build_ytdlp_info_args("yt-dlp", "https://youtube.com", None).unwrap();
         assert!(!args_standalone.contains(&"-m".to_string()));
     }
 
@@ -522,7 +639,8 @@ mod tests {
         assert!(args.contains(&"yt_dlp".to_string()));
 
         // Test with standalone
-        let args_sa = build_ytdlp_download_args("yt-dlp", "https://youtube.com", path, None).unwrap();
+        let args_sa =
+            build_ytdlp_download_args("yt-dlp", "https://youtube.com", path, None).unwrap();
         assert!(!args_sa.contains(&"-m".to_string()));
     }
 

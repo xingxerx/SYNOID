@@ -25,6 +25,8 @@ node_modules/
 # OS
 Thumbs.db
 .DS_Store
+# Windows reserved device name (null device, cannot be deleted)
+nul
 # IDE
 .vscode
 .idea
