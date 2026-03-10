@@ -145,12 +145,13 @@ fn default_censor_profanity() -> bool {
 }
 
 impl EditIntent {
-    /// Parse natural language intent into structured intent using LLM
+    /// Parse natural language intent into structured intent using LLM.
+    /// Routes through Groq (fast model) when available, Ollama as fallback.
     pub async fn from_llm(text: &str) -> Self {
         use crate::agent::gpt_oss_bridge::SynoidAgent;
         let api_url = std::env::var("OLLAMA_API_URL")
             .unwrap_or_else(|_| "http://localhost:11434".to_string());
-        // Llama3:latest serves as our standard fast JSON intent parser
+        // Uses Groq fast model via multi-provider when GROQ_API_KEY is set
         let agent = SynoidAgent::new(&api_url, "llama3:latest");
 
         let prompt = format!(
@@ -174,7 +175,7 @@ User Request: "{}"
             text
         );
 
-        match agent.reason(&prompt).await {
+        match agent.fast_reason(&prompt).await {
             Ok(response) => {
                 // Extract the JSON object from the LLM response.
                 // Llama3 often prefixes its answer with prose like "Here is the JSON configuration:"
