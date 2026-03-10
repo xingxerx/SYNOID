@@ -192,6 +192,10 @@ impl SemanticIndex {
 /// (e.g. `llava`, `moondream`).  If the model is unavailable the function
 /// falls back to tag-less descriptions so the rest of the pipeline can
 /// continue.
+///
+/// When `GOOGLE_AI_KEY` is set, vision requests are routed to Google AI
+/// Studio (Gemini) via the multi-provider LLM bridge for superior
+/// multimodal analysis while preserving the free-tier token budget.
 pub async fn build_semantic_index(
     video_path: &Path,
     interval_secs: f64,
@@ -215,6 +219,15 @@ pub async fn build_semantic_index(
         frames: Vec::new(),
     };
 
+    // Check if Google AI Studio is available for vision
+    let use_google = std::env::var("GOOGLE_AI_KEY").is_ok();
+    let vision_agent = if use_google {
+        info!("[SEMANTIC] Using Google AI Studio (Gemini) for vision analysis");
+        Some(crate::agent::gpt_oss_bridge::SynoidAgent::new(ollama_url, vision_model))
+    } else {
+        None
+    };
+
     let mut t = 0.0f64;
     let agent = crate::agent::gpt_oss_bridge::SynoidAgent::new(ollama_url, vision_model);
 
@@ -223,6 +236,7 @@ pub async fn build_semantic_index(
         extract_frame(video_path, t, &frame_path).await.ok();
 
         if frame_path.exists() {
+<<<<<<< HEAD
             let meta = describe_frame_with_vlm(&agent, &frame_path, t)
                 .await
                 .unwrap_or_else(|_| FrameMetadata {
@@ -230,6 +244,26 @@ pub async fn build_semantic_index(
                     description: String::new(),
                     tags: Vec::new(),
                 });
+=======
+            let meta = if let Some(agent) = &vision_agent {
+                // Route through multi-provider (Google AI Studio → Ollama VLM fallback)
+                describe_frame_multi_provider(agent, &frame_path, t).await
+                    .unwrap_or_else(|_| FrameMetadata {
+                        timestamp: t,
+                        description: String::new(),
+                        tags: Vec::new(),
+                    })
+            } else {
+                // Legacy Ollama-only path
+                describe_frame_with_vlm(&client, ollama_url, vision_model, &frame_path, t)
+                    .await
+                    .unwrap_or_else(|_| FrameMetadata {
+                        timestamp: t,
+                        description: String::new(),
+                        tags: Vec::new(),
+                    })
+            };
+>>>>>>> c55b0d9e6ebf2105e2d2c161f2b2839c68f38981
             index.frames.push(meta);
             let _ = std::fs::remove_file(&frame_path);
         }
@@ -243,6 +277,39 @@ pub async fn build_semantic_index(
         index.frames.len()
     );
     Ok(index)
+}
+
+/// Describe a frame using the multi-provider LLM bridge.
+/// Routes to Google AI Studio (Gemini) with Ollama VLM fallback.
+async fn describe_frame_multi_provider(
+    agent: &crate::agent::gpt_oss_bridge::SynoidAgent,
+    frame_path: &PathBuf,
+    timestamp: f64,
+) -> Result<FrameMetadata, Box<dyn std::error::Error + Send + Sync>> {
+    use std::io::Read;
+
+    let mut bytes = Vec::new();
+    std::fs::File::open(frame_path)?.read_to_end(&mut bytes)?;
+    let b64 = base64_encode(&bytes);
+
+    let prompt = "Describe this video frame in one sentence. Then list up to 8 tags (objects, locations, actions, emotions) separated by commas.";
+
+    let raw = agent.vision_reason(prompt, &b64).await.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
+
+    let (description, tags) = if let Some(nl) = raw.find('\n') {
+        let desc = raw[..nl].trim().to_string();
+        let tag_line = raw[nl..].trim();
+        let tags = tag_line
+            .split(',')
+            .map(|t| t.trim().to_lowercase().replace('.', ""))
+            .filter(|t| !t.is_empty())
+            .collect();
+        (desc, tags)
+    } else {
+        (raw.clone(), Vec::new())
+    };
+
+    Ok(FrameMetadata { timestamp, description, tags })
 }
 
 /// Extract a single JPEG frame from a video at `time_secs`.
