@@ -1,13 +1,13 @@
 // SYNOID Sovereign Ear
 // Native Rust implementation of Whisper for local, private transcription.
 
+use crate::gpu_backend::get_gpu_context;
 use anyhow::{Context, Result};
 use hf_hub::api::sync::Api;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::info;
-use crate::gpu_backend::get_gpu_context;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,9 +26,8 @@ impl TranscriptionEngine {
         let model_name = model_name.unwrap_or_else(|| "base.en".to_string());
 
         // Locate or download the model in blocking task
-        let model_path = tokio::task::spawn_blocking(move || {
-            Self::ensure_model(&model_name)
-        }).await??;
+        let model_path =
+            tokio::task::spawn_blocking(move || Self::ensure_model(&model_name)).await??;
 
         Ok(Self { model_path })
     }
@@ -39,7 +38,7 @@ impl TranscriptionEngine {
         let base_dir = if let Ok(cache_env) = std::env::var("SYNOID_CACHE_DIR") {
             PathBuf::from(cache_env).join("models")
         } else {
-             dirs::cache_dir()
+            dirs::cache_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join("synoid")
                 .join("models")
@@ -72,6 +71,40 @@ impl TranscriptionEngine {
     pub async fn transcribe(&self, audio_path: &Path) -> Result<Vec<TranscriptSegment>> {
         info!("[SOVEREIGN] Transcribing: {:?}", audio_path);
 
+        // 1. Try Cloud Transcription (Groq Whisper) for highest accuracy and speed
+        let agent = crate::agent::gpt_oss_bridge::SynoidAgent::new(
+            "http://localhost:11434",
+            "llama-3.1-8b-instant",
+        );
+
+        if let Ok(json_str) = agent.transcribe_audio(audio_path).await {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                if let Some(segments_arr) = val.get("segments").and_then(|v| v.as_array()) {
+                    let mut segments = Vec::new();
+                    for seg in segments_arr {
+                        if let (Some(start), Some(end), Some(text)) = (
+                            seg.get("start").and_then(|v| v.as_f64()),
+                            seg.get("end").and_then(|v| v.as_f64()),
+                            seg.get("text").and_then(|v| v.as_str()),
+                        ) {
+                            segments.push(TranscriptSegment {
+                                start,
+                                end,
+                                text: text.to_string(),
+                            });
+                        }
+                    }
+
+                    if !segments.is_empty() {
+                        info!("[SOVEREIGN] ☁️ Cloud Transcription Complete: {} segments (via Groq Whisper). Subtitles enhanced.", segments.len());
+                        return Ok(segments);
+                    }
+                }
+            }
+        }
+
+        info!("[SOVEREIGN] ⚠️ Cloud transcription unavailable or failed. Falling back to local Sovereign Ear.");
+
         // Check for GPU availability
         let gpu = get_gpu_context().await;
         let use_gpu = gpu.has_gpu();
@@ -93,7 +126,7 @@ impl TranscriptionEngine {
         .await??;
 
         info!(
-            "[SOVEREIGN] Transcription Complete: {} segments.",
+            "[SOVEREIGN] Local Transcription Complete: {} segments.",
             segments.len()
         );
         Ok(segments)
@@ -107,16 +140,16 @@ impl TranscriptionEngine {
         // Read audio
         let mut reader = hound::WavReader::open(audio_path).context("Open WAV")?;
         let spec = reader.spec();
-        
+
         let mut pcm_data: Vec<f32>;
-        
+
         let is_16k_mono = spec.sample_rate == 16000 && spec.channels == 1;
-        
+
         if is_16k_mono {
             info!("[SOVEREIGN] 🎧 Native 16kHz mono detected. Fast-path memory loading...");
             // Pre-allocate for exactly the number of samples
             pcm_data = Vec::with_capacity(reader.duration() as usize);
-            
+
             // Read directly into f32 vec
             for sample in reader.samples::<i16>() {
                 if let Ok(s) = sample {
@@ -125,12 +158,12 @@ impl TranscriptionEngine {
             }
         } else {
             info!("[SOVEREIGN] 🐌 Downmixing/resampling in memory. (Channels: {}, Rate: {}). This uses significant RAM.", spec.channels, spec.sample_rate);
-            
+
             // Manual conversion and downmix to mono simultaneously
             let channels = spec.channels as usize;
             let mut f32_samples = Vec::with_capacity((reader.duration() as usize) / channels);
             let mut sample_iter = reader.samples::<i16>();
-            
+
             while let Some(Ok(first_sample)) = sample_iter.next() {
                 let mut sum = first_sample as f32;
                 // Accumulate other channels
@@ -141,7 +174,7 @@ impl TranscriptionEngine {
                 }
                 f32_samples.push((sum / channels as f32) / 32768.0);
             }
-            
+
             // Resample if needed (Naive linear)
             if spec.sample_rate != 16000 {
                 let ratio = 16000.0 / spec.sample_rate as f32;
@@ -177,7 +210,9 @@ impl TranscriptionEngine {
         params.set_print_timestamps(true);
 
         // Maximize CPU threads (Even with GPU, parts of Whisper run on CPU)
-        let num_threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4) as i32;
+        let num_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4) as i32;
         params.set_n_threads(num_threads);
 
         // Run
@@ -208,7 +243,13 @@ pub fn generate_srt(segments: &[TranscriptSegment]) -> String {
     for (i, seg) in segments.iter().enumerate() {
         let start = format_srt_time(seg.start);
         let end = format_srt_time(seg.end);
-        srt_out.push_str(&format!("{}\n{} --> {}\n{}\n\n", i + 1, start, end, seg.text.trim()));
+        srt_out.push_str(&format!(
+            "{}\n{} --> {}\n{}\n\n",
+            i + 1,
+            start,
+            end,
+            seg.text.trim()
+        ));
     }
     srt_out
 }
@@ -249,7 +290,10 @@ impl ScriptEditor {
         Self {
             segments: segments
                 .into_iter()
-                .map(|s| EditableSegment { segment: s, deleted: false })
+                .map(|s| EditableSegment {
+                    segment: s,
+                    deleted: false,
+                })
                 .collect(),
         }
     }
@@ -324,8 +368,7 @@ impl ScriptEditor {
         // Write the concat script to a temp file
         let tmp_dir = std::env::temp_dir();
         let concat_file = tmp_dir.join(format!("synoid_concat_{}.txt", uuid_simple()));
-        std::fs::write(&concat_file, &concat_script)
-            .context("Writing concat script")?;
+        std::fs::write(&concat_file, &concat_script).context("Writing concat script")?;
 
         info!(
             "[SCRIPT-EDITOR] Applying {} kept ranges → {:?}",
@@ -348,7 +391,10 @@ impl ScriptEditor {
             anyhow::bail!("FFmpeg script-edit failed with status: {}", status);
         }
 
-        info!("[SCRIPT-EDITOR] Script-based edit complete: {:?}", output_path);
+        info!(
+            "[SCRIPT-EDITOR] Script-based edit complete: {:?}",
+            output_path
+        );
         Ok(())
     }
 }
@@ -362,4 +408,3 @@ fn uuid_simple() -> String {
         .subsec_nanos();
     format!("{:x}", t)
 }
-

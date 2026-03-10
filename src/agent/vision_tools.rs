@@ -16,17 +16,15 @@ pub struct VisualScene {
 /// Scan video for visual scenes using FFmpeg/FFprobe
 /// In a real implementation this might call Cuda kernels, but here we perform a simulated scan
 /// or use ffprobe's scene detection filter.
-pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn scan_visual(
+    path: &Path,
+) -> Result<Vec<VisualScene>, Box<dyn std::error::Error + Send + Sync>> {
     info!("[EYES] Scanning visual content: {:?}", path);
 
     // Using ffmpeg to detect scene changes (>0.3 difference)
     // metadata=print:file=- outputs metadata to stdout
     let output = Command::new("ffmpeg")
-        .args([
-            "-v",
-            "error",
-            "-i",
-        ])
+        .args(["-v", "error", "-i"])
         .arg(path)
         .args([
             "-vf",
@@ -62,7 +60,7 @@ pub async fn scan_visual(path: &Path) -> Result<Vec<VisualScene>, Box<dyn std::e
         // FFmpeg metadata output looks like:
         // frame:0    pts:21      pts_time:0.021029
         // lavfi.scene_score=0.450000
-        
+
         if line.contains("pts_time:") {
             if let Some(ts_str) = line.split("pts_time:").last() {
                 if let Ok(ts) = ts_str.trim().parse::<f64>() {
@@ -109,27 +107,27 @@ pub fn track_subject_cuda(_device_id: usize, frame_path: &Path) -> (f64, f64, f6
         Ok(i) => i.to_luma8(),
         Err(_) => return (0.0, 0.0, 1.0),
     };
-    
+
     let (width, height) = img.dimensions();
     let mut x_sum = 0.0;
     let mut y_sum = 0.0;
     let mut weight_sum = 0.0;
-    
+
     for (x, y, pixel) in img.enumerate_pixels() {
-        let weight = (pixel[0] as f64) * (pixel[0] as f64); 
+        let weight = (pixel[0] as f64) * (pixel[0] as f64);
         x_sum += x as f64 * weight;
         y_sum += y as f64 * weight;
         weight_sum += weight;
     }
-    
+
     if weight_sum > 0.0 {
         let center_x = x_sum / weight_sum;
         let center_y = y_sum / weight_sum;
-        
+
         // Calculate offset from center (normalized -1.0 to 1.0)
         let cx = (center_x / width as f64) * 2.0 - 1.0;
         let cy = (center_y / height as f64) * 2.0 - 1.0;
-        
+
         (cx * 0.2, cy * 0.2, 1.05)
     } else {
         (0.0, 0.0, 1.0)
@@ -218,14 +216,14 @@ pub async fn build_semantic_index(
     };
 
     let mut t = 0.0f64;
-    let client = reqwest::Client::new();
+    let agent = crate::agent::gpt_oss_bridge::SynoidAgent::new(ollama_url, vision_model);
 
     while t < duration {
         let frame_path = tmp_dir.join(format!("frame_{:.3}.jpg", t));
         extract_frame(video_path, t, &frame_path).await.ok();
 
         if frame_path.exists() {
-            let meta = describe_frame_with_vlm(&client, ollama_url, vision_model, &frame_path, t)
+            let meta = describe_frame_with_vlm(&agent, &frame_path, t)
                 .await
                 .unwrap_or_else(|_| FrameMetadata {
                     timestamp: t,
@@ -240,7 +238,10 @@ pub async fn build_semantic_index(
     }
 
     let _ = std::fs::remove_dir(&tmp_dir);
-    info!("[SEMANTIC] Index complete: {} frames annotated.", index.frames.len());
+    info!(
+        "[SEMANTIC] Index complete: {} frames annotated.",
+        index.frames.len()
+    );
     Ok(index)
 }
 
@@ -263,9 +264,7 @@ async fn extract_frame(
 /// Send a JPEG frame to the Ollama VLM and parse the description into
 /// `FrameMetadata`.
 async fn describe_frame_with_vlm(
-    client: &reqwest::Client,
-    ollama_url: &str,
-    model: &str,
+    agent: &crate::agent::gpt_oss_bridge::SynoidAgent,
     frame_path: &PathBuf,
     timestamp: f64,
 ) -> Result<FrameMetadata, Box<dyn std::error::Error + Send + Sync>> {
@@ -276,27 +275,12 @@ async fn describe_frame_with_vlm(
     std::fs::File::open(frame_path)?.read_to_end(&mut bytes)?;
     let b64 = base64_encode(&bytes);
 
-    let body = serde_json::json!({
-        "model": model,
-        "prompt": "Describe this video frame in one sentence. Then list up to 8 tags (objects, locations, actions, emotions) separated by commas.",
-        "images": [b64],
-        "stream": false
-    });
+    let prompt = "Describe this video frame in one sentence. Then list up to 8 tags (objects, locations, actions, emotions) separated by commas.";
 
-    let response = client
-        .post(format!("{}/api/generate", ollama_url))
-        .json(&body)
-        .timeout(std::time::Duration::from_secs(30))
-        .send()
-        .await?
-        .json::<serde_json::Value>()
-        .await?;
-
-    let raw = response
-        .get("response")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let raw = agent
+        .vision_reason(prompt, &b64)
+        .await
+        .unwrap_or_else(|_| "".to_string());
 
     // Split description from tags (best-effort, VLMs aren't perfectly structured)
     let (description, tags) = if let Some(nl) = raw.find('\n') {
@@ -312,7 +296,11 @@ async fn describe_frame_with_vlm(
         (raw.clone(), Vec::new())
     };
 
-    Ok(FrameMetadata { timestamp, description, tags })
+    Ok(FrameMetadata {
+        timestamp,
+        description,
+        tags,
+    })
 }
 
 /// Minimal base64 encoder (avoids adding a new crate dependency).

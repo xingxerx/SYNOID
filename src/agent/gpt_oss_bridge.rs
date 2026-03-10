@@ -1,71 +1,61 @@
 // SYNOID MCP Server Bridge
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
-use serde_json::json;
-use tracing::{info, warn};
+use crate::agent::llm_provider::MultiProviderLlm;
+use std::sync::Arc;
+use tracing::info;
 
 pub struct SynoidAgent {
-    client: reqwest::Client,
-    api_url: String,
+    llm: Arc<MultiProviderLlm>,
     pub model: String,
 }
 
 impl SynoidAgent {
-    pub fn new(api_url: &str, model: &str) -> Self {
+    pub fn new(_api_url: &str, model: &str) -> Self {
         Self {
-            client: reqwest::Client::new(),
-            api_url: api_url.to_string(),
+            llm: Arc::new(MultiProviderLlm::new()),
             model: model.to_string(),
         }
     }
 
     pub async fn reason(&self, request: &str) -> Result<String, String> {
         info!("[AGENT] Reasoning with {}: {}", self.model, request);
+        self.llm.reason(request).await.or_else(|e| {
+            Ok(format!(
+                "(Offline Mode) Mock response for: {} (Error: {})",
+                request, e
+            ))
+        })
+    }
 
-        // Construct standard OpenAI-compatible Chat Completion request
-        let payload = json!({
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are Synoid, an autonomous video production AI. Respond with concise JSON or direct commands."
-                },
-                {
-                    "role": "user",
-                    "content": request
-                }
-            ],
-            "temperature": 0.7
-        });
+    pub async fn fast_reason(&self, request: &str) -> Result<String, String> {
+        info!("[AGENT] Fast Reasoning with {}: {}", self.model, request);
+        self.llm.fast_request(request).await.or_else(|e| {
+            Ok(format!(
+                "(Offline Mode) Mock fast response for: {} (Error: {})",
+                request, e
+            ))
+        })
+    }
 
-        let base = self.api_url.trim_end_matches('/');
-        let endpoint = if base.ends_with("/v1") {
-            format!("{}/chat/completions", base)
-        } else {
-            format!("{}/v1/chat/completions", base)
-        };
+    pub async fn vision_reason(&self, prompt: &str, image_b64: &str) -> Result<String, String> {
+        info!("[AGENT] Vision Reasoning for {}", self.model);
+        self.llm
+            .vision_request(prompt, image_b64)
+            .await
+            .or_else(|e| {
+                Ok(format!(
+                    "(Offline Mode) Mock vision response (Error: {})",
+                    e
+                ))
+            })
+    }
 
-        match self.client.post(&endpoint).json(&payload).send().await {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-                    // Extract content from: choices[0].message.content
-                    let content = json["choices"][0]["message"]["content"]
-                        .as_str()
-                        .unwrap_or("Error: Empty response")
-                        .to_string();
-                    Ok(content)
-                } else {
-                    Err(format!("API Error: {}", resp.status()))
-                }
-            }
-            Err(e) => {
-                warn!("[AGENT] 📡 LLM Connection Failed ({}), falling back to Offline Mode.", e);
-                // Fallback for offline testing
-                Ok(format!("(Offline Mode) Mock response for: {}", request))
-            }
-        }
+    pub async fn transcribe_audio(&self, audio_path: &std::path::Path) -> Result<String, String> {
+        info!("[AGENT] Transcribing audio via LLM Bridge");
+        self.llm
+            .audio_transcription(audio_path)
+            .await
+            .or_else(|e| Err(format!("Failed to transcribe: {}", e)))
     }
 }
-
-

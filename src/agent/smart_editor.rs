@@ -152,10 +152,8 @@ impl EditIntent {
     /// Parse natural language intent into structured intent using LLM
     pub async fn from_llm(text: &str) -> Self {
         use crate::agent::gpt_oss_bridge::SynoidAgent;
-        let api_url = std::env::var("OLLAMA_API_URL")
-            .unwrap_or_else(|_| "http://localhost:11434".to_string());
-        // Llama3:latest serves as our standard fast JSON intent parser
-        let agent = SynoidAgent::new(&api_url, "llama3:latest");
+        // Use the multi-provider bridge; standard fast JSON intent parser
+        let agent = SynoidAgent::new("http://localhost:11434", "llama-3.1-8b-instant");
 
         let prompt = format!(
             r#"You are a video editing AI assistant. Convert the user's natural language request into a JSON configuration for the EditIntent struct.
@@ -178,7 +176,7 @@ User Request: "{}"
             text
         );
 
-        match agent.reason(&prompt).await {
+        match agent.fast_reason(&prompt).await {
             Ok(response) => {
                 // Extract the JSON object from the LLM response.
                 // Llama3 often prefixes its answer with prose like "Here is the JSON configuration:"

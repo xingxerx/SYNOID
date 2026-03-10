@@ -4,17 +4,19 @@
 pub mod academy;
 pub mod audio_tools;
 pub mod autonomous_learner;
-pub mod editor_queue;
 pub mod body;
 pub mod brain;
 pub mod consciousness;
 pub mod defense;
 pub mod download_guard;
+pub mod editor_queue;
+pub mod global_discovery;
 pub mod gpt_oss_bridge;
 pub mod health;
 pub mod hive_mind;
 pub mod io_shield;
 pub mod learning;
+pub mod llm_provider;
 pub mod motor_cortex;
 pub mod multi_agent;
 pub mod neuroplasticity;
@@ -23,22 +25,22 @@ pub mod reasoning;
 pub mod recovery;
 pub mod research_tools;
 pub mod smart_editor;
-pub mod global_discovery;
 pub mod source_tools;
 pub mod super_engine;
 pub mod supervisor;
+pub mod token_optimizer;
 pub mod unified_pipeline;
 pub mod validation_gate;
 
-pub mod video_stitcher;
-pub mod vision_tools;
+pub mod animator;
 pub mod transcription;
 pub mod video_editing_agent;
 pub mod video_player;
-pub mod animator;
+pub mod video_stitcher;
+pub mod vision_tools;
 
 // AI Video Feature Modules (Feature Set v2)
-pub mod multicam;       // AI Multicam Sync & SmartSwitch
+pub mod multicam; // AI Multicam Sync & SmartSwitch
 pub mod upscale_engine; // SeedVR2 / Real-ESRGAN / Lanczos upscaling
 
 pub mod core; // Exposed Core Logic
