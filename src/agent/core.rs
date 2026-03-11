@@ -163,21 +163,29 @@ impl AgentCore {
         self.log("[CORE] 🎓 Learning editing style from downloaded reference videos...");
         self.set_status("🎓 Learning from videos...");
 
-        let profiles = {
+        let (result, report) = {
             let mut brain = self.brain.lock().await;
-            let p = video_style_learner::learn_from_downloads(&mut brain).await;
-            let report = brain.neuroplasticity.acceleration_report();
-            (p, report)
+            let r = video_style_learner::learn_from_downloads(&mut brain).await;
+            let rep = brain.neuroplasticity.acceleration_report();
+            (r, rep)
         };
 
-        if profiles.0.is_empty() {
+        if result.profiles.is_empty() {
             self.log("[CORE] ⚠️ No reference videos found in Download dir — skipping style sync.");
-        } else {
-            video_style_learner::synthesise_and_save_strategy(&profiles.0);
+        } else if result.has_new {
+            // New videos were learned — update the EditingStrategy on disk
+            video_style_learner::synthesise_and_save_strategy(&result.profiles);
             self.log(&format!(
-                "[CORE] ✅ Learned {} video style(s) | {}",
-                profiles.0.len(),
-                profiles.1
+                "[CORE] ✅ Learned {} new video style(s) | {}",
+                result.profiles.len(),
+                report
+            ));
+        } else {
+            // Everything was already cached — patterns loaded into kernel, no disk write needed
+            self.log(&format!(
+                "[CORE] ⚡ All {} video style(s) already memorized — instant restore | {}",
+                result.profiles.len(),
+                report
             ));
         }
 

@@ -1,10 +1,8 @@
 // SYNOID Autonomous Learner
 // Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
-use crate::agent::brain::{Brain, Intent};
-use crate::agent::production_tools;
+use crate::agent::brain::Brain;
 use crate::agent::smart_editor;
-use crate::agent::transcription::{TranscriptSegment, TranscriptionEngine};
 use crate::agent::{academy::code_scanner::CodeScanner, source_tools};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -132,8 +130,6 @@ impl AutonomousLearner {
         info!("[LEARNER] 🚀 Autonomous Learning Loop Started (Sentinel Active)");
 
         tokio::spawn(async move {
-            // Initialize TranscriptionEngine inside async block
-            let transcription_engine = TranscriptionEngine::new(None).await.ok();
             let mut cycle_count = 0;
 
             while is_running.load(Ordering::SeqCst) {
@@ -206,177 +202,110 @@ impl AutonomousLearner {
                                         // 1c. Safety Check File
                                         if let Err(e) = crate::agent::download_guard::DownloadGuard::validate_downloaded_file(&downloaded.local_path) {
                                             error!("[LEARNER] 🛡️ Downloaded file rejected: {}", e);
-                                            // Only delete if REJECTED by safety guard
-                                            let _ = std::fs::remove_file(downloaded.local_path);
+                                            let _ = std::fs::remove_file(&downloaded.local_path);
                                             continue;
                                         }
 
-                                        info!("[LEARNER] 🎓 Learning from: {}", downloaded.title);
+                                        info!("[LEARNER] 🎓 New video acquired: '{}'", downloaded.title);
 
-                                        // 2. Process with Brain (Deep Analysis)
-                                        info!(
-                                            "[LEARNER] 🧠 performing deep analysis on '{}'",
-                                            downloaded.title
-                                        );
-
-                                        // 2a. Extract Audio & Transcribe
-                                        let wav_path = downloaded.local_path.with_extension("wav");
-                                        let mut transcript: Option<Vec<TranscriptSegment>> = None;
-
-                                        if let Ok(wav) = production_tools::extract_audio_wav(
-                                            &downloaded.local_path,
-                                            &wav_path,
-                                        )
-                                        .await
-                                        {
-                                            if let Some(engine) = &transcription_engine {
-                                                if let Ok(segs) = engine.transcribe(&wav).await {
-                                                    transcript = Some(segs);
-                                                }
-                                            }
-                                            let _ = std::fs::remove_file(wav); // Cleanup wav
-                                        }
-
-                                        // 2b. Detect Scenes
-                                        let mut scene_data = None;
-                                        // Use a default threshold of 0.3 for analysis
-                                        if let Ok(scenes) =
-                                            smart_editor::detect_scenes(&downloaded.local_path, 0.3)
-                                                .await
-                                        {
-                                            scene_data = Some(scenes);
-                                        }
-
-                                        // 2c. Synthesize "Style Profile"
-                                        let mut avg_scene_duration = 0.0;
-                                        if let Some(scenes) = &scene_data {
-                                            let total_dur: f64 =
-                                                scenes.iter().map(|s| s.duration).sum();
-                                            if !scenes.is_empty() {
-                                                avg_scene_duration =
-                                                    total_dur / scenes.len() as f64;
-                                            }
-                                        }
-
-                                        let mut wpm = 0.0;
-                                        let mut _keywords = Vec::new();
-                                        if let Some(t) = &transcript {
-                                            let total_words: usize = t
-                                                .iter()
-                                                .map(|s| s.text.split_whitespace().count())
-                                                .sum();
-                                            let duration = t.last().map(|s| s.end).unwrap_or(0.0);
-                                            if duration > 0.0 {
-                                                wpm = (total_words as f64 / duration) * 60.0;
-                                            }
-
-                                            // Simple keyword extraction (naive)
-                                            // In future: use LLM to extract keywords
-                                            _keywords = t
-                                                .iter()
-                                                .flat_map(|s| s.text.split_whitespace())
-                                                .filter(|w| w.len() > 5)
-                                                .take(10)
-                                                .map(|s| {
-                                                    s.replace(|c: char| !c.is_alphanumeric(), "")
-                                                        .to_lowercase()
-                                                })
-                                                .collect();
-                                        }
-
-                                        info!(
-                                            "[LEARNER] 📊 Analysis: Avg Scene: {:.2}s, WPM: {:.0}",
-                                            avg_scene_duration, wpm
-                                        );
-
+                                        // ── Full style-learning pass ──────────────────────────────────────
+                                        // Run video_style_learner on the entire Download folder.
+                                        // Existing videos use their cached profiles (instant, no XP).
+                                        // The newly downloaded file gets real scene detection + XP.
+                                        // Eviction happens AFTER the new video is fully memorized.
                                         let mut brain_lock = brain.lock().await;
 
-                                        // Calculate adaptive delay based on neuroplasticity
+                                        let result = crate::agent::video_style_learner::learn_from_downloads(
+                                            &mut brain_lock,
+                                        )
+                                        .await;
+
+                                        if result.has_new {
+                                            crate::agent::video_style_learner::synthesise_and_save_strategy(
+                                                &result.profiles,
+                                            );
+                                            info!(
+                                                "[LEARNER] 🎨 EditingStrategy updated from {} profile(s)",
+                                                result.profiles.len()
+                                            );
+                                        }
+
                                         let speed = brain_lock.neuroplasticity.current_speed();
                                         let level = brain_lock.neuroplasticity.adaptation_level();
                                         let sleep_duration =
                                             brain_lock.neuroplasticity.adaptive_delay_secs(30);
 
-                                        let style_id = format!("auto_{}", topic.replace(" ", "_"));
-                                        let _intent = Intent::LearnStyle {
-                                            input: downloaded
-                                                .local_path
-                                                .to_string_lossy()
-                                                .to_string(),
-                                            name: style_id.clone(),
-                                        };
+                                        drop(brain_lock);
+                                        // ── End style-learning pass ───────────────────────────────────────
 
-                                        // Save specific pattern finding
-                                        let pattern = crate::agent::learning::EditingPattern {
-                                            intent_tag: topic.clone(),
-                                            avg_scene_duration,
-                                            transition_speed: if avg_scene_duration < 2.0 {
-                                                2.0
-                                            } else {
-                                                1.0
-                                            },
-                                            music_sync_strictness: if wpm > 150.0 {
-                                                0.8
-                                            } else {
-                                                0.4
-                                            },
-                                            color_grade_style: "analyzed_style".to_string(),
-                                            success_rating: 5, // Self-reward for successful analysis
-                                            source_video: Some(
-                                                downloaded.local_path.to_string_lossy().to_string(),
-                                            ),
-                                            kept_ratio: 0.5,
-                                            outcome_xp: 0.8,
-                                        };
-                                        let outcome_xp = pattern.outcome_xp;
-                                        let success_rating = pattern.success_rating;
-                                        brain_lock.learning_kernel.memorize(topic, pattern);
-
-                                        match brain_lock
-                                            .process(&format!(
-                                                "learn style '{}' from {:?} (Analysis: Scene={:.2}s, WPM={:.0})",
-                                                style_id, downloaded.local_path, avg_scene_duration, wpm
-                                            ))
-                                            .await
-                                        {
-                                            Ok(res) => {
-                                                info!(
-                                                    "[LEARNER] ✅ {} (Speed: {:.1}× - {})",
-                                                    res, speed, level
-                                                );
-                                                // Persist success
-                                                if let Some(url) = &source.original_url {
-                                                    state.processed_urls.insert(url.clone());
-                                                }
-
-                                                state.downloaded_videos.push(VideoRecord {
-                                                    path: downloaded.local_path.to_string_lossy().to_string(),
-                                                    score: outcome_xp * (success_rating as f64),
-                                                });
-
-                                                if state.downloaded_videos.len() > 10 {
-                                                    state.downloaded_videos.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-
-                                                    // Pop the last one (lowest score)
-                                                    if let Some(removed) = state.downloaded_videos.pop() {
-                                                        let _ = std::fs::remove_file(&removed.path);
-                                                        info!("[LEARNER] 🗑️ Limit reached (10 max). Deleted lowest scoring video (score: {:.2}): {}", removed.score, removed.path);
-                                                    }
-                                                }
-
-                                                state.save();
-
-                                                info!("[LEARNER] 💾 Video persisted for review: {:?}", downloaded.local_path);
-                                            },
-                                            Err(e) => error!("[LEARNER] ❌ Failed to learn: {}", e),
+                                        // Mark URL as processed so we never re-download it
+                                        if let Some(url) = &source.original_url {
+                                            state.processed_urls.insert(url.clone());
                                         }
 
-                                        // 3. No Cleanup - Keep file for user review
-                                        // let _ = std::fs::remove_file(downloaded.local_path);
+                                        // ── Enforce 10-video cap ──────────────────────────────────────────
+                                        // Find and evict the lowest-quality video from disk + cache,
+                                        // but only if we're over the limit — and never delete the
+                                        // video we just finished learning.
+                                        let new_path_str =
+                                            downloaded.local_path.to_string_lossy().to_string();
 
-                                        // Adaptive Sleep
-                                        drop(brain_lock); // Unlock before sleeping
-                                        drop(state); // Drop state lock before sleeping
+                                        if result.profiles.len()
+                                            > crate::agent::video_style_learner::MAX_VIDEOS
+                                        {
+                                            if let Some(lowest) = result
+                                                .profiles
+                                                .iter()
+                                                .filter(|p| p.path != new_path_str)
+                                                .min_by(|a, b| {
+                                                    a.outcome_xp
+                                                        .partial_cmp(&b.outcome_xp)
+                                                        .unwrap_or(std::cmp::Ordering::Equal)
+                                                })
+                                            {
+                                                let lowest_path =
+                                                    std::path::Path::new(&lowest.path);
+                                                let lowest_filename = lowest_path
+                                                    .file_name()
+                                                    .and_then(|n| n.to_str())
+                                                    .unwrap_or("");
+
+                                                let _ = std::fs::remove_file(lowest_path);
+                                                crate::agent::video_style_learner::remove_from_cache(
+                                                    lowest_filename,
+                                                );
+                                                state
+                                                    .downloaded_videos
+                                                    .retain(|v| v.path != lowest.path);
+
+                                                info!(
+                                                    "[LEARNER] 🗑️ Evicted lowest-quality video (xp={:.2}): {}",
+                                                    lowest.outcome_xp, lowest.path
+                                                );
+                                            }
+                                        }
+
+                                        // Record the new video in state tracking
+                                        let new_score = result
+                                            .profiles
+                                            .iter()
+                                            .find(|p| p.path == new_path_str)
+                                            .map(|p| p.outcome_xp * 5.0)
+                                            .unwrap_or(4.0);
+                                        state.downloaded_videos.push(VideoRecord {
+                                            path: new_path_str,
+                                            score: new_score,
+                                        });
+
+                                        state.save();
+
+                                        info!(
+                                            "[LEARNER] ✅ '{}' learned & memorized (Speed: {:.1}× - {})",
+                                            downloaded.title, speed, level
+                                        );
+
+                                        // Adaptive sleep — release locks first
+                                        drop(state);
 
                                         info!(
                                             "[LEARNER] 💤 Resting for {}s (Adaptive)",

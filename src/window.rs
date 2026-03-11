@@ -145,6 +145,34 @@ pub struct UiState {
     pub recent_jobs: Vec<crate::agent::editor_queue::EditJob>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct PersistedSettings {
+    is_autonomous_running: bool,
+    guard_mode: String,
+}
+
+fn load_settings() -> PersistedSettings {
+    if let Ok(data) = std::fs::read_to_string("synoid_settings.json") {
+        if let Ok(settings) = serde_json::from_str(&data) {
+            return settings;
+        }
+    }
+    PersistedSettings {
+        is_autonomous_running: false,
+        guard_mode: "all".to_string(),
+    }
+}
+
+fn save_settings(state: &UiState) {
+    let settings = PersistedSettings {
+        is_autonomous_running: state.is_autonomous_running,
+        guard_mode: state.guard_mode.clone(),
+    };
+    if let Ok(json) = serde_json::to_string_pretty(&settings) {
+        let _ = std::fs::write("synoid_settings.json", json);
+    }
+}
+
 pub struct SynoidApp {
     core: Arc<AgentCore>,
     ui_state: Arc<Mutex<UiState>>,
@@ -159,13 +187,15 @@ impl SynoidApp {
         if let Ok(saved_intent) = std::fs::read_to_string("synoid_intent.txt") {
             ui_state.intent = saved_intent;
         }
+        let settings = load_settings();
+
         ui_state.output_path = "Video/output.mp4".to_string();
         ui_state.clip_start = "0.0".to_string();
         ui_state.clip_duration = "10.0".to_string();
         ui_state.compress_size = "25.0".to_string();
         ui_state.scale_factor = "2.0".to_string();
         ui_state.active_editor_tab = "Media".to_string();
-        ui_state.guard_mode = "all".to_string();
+        ui_state.guard_mode = settings.guard_mode;
         ui_state.timeline_zoom = 0.5;
         ui_state.intent_history = vec![ui_state.intent.clone()];
         ui_state.intent_history_index = 0;
@@ -174,6 +204,7 @@ impl SynoidApp {
         ui_state.editor_session_id = None;
         ui_state.editor_api_status = "No active session".to_string();
         ui_state.ai_edit_running = false;
+        ui_state.is_autonomous_running = settings.is_autonomous_running;
 
         // Start background poller for Hive Mind status
         let core_clone = core.clone();
@@ -415,7 +446,9 @@ impl SynoidApp {
                     }
                 ));
                 ui.add_space(10.0);
-                ui.toggle_value(&mut state.is_autonomous_running, "Autonomous Mode");
+                if ui.toggle_value(&mut state.is_autonomous_running, "Autonomous Mode").changed() {
+                    save_settings(state);
+                }
             });
         });
 
@@ -1106,11 +1139,15 @@ impl SynoidApp {
         ui.add_space(10.0);
 
         ui.label("Monitor Mode:");
-        ui.horizontal(|ui| {
-            ui.radio_value(&mut state.guard_mode, "all".to_string(), "All");
-            ui.radio_value(&mut state.guard_mode, "sys".to_string(), "Processes");
-            ui.radio_value(&mut state.guard_mode, "file".to_string(), "Files");
-        });
+        if ui.horizontal(|ui| {
+            let mut changed = false;
+            changed |= ui.radio_value(&mut state.guard_mode, "all".to_string(), "All").changed();
+            changed |= ui.radio_value(&mut state.guard_mode, "sys".to_string(), "Processes").changed();
+            changed |= ui.radio_value(&mut state.guard_mode, "file".to_string(), "Files").changed();
+            changed
+        }).inner {
+            save_settings(state);
+        }
         ui.add_space(10.0);
 
         ui.label("Watch Path (optional):");

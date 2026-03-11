@@ -17,6 +17,7 @@ use crate::agent::brain::Brain;
 use crate::agent::learning::EditingPattern;
 use crate::agent::smart_editor::EditingStrategy;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
@@ -122,6 +123,64 @@ impl VideoStyleProfile {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Learned-video cache — prevents re-analysis on every restart
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One entry per video file that has already been analysed.
+/// Keyed by filename (not full path so it survives drive-letter changes).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct LearnedEntry {
+    /// File size in bytes — used as a cheap "has this changed?" sentinel.
+    file_size: u64,
+    /// The profile produced by the last analysis.
+    profile: VideoStyleProfile,
+}
+
+/// Persisted map of filename → LearnedEntry.
+#[derive(Serialize, Deserialize, Default, Debug)]
+struct LearnedVideoCache(HashMap<String, LearnedEntry>);
+
+impl LearnedVideoCache {
+    fn path() -> PathBuf {
+        let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
+        let dir = PathBuf::from(format!("cortex_cache{}", suffix));
+        let _ = std::fs::create_dir_all(&dir);
+        dir.join("learned_videos.json")
+    }
+
+    fn load() -> Self {
+        let p = Self::path();
+        if let Ok(data) = std::fs::read_to_string(&p) {
+            if let Ok(cache) = serde_json::from_str::<LearnedVideoCache>(&data) {
+                return cache;
+            }
+        }
+        Self::default()
+    }
+
+    fn save(&self) {
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            let _ = std::fs::write(Self::path(), json);
+        }
+    }
+
+    /// Return the cached profile if the file hasn't changed since last analysis.
+    fn get_if_current(&self, filename: &str, current_size: u64) -> Option<&VideoStyleProfile> {
+        self.0.get(filename).and_then(|e| {
+            if e.file_size == current_size {
+                Some(&e.profile)
+            } else {
+                None // File replaced/updated — must re-analyse
+            }
+        })
+    }
+
+    fn insert(&mut self, filename: String, file_size: u64, profile: VideoStyleProfile) {
+        self.0.insert(filename, LearnedEntry { file_size, profile });
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Core public API
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -130,14 +189,25 @@ pub const DOWNLOAD_DIR: &str = r"D:\SYNOID\Download";
 /// Maximum reference videos to keep / learn from at any one time.
 pub const MAX_VIDEOS: usize = 10;
 
+/// Return value from `learn_from_downloads`.
+pub struct LearnResult {
+    /// All profiles (cached + newly learned) — used to synthesise strategy.
+    pub profiles: Vec<VideoStyleProfile>,
+    /// True if any video was newly analysed (strategy should be re-saved).
+    pub has_new: bool,
+}
+
 /// Scan DOWNLOAD_DIR, analyse up to MAX_VIDEOS MP4s, and inject all learned
 /// patterns into the brain's LearningKernel and Neuroplasticity.
-/// Returns the profiles so the caller can synthesise an EditingStrategy.
-pub async fn learn_from_downloads(brain: &mut Brain) -> Vec<VideoStyleProfile> {
+///
+/// Already-learned videos are skipped (loaded from cache) so the agent only
+/// does real work — and only awards XP — for genuinely new or changed files.
+/// Returns all profiles (cached + new) so the caller can synthesise a strategy.
+pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
     let download_dir = Path::new(DOWNLOAD_DIR);
     if !download_dir.exists() {
         warn!("[STYLE_LEARNER] Download dir not found: {}", DOWNLOAD_DIR);
-        return Vec::new();
+        return LearnResult { profiles: Vec::new(), has_new: false };
     }
 
     // Collect MP4 files up to MAX_VIDEOS
@@ -161,15 +231,19 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> Vec<VideoStyleProfile> {
 
     if videos.is_empty() {
         info!("[STYLE_LEARNER] No MP4 files found in {}", DOWNLOAD_DIR);
-        return Vec::new();
+        return LearnResult { profiles: Vec::new(), has_new: false };
     }
 
-    info!(
-        "[STYLE_LEARNER] 🎓 Starting learning session — {} video(s) queued",
-        videos.len()
-    );
+    let mut cache = LearnedVideoCache::load();
+    let mut all_profiles: Vec<VideoStyleProfile> = Vec::new();
+    let mut new_count = 0usize;
+    let mut cache_dirty = false;
 
-    let mut profiles: Vec<VideoStyleProfile> = Vec::new();
+    info!(
+        "[STYLE_LEARNER] 🎓 Checking {} video(s) ({} already memorized)",
+        videos.len(),
+        cache.0.len()
+    );
 
     for (idx, path) in videos.iter().enumerate() {
         let filename = path
@@ -177,17 +251,35 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> Vec<VideoStyleProfile> {
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
 
+        let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+
+        // Check if this video is already known and unchanged
+        if let Some(cached_profile) = cache.get_if_current(filename, file_size) {
+            info!(
+                "[STYLE_LEARNER] [{}/{}] ⚡ Already learned (cached): {}",
+                idx + 1,
+                videos.len(),
+                filename
+            );
+            // Still register the pattern in the kernel (it's loaded fresh each run)
+            // but do NOT award XP — we already earned it
+            let genre = VideoGenre::from_filename(filename);
+            brain.learning_kernel.memorize(genre.intent_tag(), cached_profile.to_pattern());
+            all_profiles.push(cached_profile.clone());
+            continue;
+        }
+
+        // New or changed file — full analysis required
         info!(
-            "[STYLE_LEARNER] [{}/{}] Analysing: {}",
+            "[STYLE_LEARNER] [{}/{}] 🔬 Analysing (new/changed): {}",
             idx + 1,
             videos.len(),
             filename
         );
 
         let genre = VideoGenre::from_filename(filename);
-        let profile = analyse_video(&path, &genre).await;
+        let profile = analyse_video(path, &genre).await;
 
-        // Store in LearningKernel and award XP to Neuroplasticity
         let xp = profile.outcome_xp;
         let tag = genre.intent_tag();
         brain.learning_kernel.memorize(tag, profile.to_pattern());
@@ -201,16 +293,42 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> Vec<VideoStyleProfile> {
             brain.neuroplasticity.current_speed(),
         );
 
-        profiles.push(profile);
+        cache.insert(filename.to_string(), file_size, profile.clone());
+        all_profiles.push(profile);
+        new_count += 1;
+        cache_dirty = true;
     }
 
-    info!(
-        "[STYLE_LEARNER] 🏁 Session complete — {} patterns memorized | {}",
-        profiles.len(),
-        brain.neuroplasticity.acceleration_report()
-    );
+    if cache_dirty {
+        cache.save();
+    }
 
-    profiles
+    if new_count == 0 {
+        info!(
+            "[STYLE_LEARNER] ✅ All {} video(s) already memorized — nothing to relearn | {}",
+            all_profiles.len(),
+            brain.neuroplasticity.acceleration_report()
+        );
+    } else {
+        info!(
+            "[STYLE_LEARNER] 🏁 Session complete — {} new, {} total patterns | {}",
+            new_count,
+            all_profiles.len(),
+            brain.neuroplasticity.acceleration_report()
+        );
+    }
+
+    LearnResult { profiles: all_profiles, has_new: new_count > 0 }
+}
+
+/// Remove a video from the learned cache after it has been deleted from disk.
+/// Call this whenever you evict a video so stale entries don't persist.
+pub fn remove_from_cache(filename: &str) {
+    let mut cache = LearnedVideoCache::load();
+    if cache.0.remove(filename).is_some() {
+        cache.save();
+        info!("[STYLE_LEARNER] 🗑️ Removed '{}' from learned cache", filename);
+    }
 }
 
 /// Synthesise a tuned EditingStrategy from all learned profiles and persist
