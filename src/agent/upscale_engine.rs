@@ -110,7 +110,8 @@ impl UpscaleEngine {
             UpscaleMode::Vector => {
                 // Delegate to the existing vector pipeline (frame-by-frame SVG conversion).
                 info!("[UPSCALE] Routing to Vector pipeline.");
-                Self::upscale_via_lanczos(input_path, output_path, config).await
+                Self::upscale_via_lanczos(input_path, output_path, config)
+                    .await
                     .context("Vector/Lanczos fallback")?;
             }
             UpscaleMode::SeedVR2 => {
@@ -183,7 +184,9 @@ impl UpscaleEngine {
             .context("Frame extraction for SeedVR2")?;
 
         if !status.success() {
-            return Err(anyhow::anyhow!("FFmpeg frame extraction failed for SeedVR2."));
+            return Err(anyhow::anyhow!(
+                "FFmpeg frame extraction failed for SeedVR2."
+            ));
         }
 
         // 2. Run SeedVR2 on the extracted frames
@@ -203,10 +206,15 @@ impl UpscaleEngine {
         } else {
             // Python fallback
             Command::new("python3")
-                .args(["seedvr2_infer.py",
-                       "--input", &frames_in.to_string_lossy(),
-                       "--output", &frames_out.to_string_lossy(),
-                       "--resolution", &scale])
+                .args([
+                    "seedvr2_infer.py",
+                    "--input",
+                    &frames_in.to_string_lossy(),
+                    "--output",
+                    &frames_out.to_string_lossy(),
+                    "--resolution",
+                    &scale,
+                ])
                 .status()
                 .await
                 .map(|s| s.success())
@@ -222,20 +230,25 @@ impl UpscaleEngine {
         // 3. Re-assemble frames + original audio
         info!("[UPSCALE-SEEDVR2] Re-assembling video…");
         let status = Command::new("ffmpeg")
-            .args(["-y",
-                   "-framerate", &fps.to_string(),
-                   "-i"])
+            .args(["-y", "-framerate", &fps.to_string(), "-i"])
             .arg(frames_out.join("%06d.png"))
             .args(["-i"])
             .arg(input_path)
             .args([
-                "-map", "0:v",
-                "-map", "1:a?",
-                "-c:v", "libx264",
-                "-preset", &config.encode_preset,
-                "-crf", &config.encode_crf.to_string(),
-                "-pix_fmt", "yuv420p",
-                "-c:a", "copy",
+                "-map",
+                "0:v",
+                "-map",
+                "1:a?",
+                "-c:v",
+                "libx264",
+                "-preset",
+                &config.encode_preset,
+                "-crf",
+                &config.encode_crf.to_string(),
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "copy",
             ])
             .arg(output_path)
             .status()
@@ -304,20 +317,25 @@ impl UpscaleEngine {
         }
 
         Command::new("ffmpeg")
-            .args(["-y",
-                   "-framerate", &fps.to_string(),
-                   "-i"])
+            .args(["-y", "-framerate", &fps.to_string(), "-i"])
             .arg(frames_out.join("%06d.png"))
             .args(["-i"])
             .arg(input_path)
             .args([
-                "-map", "0:v",
-                "-map", "1:a?",
-                "-c:v", "libx264",
-                "-preset", &config.encode_preset,
-                "-crf", &config.encode_crf.to_string(),
-                "-pix_fmt", "yuv420p",
-                "-c:a", "copy",
+                "-map",
+                "0:v",
+                "-map",
+                "1:a?",
+                "-c:v",
+                "libx264",
+                "-preset",
+                &config.encode_preset,
+                "-crf",
+                &config.encode_crf.to_string(),
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "copy",
             ])
             .arg(output_path)
             .status()
@@ -353,12 +371,18 @@ impl UpscaleEngine {
             .args(["-y", "-i"])
             .arg(input_path)
             .args([
-                "-vf", &scale_filter,
-                "-c:v", "libx264",
-                "-preset", &config.encode_preset,
-                "-crf", &config.encode_crf.to_string(),
-                "-pix_fmt", "yuv420p",
-                "-c:a", "copy",
+                "-vf",
+                &scale_filter,
+                "-c:v",
+                "libx264",
+                "-preset",
+                &config.encode_preset,
+                "-crf",
+                &config.encode_crf.to_string(),
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "copy",
             ])
             .arg(output_path)
             .status()
@@ -375,8 +399,7 @@ impl UpscaleEngine {
     // ── Availability Checks ──────────────────────────────────────────────────
 
     async fn check_seedvr2_available() -> bool {
-        which_exists("seedvr2")
-            || std::path::Path::new("seedvr2_infer.py").exists()
+        which_exists("seedvr2") || std::path::Path::new("seedvr2_infer.py").exists()
     }
 
     async fn check_realesrgan_available() -> bool {
@@ -387,10 +410,16 @@ impl UpscaleEngine {
 
     async fn probe_fps(path: &Path) -> Option<f64> {
         let out = Command::new("ffprobe")
-            .args(["-v", "error",
-                   "-select_streams", "v:0",
-                   "-show_entries", "stream=r_frame_rate",
-                   "-of", "csv=p=0"])
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=r_frame_rate",
+                "-of",
+                "csv=p=0",
+            ])
             .arg(path)
             .output()
             .await
@@ -403,7 +432,11 @@ impl UpscaleEngine {
         if parts.len() == 2 {
             let num: f64 = parts[0].parse().ok()?;
             let den: f64 = parts[1].parse().ok()?;
-            if den != 0.0 { Some(num / den) } else { None }
+            if den != 0.0 {
+                Some(num / den)
+            } else {
+                None
+            }
         } else {
             s.parse().ok()
         }
@@ -412,10 +445,16 @@ impl UpscaleEngine {
     async fn compute_scale_factor(input_path: &Path, config: &UpscaleConfig) -> u32 {
         // Ask ffprobe for the source width
         let out = Command::new("ffprobe")
-            .args(["-v", "error",
-                   "-select_streams", "v:0",
-                   "-show_entries", "stream=width",
-                   "-of", "csv=p=0"])
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width",
+                "-of",
+                "csv=p=0",
+            ])
             .arg(input_path)
             .output()
             .await;

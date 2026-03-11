@@ -189,10 +189,7 @@ pub fn check_dependencies() -> Vec<String> {
     let mut missing = Vec::new();
 
     // Required dependencies — the app cannot function well without these
-    let required = vec![
-        ("ffmpeg", "-version"),
-        ("python", "--version"),
-    ];
+    let required = vec![("ffmpeg", "-version"), ("python", "--version")];
 
     for (dep, flag) in required {
         let mut found = std::process::Command::new(dep)
@@ -202,7 +199,7 @@ pub fn check_dependencies() -> Vec<String> {
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
-        
+
         // Special fallbacks for common developer environments
         if !found && dep == "python" {
             found = std::process::Command::new("python3")
@@ -220,10 +217,7 @@ pub fn check_dependencies() -> Vec<String> {
     }
 
     // Optional dependencies — features degrade gracefully without these
-    let optional = vec![
-        ("yt-dlp", "--version"),
-        ("ollama", "--version"),
-    ];
+    let optional = vec![("yt-dlp", "--version"), ("ollama", "--version")];
 
     for (dep, flag) in optional {
         let mut found = std::process::Command::new(dep)
@@ -243,7 +237,7 @@ pub fn check_dependencies() -> Vec<String> {
                     .stderr(std::process::Stdio::null())
                     .status()
                     .map(|s| s.success())
-                    .unwrap_or(false) 
+                    .unwrap_or(false)
                 {
                     found = true;
                     break;
@@ -252,7 +246,10 @@ pub fn check_dependencies() -> Vec<String> {
         }
 
         if !found {
-            tracing::trace!("Optional dependency '{}' not found — related features will be unavailable.", dep);
+            tracing::trace!(
+                "Optional dependency '{}' not found — related features will be unavailable.",
+                dep
+            );
         }
     }
 

@@ -27,11 +27,20 @@ impl Animator {
         output_video: &Path,
     ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         // Default to DynamicAnimation if no composition specified
-        let comp = if composition_name.is_empty() { "DynamicAnimation" } else { composition_name };
-        info!("[ANIMATOR] Rendering composition '{}' via Remotion...", comp);
+        let comp = if composition_name.is_empty() {
+            "DynamicAnimation"
+        } else {
+            composition_name
+        };
+        info!(
+            "[ANIMATOR] Rendering composition '{}' via Remotion...",
+            comp
+        );
 
         if !self.is_initialized().await {
-            return Err("Remotion engine is not initialized. Run npm install in remotion-engine/.".into());
+            return Err(
+                "Remotion engine is not initialized. Run npm install in remotion-engine/.".into(),
+            );
         }
 
         // npx remotion render src/index.tsx <CompositionName> <Output> --props <Payload>
@@ -40,11 +49,21 @@ impl Animator {
         } else {
             Command::new("sh")
         };
-        
+
         let output = if cfg!(windows) {
-            cmd.arg("/C").arg(format!("npx remotion render src/index.tsx {} {} --props {}", comp, output_video.to_string_lossy(), payload_json_path.to_string_lossy()))
+            cmd.arg("/C").arg(format!(
+                "npx remotion render src/index.tsx {} {} --props {}",
+                comp,
+                output_video.to_string_lossy(),
+                payload_json_path.to_string_lossy()
+            ))
         } else {
-            cmd.arg("-c").arg(format!("npx remotion render src/index.tsx \"{}\" \"{}\" --props \"{}\"", comp, output_video.to_string_lossy(), payload_json_path.to_string_lossy()))
+            cmd.arg("-c").arg(format!(
+                "npx remotion render src/index.tsx \"{}\" \"{}\" --props \"{}\"",
+                comp,
+                output_video.to_string_lossy(),
+                payload_json_path.to_string_lossy()
+            ))
         }
         .current_dir(&self.engine_dir)
         .output()
@@ -56,7 +75,10 @@ impl Animator {
             return Err(format!("Remotion error: {}", err).into());
         }
 
-        info!("[ANIMATOR] Animation rendered successfully: {:?}", output_video);
+        info!(
+            "[ANIMATOR] Animation rendered successfully: {:?}",
+            output_video
+        );
         Ok(output_video.to_path_buf())
     }
 }

@@ -65,7 +65,10 @@ impl MulticamEngine {
             return Ok(Vec::new());
         }
 
-        info!("[MULTICAM] Syncing {} tracks via audio cross-correlation…", tracks.len());
+        info!(
+            "[MULTICAM] Syncing {} tracks via audio cross-correlation…",
+            tracks.len()
+        );
 
         // Extract per-track energy profiles
         let mut profiles: Vec<Vec<EnergyFrame>> = Vec::new();
@@ -101,7 +104,11 @@ impl MulticamEngine {
             return Ok(Vec::new());
         }
 
-        info!("[MULTICAM-SWITCH] Analysing {} tracks with {:.1}s windows…", tracks.len(), window_secs);
+        info!(
+            "[MULTICAM-SWITCH] Analysing {} tracks with {:.1}s windows…",
+            tracks.len(),
+            window_secs
+        );
 
         let mut profiles: Vec<Vec<EnergyFrame>> = Vec::new();
         for (i, track) in tracks.iter().enumerate() {
@@ -152,7 +159,10 @@ impl MulticamEngine {
             t = window_end;
         }
 
-        info!("[MULTICAM-SWITCH] Generated {} switch points.", switch_points.len());
+        info!(
+            "[MULTICAM-SWITCH] Generated {} switch points.",
+            switch_points.len()
+        );
         Ok(switch_points)
     }
 
@@ -170,7 +180,10 @@ impl MulticamEngine {
             anyhow::bail!("No tracks supplied to multicam assembler.");
         }
 
-        info!("[MULTICAM-ASSEMBLE] Building concat script for {} cuts…", switch_points.len() + 1);
+        info!(
+            "[MULTICAM-ASSEMBLE] Building concat script for {} cuts…",
+            switch_points.len() + 1
+        );
 
         // Build a timeline of (start, end, track_index) segments
         let total_duration = {
@@ -294,7 +307,13 @@ impl MulticamEngine {
         for line in text.lines() {
             if line.starts_with("frame:") {
                 if let Some(ts_part) = line.split("pts_time:").nth(1) {
-                    if let Ok(ts) = ts_part.trim().split_whitespace().next().unwrap_or("").parse::<f64>() {
+                    if let Ok(ts) = ts_part
+                        .trim()
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .parse::<f64>()
+                    {
                         last_pts = ts;
                     }
                 }
@@ -303,7 +322,10 @@ impl MulticamEngine {
                     if let Ok(rms) = val_str.trim().parse::<f64>() {
                         // Convert from dBFS to linear for easier comparison
                         let linear = 10.0f64.powf(rms / 20.0);
-                        frames.push(EnergyFrame { time: last_pts, energy: linear });
+                        frames.push(EnergyFrame {
+                            time: last_pts,
+                            energy: linear,
+                        });
                     }
                 }
             }
@@ -357,7 +379,11 @@ impl MulticamEngine {
             t += step;
         }
 
-        if count > 0 { score / count as f64 } else { 0.0 }
+        if count > 0 {
+            score / count as f64
+        } else {
+            0.0
+        }
     }
 
     fn interp_energy(frames: &[EnergyFrame], t: f64) -> f64 {
@@ -365,7 +391,9 @@ impl MulticamEngine {
             return 0.0;
         }
         // Binary search for the closest frame
-        match frames.binary_search_by(|f| f.time.partial_cmp(&t).unwrap_or(std::cmp::Ordering::Less)) {
+        match frames
+            .binary_search_by(|f| f.time.partial_cmp(&t).unwrap_or(std::cmp::Ordering::Less))
+        {
             Ok(idx) => frames[idx].energy,
             Err(idx) => {
                 if idx == 0 {

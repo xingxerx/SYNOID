@@ -1,4 +1,4 @@
-use synoid_core::agent::smart_editor::{EditIntent, EditDensity};
+use synoid_core::agent::smart_editor::{EditDensity, EditIntent};
 
 #[test]
 fn test_duration_parsing() {
@@ -24,22 +24,37 @@ fn test_highlights() {
 #[test]
 fn test_negation_fail() {
     let intent = EditIntent::from_text("remove all talking");
-    assert!(intent.keep_speech, "This is expected to be True currently due to weak parsing");
+    assert!(
+        intent.keep_speech,
+        "This is expected to be True currently due to weak parsing"
+    );
 }
 
 #[test]
 fn test_continuity_synchronization() {
-    use synoid_core::agent::smart_editor::{Scene, EditingStrategy, ensure_speech_continuity};
+    use synoid_core::agent::smart_editor::{ensure_speech_continuity, EditingStrategy, Scene};
     use synoid_core::agent::transcription::TranscriptSegment;
 
     let mut scenes = vec![
-        Scene { start_time: 0.0, end_time: 2.0, duration: 2.0, score: 0.1 }, // Part of sentence
-        Scene { start_time: 2.0, end_time: 4.0, duration: 2.0, score: 0.6 }, // Good part of sentence
+        Scene {
+            start_time: 0.0,
+            end_time: 2.0,
+            duration: 2.0,
+            score: 0.1,
+        }, // Part of sentence
+        Scene {
+            start_time: 2.0,
+            end_time: 4.0,
+            duration: 2.0,
+            score: 0.6,
+        }, // Good part of sentence
     ];
 
-    let transcript = vec![
-        TranscriptSegment { start: 0.5, end: 3.5, text: "Wait for it... YES!".to_string() },
-    ];
+    let transcript = vec![TranscriptSegment {
+        start: 0.5,
+        end: 3.5,
+        text: "Wait for it... YES!".to_string(),
+    }];
 
     let config = EditingStrategy::default();
     ensure_speech_continuity(&mut scenes, &transcript, &config, false);

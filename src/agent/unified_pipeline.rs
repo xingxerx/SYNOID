@@ -17,8 +17,8 @@ pub enum PipelineStage {
     Transcribe, // Speech-to-text transcription
     SmartEdit,  // Intent-based smart editing
 
-    Enhance,    // Audio enhancement
-    Encode,     // Final video encoding
+    Enhance, // Audio enhancement
+    Encode,  // Final video encoding
 }
 
 impl PipelineStage {
@@ -207,14 +207,20 @@ impl UnifiedPipeline {
         let callback: Option<Box<dyn Fn(&str) + Send + Sync>> = progress_cb
             .map(|cb| Box::new(move |msg: &str| cb(msg)) as Box<dyn Fn(&str) + Send + Sync>);
 
-        smart_editor::smart_edit(input, intent, output, false, callback, None, None, config.learned_pattern.clone()).await?;
+        smart_editor::smart_edit(
+            input,
+            intent,
+            output,
+            false,
+            callback,
+            None,
+            None,
+            config.learned_pattern.clone(),
+        )
+        .await?;
 
         Ok(output.to_path_buf())
     }
-
-
-
-
 
     async fn run_enhance(
         &self,

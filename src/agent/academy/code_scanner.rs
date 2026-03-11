@@ -9,7 +9,7 @@ use url::Url;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AnalyzedConcept {
     pub source_repo: String,
-    pub concept: String, // "Bézier Curve Interpolation"
+    pub concept: String,   // "Bézier Curve Interpolation"
     pub file_type: String, // "cpp", "python"
     pub logic_summary: String,
     pub confidence: f32,
@@ -28,11 +28,14 @@ impl CodeScanner {
 
     /// Stealthily scan a repository file URL for editing logic
     /// This fetches the raw content in-memory, processes it, and discards the code.
-    pub async fn scan_remote_code(&self, url: &str) -> Result<AnalyzedConcept, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn scan_remote_code(
+        &self,
+        url: &str,
+    ) -> Result<AnalyzedConcept, Box<dyn std::error::Error + Send + Sync>> {
         // 1. Fetch raw content (In-Memory Only)
         // Clean the URL to collapse potential multiple slashes (e.g., https:///github.com -> https://github.com)
         let mut cleaned_url = url.trim().to_string();
-        
+
         // Robust collapse: identify protocol and hostname, ensure exactly two slashes between them
         if let Some(pos) = cleaned_url.find("://") {
             let protocol = &cleaned_url[..pos];
@@ -45,7 +48,9 @@ impl CodeScanner {
 
         // Convert github blob URL to raw if necessary, or assume raw input
         let raw_url = if cleaned_url.contains("github.com") && cleaned_url.contains("/blob/") {
-            cleaned_url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+            cleaned_url
+                .replace("github.com", "raw.githubusercontent.com")
+                .replace("/blob/", "/")
         } else {
             cleaned_url
         };
@@ -56,22 +61,27 @@ impl CodeScanner {
 
         let resp = client.get(&raw_url).send().await?;
         if !resp.status().is_success() {
-            return Err(format!("Failed to fetch code from {}: Status {}", raw_url, resp.status()).into());
+            return Err(format!(
+                "Failed to fetch code from {}: Status {}",
+                raw_url,
+                resp.status()
+            )
+            .into());
         }
 
         let code_content = resp.text().await?;
         let code_len = code_content.len();
-        
+
         // 2. Filter for relevance (Client-side heuristic)
         // If file is too huge or binary, skip
         if code_len > 100_000 || code_content.contains('\0') {
-             return Err("File too large or binary".into());
+            return Err("File too large or binary".into());
         }
 
         // 3. Extract Conceptual Logic (LLM)
         // We do strictly extraction of *math* or *logic*, no copy-paste.
         info!("[SCANNER] 🧠 Distilling logic from {} bytes...", code_len);
-        
+
         // Truncate for context window
         let snippet = if code_len > 3000 {
             &code_content[..3000]
@@ -87,10 +97,18 @@ impl CodeScanner {
             url, snippet
         );
 
-        let logic = self.agent.reason(&prompt).await.map_err(|e| {
-            warn!("[SCANNER] ⚠️ Reasoning failed: {}. Falling back to default concept.", e);
-            e
-        }).unwrap_or_else(|_| "Algorithmic logic distilled from source code.".to_string());
+        let logic = self
+            .agent
+            .reason(&prompt)
+            .await
+            .map_err(|e| {
+                warn!(
+                    "[SCANNER] ⚠️ Reasoning failed: {}. Falling back to default concept.",
+                    e
+                );
+                e
+            })
+            .unwrap_or_else(|_| "Algorithmic logic distilled from source code.".to_string());
 
         let file_ext = Url::parse(url)?
             .path_segments()

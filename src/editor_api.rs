@@ -55,8 +55,8 @@ pub struct RenderJob {
 #[derive(Debug, Default)]
 pub struct EditorStore {
     pub sessions: HashMap<String, SessionState>,
-    pub assets: HashMap<String, Vec<AssetMeta>>,   // session_id → assets
-    pub jobs: HashMap<String, RenderJob>,           // session_id → render job
+    pub assets: HashMap<String, Vec<AssetMeta>>, // session_id → assets
+    pub jobs: HashMap<String, RenderJob>,        // session_id → render job
 }
 
 pub type SharedEditorStore = Arc<Mutex<EditorStore>>;
@@ -112,7 +112,10 @@ pub fn router(core: Arc<crate::agent::core::AgentCore>) -> Router {
         .route("/sessions/:id/assets", post(upload_asset).get(list_assets))
         .route("/sessions/:id/assets/:asset_id", delete(delete_asset))
         .route("/sessions/:id/assets/:asset_id/stream", get(stream_asset))
-        .route("/sessions/:id/assets/:asset_id/thumbnail", get(get_thumbnail))
+        .route(
+            "/sessions/:id/assets/:asset_id/thumbnail",
+            get(get_thumbnail),
+        )
         .route("/sessions/:id/transcribe", post(transcribe_asset))
         .route("/sessions/:id/ai/chat", post(ai_chat))
         .route("/sessions/:id/ai/auto-edit", post(ai_auto_edit))
@@ -131,10 +134,17 @@ async fn create_session(State(s): State<EditorState>) -> impl IntoResponse {
         .unwrap_or_default()
         .as_secs();
 
-    let asset_dir = PathBuf::from("cortex_cache").join("editor_sessions").join(&id).join("assets");
+    let asset_dir = PathBuf::from("cortex_cache")
+        .join("editor_sessions")
+        .join(&id)
+        .join("assets");
     let _ = tfs::create_dir_all(&asset_dir).await;
 
-    let session = SessionState { id: id.clone(), created_at: now, asset_dir };
+    let session = SessionState {
+        id: id.clone(),
+        created_at: now,
+        asset_dir,
+    };
     {
         let mut store = s.store.lock().unwrap();
         store.sessions.insert(id.clone(), session);
@@ -144,10 +154,7 @@ async fn create_session(State(s): State<EditorState>) -> impl IntoResponse {
     Json(json!({ "id": id, "status": "active" }))
 }
 
-async fn get_session(
-    Path(id): Path<String>,
-    State(s): State<EditorState>,
-) -> impl IntoResponse {
+async fn get_session(Path(id): Path<String>, State(s): State<EditorState>) -> impl IntoResponse {
     let store = s.store.lock().unwrap();
     if store.sessions.contains_key(&id) {
         Json(json!({ "id": id, "status": "active" })).into_response()
@@ -202,9 +209,15 @@ async fn upload_asset(
         extract_thumbnail(&file_path, &thumb_path, 1.0).await;
 
         let kind = infer_asset_type(&filename);
-        let stream_url = format!("/api/editor/sessions/{}/assets/{}/stream", session_id, asset_id);
+        let stream_url = format!(
+            "/api/editor/sessions/{}/assets/{}/stream",
+            session_id, asset_id
+        );
         let thumbnail_url = if thumb_path.exists() {
-            Some(format!("/api/editor/sessions/{}/assets/{}/thumbnail", session_id, asset_id))
+            Some(format!(
+                "/api/editor/sessions/{}/assets/{}/thumbnail",
+                session_id, asset_id
+            ))
         } else {
             None
         };
@@ -225,7 +238,11 @@ async fn upload_asset(
 
         {
             let mut store = s.store.lock().unwrap();
-            store.assets.entry(session_id.clone()).or_default().push(meta.clone());
+            store
+                .assets
+                .entry(session_id.clone())
+                .or_default()
+                .push(meta.clone());
         }
 
         return Json(json!({
@@ -240,7 +257,8 @@ async fn upload_asset(
             "thumbnailUrl": meta.thumbnail_url,
             "streamUrl": meta.stream_url,
             "aiGenerated": false,
-        })).into_response();
+        }))
+        .into_response();
     }
 
     (StatusCode::BAD_REQUEST, "No file provided").into_response()
@@ -252,18 +270,23 @@ async fn list_assets(
 ) -> impl IntoResponse {
     let store = s.store.lock().unwrap();
     let assets = store.assets.get(&session_id).cloned().unwrap_or_default();
-    let json_assets: Vec<Value> = assets.iter().map(|m| json!({
-        "id": m.id,
-        "type": m.kind,
-        "filename": m.filename,
-        "duration": m.duration,
-        "width": m.width,
-        "height": m.height,
-        "size": m.size,
-        "thumbnailUrl": m.thumbnail_url,
-        "streamUrl": m.stream_url,
-        "aiGenerated": false,
-    })).collect();
+    let json_assets: Vec<Value> = assets
+        .iter()
+        .map(|m| {
+            json!({
+                "id": m.id,
+                "type": m.kind,
+                "filename": m.filename,
+                "duration": m.duration,
+                "width": m.width,
+                "height": m.height,
+                "size": m.size,
+                "thumbnailUrl": m.thumbnail_url,
+                "streamUrl": m.stream_url,
+                "aiGenerated": false,
+            })
+        })
+        .collect();
     Json(json_assets)
 }
 
@@ -305,7 +328,9 @@ async fn stream_asset(
             let content_type = mime_guess::from_path(&path)
                 .first_or_octet_stream()
                 .to_string();
-            serve_file_with_range(&path, &headers, &content_type).await.into_response()
+            serve_file_with_range(&path, &headers, &content_type)
+                .await
+                .into_response()
         }
         None => StatusCode::NOT_FOUND.into_response(),
     }
@@ -317,16 +342,16 @@ async fn get_thumbnail(
 ) -> impl IntoResponse {
     let dir = {
         let store = s.store.lock().unwrap();
-        store.sessions.get(&session_id).map(|sess| sess.asset_dir.clone())
+        store
+            .sessions
+            .get(&session_id)
+            .map(|sess| sess.asset_dir.clone())
     };
     if let Some(asset_dir) = dir {
         let thumb_path = asset_dir.join(format!("{}_thumb.jpg", asset_id));
         if thumb_path.exists() {
             if let Ok(bytes) = tfs::read(&thumb_path).await {
-                return (
-                    [(header::CONTENT_TYPE, "image/jpeg")],
-                    bytes,
-                ).into_response();
+                return ([(header::CONTENT_TYPE, "image/jpeg")], bytes).into_response();
             }
         }
     }
@@ -342,10 +367,19 @@ async fn transcribe_asset(
     let file_path = find_asset_path(&s, &session_id, &req.asset_id).await;
     let file_path = match file_path {
         Some(p) => p,
-        None => return (StatusCode::NOT_FOUND, Json(json!({"error": "Asset not found"}))).into_response(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Asset not found"})),
+            )
+                .into_response()
+        }
     };
 
-    info!("[EDITOR-API] Transcribing asset {} in session {}", req.asset_id, session_id);
+    info!(
+        "[EDITOR-API] Transcribing asset {} in session {}",
+        req.asset_id, session_id
+    );
 
     // Extract audio to WAV for Whisper
     let wav_path = file_path.with_extension("_transcribe.wav");
@@ -360,14 +394,22 @@ async fn transcribe_asset(
         .unwrap_or(false);
 
     if !extract_ok {
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "Audio extraction failed"}))).into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Audio extraction failed"})),
+        )
+            .into_response();
     }
 
     let engine = match crate::agent::transcription::TranscriptionEngine::new(None).await {
         Ok(e) => e,
         Err(e) => {
             error!("[EDITOR-API] Transcription engine init failed: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response();
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response();
         }
     };
 
@@ -376,7 +418,11 @@ async fn transcribe_asset(
         Err(e) => {
             let _ = tfs::remove_file(&wav_path).await;
             error!("[EDITOR-API] Transcription failed: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response();
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response();
         }
     };
     let _ = tfs::remove_file(&wav_path).await;
@@ -414,16 +460,24 @@ async fn ai_chat(
     State(s): State<EditorState>,
     Json(req): Json<AiChatRequest>,
 ) -> impl IntoResponse {
-    info!("[EDITOR-API] AI chat in session {}: {}", session_id, req.message);
+    info!(
+        "[EDITOR-API] AI chat in session {}: {}",
+        session_id, req.message
+    );
     let mut brain = s.core.brain.lock().await;
     match brain.process(&req.message).await {
         Ok(response) => Json(json!({
             "response": response,
             "actions": suggest_actions_from_response(&response),
-        })).into_response(),
+        }))
+        .into_response(),
         Err(e) => {
             error!("[EDITOR-API] Brain error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))).into_response()
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": e.to_string()})),
+            )
+                .into_response()
         }
     }
 }
@@ -446,13 +500,18 @@ async fn ai_auto_edit(
     State(s): State<EditorState>,
     Json(req): Json<AutoEditRequest>,
 ) -> impl IntoResponse {
-    info!("[EDITOR-API] Auto-edit in session {}: {}", session_id, req.intent);
+    info!(
+        "[EDITOR-API] Auto-edit in session {}: {}",
+        session_id, req.intent
+    );
 
     let asset_id = req.asset_id.as_deref().unwrap_or("");
     let file_path = if asset_id.is_empty() {
         // Use the first asset in the session
         let store = s.store.lock().unwrap();
-        store.assets.get(&session_id)
+        store
+            .assets
+            .get(&session_id)
             .and_then(|a| a.first())
             .map(|a| {
                 // Reconstruct path from session asset dir
@@ -466,11 +525,20 @@ async fn ai_auto_edit(
 
     let input = match file_path {
         Some(p) if p.exists() => p,
-        _ => return (StatusCode::NOT_FOUND, Json(json!({"error": "Asset not found"}))).into_response(),
+        _ => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Asset not found"})),
+            )
+                .into_response()
+        }
     };
 
     let output_name = req.output_path.unwrap_or_else(|| {
-        format!("cortex_cache/editor_sessions/{}/ai_edit_output.mp4", session_id)
+        format!(
+            "cortex_cache/editor_sessions/{}/ai_edit_output.mp4",
+            session_id
+        )
     });
     let output = PathBuf::from(&output_name);
     if let Some(parent) = output.parent() {
@@ -480,12 +548,15 @@ async fn ai_auto_edit(
     // Initialize job
     {
         let mut store = s.store.lock().unwrap();
-        store.jobs.insert(session_id.clone(), RenderJob {
-            progress: 0.0,
-            status: "running".to_string(),
-            output_path: None,
-            error: None,
-        });
+        store.jobs.insert(
+            session_id.clone(),
+            RenderJob {
+                progress: 0.0,
+                status: "running".to_string(),
+                output_path: None,
+                error: None,
+            },
+        );
     }
 
     let _core = s.core.clone();
@@ -506,7 +577,8 @@ async fn ai_auto_edit(
             None,
             None,
             None,
-        ).await;
+        )
+        .await;
 
         let mut store = store_clone.lock().unwrap();
         if let Some(job) = store.jobs.get_mut(&session_id_clone) {
@@ -528,7 +600,8 @@ async fn ai_auto_edit(
         "jobId": session_id,
         "status": "started",
         "outputPath": output_name,
-    })).into_response()
+    }))
+    .into_response()
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
@@ -543,14 +616,18 @@ async fn start_render(
     // Find the input asset
     let file_path = if asset_id.is_empty() {
         let store = s.store.lock().unwrap();
-        store.assets.get(&session_id)
+        store
+            .assets
+            .get(&session_id)
             .and_then(|a| a.first())
             .and_then(|a| {
                 let dir = store.sessions.get(&session_id)?.asset_dir.clone();
                 // try to find file
-                std::fs::read_dir(&dir).ok()?.filter_map(|e| e.ok()).find(|e| {
-                    e.file_name().to_string_lossy().starts_with(&a.id)
-                }).map(|e| e.path())
+                std::fs::read_dir(&dir)
+                    .ok()?
+                    .filter_map(|e| e.ok())
+                    .find(|e| e.file_name().to_string_lossy().starts_with(&a.id))
+                    .map(|e| e.path())
             })
     } else {
         find_asset_path(&s, &session_id, &asset_id).await
@@ -558,11 +635,18 @@ async fn start_render(
 
     let input = match file_path {
         Some(p) if p.exists() => p,
-        _ => return (StatusCode::BAD_REQUEST, Json(json!({"error": "No asset to render"}))).into_response(),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "No asset to render"})),
+            )
+                .into_response()
+        }
     };
 
     let output_path = PathBuf::from(format!(
-        "cortex_cache/editor_sessions/{}/render_output.mp4", session_id
+        "cortex_cache/editor_sessions/{}/render_output.mp4",
+        session_id
     ));
     if let Some(p) = output_path.parent() {
         let _ = tfs::create_dir_all(p).await;
@@ -570,12 +654,15 @@ async fn start_render(
 
     {
         let mut store = s.store.lock().unwrap();
-        store.jobs.insert(session_id.clone(), RenderJob {
-            progress: 0.0,
-            status: "rendering".to_string(),
-            output_path: None,
-            error: None,
-        });
+        store.jobs.insert(
+            session_id.clone(),
+            RenderJob {
+                progress: 0.0,
+                status: "rendering".to_string(),
+                output_path: None,
+                error: None,
+            },
+        );
     }
 
     let _core = s.core.clone();
@@ -595,7 +682,8 @@ async fn start_render(
                 None,
                 None,
                 None,
-            ).await;
+            )
+            .await;
         } else {
             // Just copy-encode with subtitle burn-in if SRT exists
             let srt_path = input.with_extension("srt");
@@ -608,16 +696,17 @@ async fn start_render(
                 let srt_str = srt_path.to_string_lossy().to_string();
                 // Escape colons on Windows paths for ffmpeg vf filter
                 let safe_srt = srt_str.replace('\\', "/").replace(":/", "\\:/");
-                args.extend([
-                    "-vf".to_string(),
-                    format!("subtitles='{}'", safe_srt),
-                ]);
+                args.extend(["-vf".to_string(), format!("subtitles='{}'", safe_srt)]);
             }
             args.extend([
-                "-c:v".to_string(), "libx264".to_string(),
-                "-crf".to_string(), "18".to_string(),
-                "-preset".to_string(), "fast".to_string(),
-                "-c:a".to_string(), "aac".to_string(),
+                "-c:v".to_string(),
+                "libx264".to_string(),
+                "-crf".to_string(),
+                "18".to_string(),
+                "-preset".to_string(),
+                "fast".to_string(),
+                "-c:a".to_string(),
+                "aac".to_string(),
                 output_clone.to_string_lossy().to_string(),
             ]);
             let _ = Command::new("ffmpeg").args(&args).status().await;
@@ -626,15 +715,24 @@ async fn start_render(
         let mut store = store_clone.lock().unwrap();
         if let Some(job) = store.jobs.get_mut(&session_id_clone) {
             job.progress = 1.0;
-            job.status = if output_clone.exists() { "done".to_string() } else { "error".to_string() };
-            job.output_path = if output_clone.exists() { Some(output_clone) } else { None };
+            job.status = if output_clone.exists() {
+                "done".to_string()
+            } else {
+                "error".to_string()
+            };
+            job.output_path = if output_clone.exists() {
+                Some(output_clone)
+            } else {
+                None
+            };
         }
     });
 
     Json(json!({
         "jobId": session_id,
         "status": "started",
-    })).into_response()
+    }))
+    .into_response()
 }
 
 async fn render_status(
@@ -643,18 +741,18 @@ async fn render_status(
 ) -> impl IntoResponse {
     let store = s.store.lock().unwrap();
     match store.jobs.get(&session_id) {
-        Some(job) => {
-            Json(json!({
-                "progress": job.progress,
-                "status": job.status,
-                "outputPath": job.output_path.as_ref().map(|p| p.to_string_lossy()),
-                "error": job.error,
-            })).into_response()
-        }
+        Some(job) => Json(json!({
+            "progress": job.progress,
+            "status": job.status,
+            "outputPath": job.output_path.as_ref().map(|p| p.to_string_lossy()),
+            "error": job.error,
+        }))
+        .into_response(),
         None => Json(json!({
             "progress": 0.0,
             "status": "idle",
-        })).into_response(),
+        }))
+        .into_response(),
     }
 }
 
@@ -665,7 +763,8 @@ async fn save_project(
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
     let project_path = PathBuf::from(format!(
-        "cortex_cache/editor_sessions/{}/project.json", session_id
+        "cortex_cache/editor_sessions/{}/project.json",
+        session_id
     ));
     if let Some(p) = project_path.parent() {
         let _ = tfs::create_dir_all(p).await;
@@ -681,23 +780,17 @@ async fn load_project(
     State(_s): State<EditorState>,
 ) -> impl IntoResponse {
     let project_path = PathBuf::from(format!(
-        "cortex_cache/editor_sessions/{}/project.json", session_id
+        "cortex_cache/editor_sessions/{}/project.json",
+        session_id
     ));
     match tfs::read_to_string(&project_path).await {
-        Ok(content) => (
-            [(header::CONTENT_TYPE, "application/json")],
-            content,
-        ).into_response(),
+        Ok(content) => ([(header::CONTENT_TYPE, "application/json")], content).into_response(),
         Err(_) => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-async fn find_asset_path(
-    s: &EditorState,
-    session_id: &str,
-    asset_id: &str,
-) -> Option<PathBuf> {
+async fn find_asset_path(s: &EditorState, session_id: &str, asset_id: &str) -> Option<PathBuf> {
     let asset_dir = {
         let store = s.store.lock().unwrap();
         store.sessions.get(session_id)?.asset_dir.clone()
@@ -715,10 +808,14 @@ async fn find_asset_path(
 async fn probe_video_meta(path: &PathBuf) -> (f64, u32, u32, f64) {
     let output = Command::new("ffprobe")
         .args([
-            "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width,height,r_frame_rate:format=duration",
-            "-of", "json",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height,r_frame_rate:format=duration",
+            "-of",
+            "json",
         ])
         .arg(path)
         .output()
@@ -772,7 +869,13 @@ fn infer_asset_type(filename: &str) -> String {
 
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -795,14 +898,21 @@ async fn serve_file_with_range(
         if let Some(range_bytes) = range_val.strip_prefix("bytes=") {
             let parts: Vec<&str> = range_bytes.split('-').collect();
             let start: u64 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
-            let end: u64 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(total.saturating_sub(1)).min(total - 1);
+            let end: u64 = parts
+                .get(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(total.saturating_sub(1))
+                .min(total - 1);
             let length = end - start + 1;
 
             let data = read_file_range(path, start, length).await;
             return Response::builder()
                 .status(StatusCode::PARTIAL_CONTENT)
                 .header(header::CONTENT_TYPE, content_type)
-                .header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", start, end, total))
+                .header(
+                    header::CONTENT_RANGE,
+                    format!("bytes {}-{}/{}", start, end, total),
+                )
                 .header(header::CONTENT_LENGTH, length)
                 .header("Accept-Ranges", "bytes")
                 .body(Body::from(data))

@@ -1,10 +1,10 @@
 // SYNOID Hive Mind - Collaborative Intelligence Network
 // Copyright (c) 2026 Xing_The_Creator | SYNOID
 
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::info;
-use reqwest::Client;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ModelRole {
@@ -119,7 +119,14 @@ impl HiveMind {
                             match role {
                                 ModelRole::Reasoning => {
                                     if !self.cloud_enabled {
-                                        if self.active_reasoner.is_none() || size > self.models.get(self.active_reasoner.as_ref().unwrap()).map(|m| m.size).unwrap_or(0) {
+                                        if self.active_reasoner.is_none()
+                                            || size
+                                                > self
+                                                    .models
+                                                    .get(self.active_reasoner.as_ref().unwrap())
+                                                    .map(|m| m.size)
+                                                    .unwrap_or(0)
+                                        {
                                             self.active_reasoner = Some(name.clone());
                                             self.reasoner_backend = ModelBackend::Ollama;
                                         }
@@ -134,15 +141,21 @@ impl HiveMind {
                                 _ => {}
                             }
 
-                            self.models.insert(name.clone(), OllamaModel {
-                                name,
-                                size,
-                                role,
-                                details,
-                            });
+                            self.models.insert(
+                                name.clone(),
+                                OllamaModel {
+                                    name,
+                                    size,
+                                    role,
+                                    details,
+                                },
+                            );
                         }
                     }
-                    info!("[HIVE_MIND] Connected. Found {} total neural nodes (cloud + local).", self.models.len());
+                    info!(
+                        "[HIVE_MIND] Connected. Found {} total neural nodes (cloud + local).",
+                        self.models.len()
+                    );
                 } else {
                     if !self.cloud_enabled {
                         return Err(format!("Ollama API Error: {}", resp.status()));
@@ -152,7 +165,10 @@ impl HiveMind {
             }
             Err(e) => {
                 if !self.cloud_enabled {
-                    tracing::debug!("[HIVE_MIND] Ollama not detected at {}. Continuing with local defaults.", self.api_url);
+                    tracing::debug!(
+                        "[HIVE_MIND] Ollama not detected at {}. Continuing with local defaults.",
+                        self.api_url
+                    );
                     return Err(e.to_string());
                 }
                 info!("[HIVE_MIND] Ollama offline, using cloud providers (Groq/Google).");
@@ -161,7 +177,10 @@ impl HiveMind {
 
         // Log active configuration
         if let Some(r) = &self.active_reasoner {
-            info!("[HIVE_MIND] Prime Reasoner: {} ({})", r, self.reasoner_backend);
+            info!(
+                "[HIVE_MIND] Prime Reasoner: {} ({})",
+                r, self.reasoner_backend
+            );
         }
         if let Some(f) = &self.active_fast_responder {
             info!("[HIVE_MIND] Fast Responder: {} ({})", f, self.fast_backend);
@@ -236,11 +255,16 @@ impl HiveMind {
             return ModelRole::Specialist("vision".to_string());
         }
         if lower.contains("dolphin") || lower.contains("uncensored") {
-             return ModelRole::Specialist("creative".to_string());
+            return ModelRole::Specialist("creative".to_string());
         }
 
         // 2. Reasoning vs Grunt Isolation (Size-based)
-        if size_gb > 14.0 || lower.contains("70b") || lower.contains("mixtral") || lower.contains("deepseek-r1") || lower.contains("gpt-oss") {
+        if size_gb > 14.0
+            || lower.contains("70b")
+            || lower.contains("mixtral")
+            || lower.contains("deepseek-r1")
+            || lower.contains("gpt-oss")
+        {
             return ModelRole::Reasoning;
         }
 
@@ -249,11 +273,15 @@ impl HiveMind {
     }
 
     pub fn get_reasoning_model(&self) -> String {
-        self.active_reasoner.clone().unwrap_or_else(|| "llama3:latest".to_string())
+        self.active_reasoner
+            .clone()
+            .unwrap_or_else(|| "llama3:latest".to_string())
     }
 
     pub fn get_fast_model(&self) -> String {
-        self.active_fast_responder.clone().unwrap_or_else(|| "llama3:latest".to_string())
+        self.active_fast_responder
+            .clone()
+            .unwrap_or_else(|| "llama3:latest".to_string())
     }
 
     /// Check if vision is available via Google AI Studio.

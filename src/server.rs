@@ -1,22 +1,22 @@
 use axum::{
     extract::{Query, Request, State},
+    http::{HeaderMap, StatusCode},
     middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
-    http::{StatusCode, HeaderMap},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::path::{Component, PathBuf};
 use std::sync::Arc;
 use tower::ServiceExt; // For oneshot
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing::{error, info};
-use std::path::{PathBuf, Component};
 
-use crate::state::{DashboardStatus, DashboardTask, KernelState, TasksStatus};
 use crate::editor_api;
+use crate::state::{DashboardStatus, DashboardTask, KernelState, TasksStatus};
 
 pub type AppState = Arc<KernelState>;
 
@@ -36,8 +36,7 @@ struct StreamParams {
 }
 
 const ALLOWED_EXTENSIONS: &[&str] = &[
-    "mp4", "mkv", "mov", "avi", "webm", "flv", "wmv",
-    "mp3", "wav", "flac", "aac", "ogg", "m4a",
+    "mp4", "mkv", "mov", "avi", "webm", "flv", "wmv", "mp3", "wav", "flac", "aac", "ogg", "m4a",
     "jpg", "jpeg", "png", "gif", "bmp", "webp",
 ];
 
@@ -47,7 +46,6 @@ fn is_safe_media_path(path: &std::path::Path) -> bool {
         .map(|ext| ALLOWED_EXTENSIONS.contains(&ext.to_lowercase().as_str()))
         .unwrap_or(false)
 }
-
 
 fn validate_stream_path(raw_path: &str) -> Result<PathBuf, String> {
     if raw_path.is_empty() {
@@ -71,10 +69,11 @@ fn validate_stream_path(raw_path: &str) -> Result<PathBuf, String> {
     // 3. Validate extension
     let allowed_extensions = [
         "mp4", "mkv", "avi", "mov", "webm", // Video
-        "mp3", "wav", "flac", "ogg", "m4a"  // Audio
+        "mp3", "wav", "flac", "ogg", "m4a", // Audio
     ];
 
-    let ext = path.extension()
+    let ext = path
+        .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
 
@@ -113,7 +112,9 @@ pub fn create_router(state: Arc<KernelState>) -> Router {
 
 pub async fn start_server(port: u16, state: Arc<KernelState>) {
     if std::env::var("SYNOID_API_KEY").is_err() {
-        tracing::debug!("💡 TIP: SYNOID_API_KEY is not set. Using default developer key for local access.");
+        tracing::debug!(
+            "💡 TIP: SYNOID_API_KEY is not set. Using default developer key for local access."
+        );
         tracing::debug!("To secure your dashboard, set the SYNOID_API_KEY environment variable.");
     }
 
@@ -183,8 +184,9 @@ async fn auth_middleware(
     request: Request,
     next: middleware::Next,
 ) -> Result<Response, StatusCode> {
-    let api_key = std::env::var("SYNOID_API_KEY").unwrap_or_else(|_| "synoid_secret_v1".to_string());
-    
+    let api_key =
+        std::env::var("SYNOID_API_KEY").unwrap_or_else(|_| "synoid_secret_v1".to_string());
+
     match headers.get("x-api-key") {
         Some(key) if key == api_key.as_str() => Ok(next.run(request).await),
         _ => {
@@ -289,7 +291,7 @@ mod tests {
         assert!(validate_stream_path("").is_err());
         // Absolute paths must be rejected. On windows, we use drive letters for true absolute checks.
         // But the regex should catch / or \ at start too.
-        assert!(validate_stream_path("/etc/media.mp4").is_err() || cfg!(windows)); 
+        assert!(validate_stream_path("/etc/media.mp4").is_err() || cfg!(windows));
         assert!(validate_stream_path("C:/absolute/path/video.mkv").is_err());
     }
 }

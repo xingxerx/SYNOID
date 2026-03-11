@@ -25,8 +25,10 @@ const COLOR_TREE_ITEM: egui::Color32 = egui::Color32::from_rgb(100, 180, 255);
 
 // --- WSL Helpers ---
 fn is_wsl() -> bool {
-    std::env::var("WSL_DISTRO_NAME").is_ok() || 
-    std::fs::read_to_string("/proc/version").map(|s| s.contains("Microsoft") || s.contains("WSL")).unwrap_or(false)
+    std::env::var("WSL_DISTRO_NAME").is_ok()
+        || std::fs::read_to_string("/proc/version")
+            .map(|s| s.contains("Microsoft") || s.contains("WSL"))
+            .unwrap_or(false)
 }
 
 fn get_default_videos_path() -> PathBuf {
@@ -51,7 +53,7 @@ fn get_default_videos_path() -> PathBuf {
             }
         }
     }
-    
+
     // Final fallback: current directory
     PathBuf::from(".")
 }
@@ -142,8 +144,6 @@ pub struct UiState {
     pub discovery_query: String,
     pub recent_jobs: Vec<crate::agent::editor_queue::EditJob>,
 }
-
-
 
 pub struct SynoidApp {
     core: Arc<AgentCore>,
@@ -349,14 +349,16 @@ impl SynoidApp {
                     tokio::spawn(async move {
                         match reqwest::Client::new()
                             .post("http://127.0.0.1:3000/api/editor/sessions")
-                            .send().await
+                            .send()
+                            .await
                         {
                             Ok(r) => {
                                 if let Ok(json) = r.json::<serde_json::Value>().await {
                                     let id = json["id"].as_str().unwrap_or("").to_string();
                                     if let Ok(mut s) = ui_ptr.lock() {
                                         s.editor_session_id = Some(id.clone());
-                                        s.editor_api_status = format!("Session: {}", &id[..8.min(id.len())]);
+                                        s.editor_api_status =
+                                            format!("Session: {}", &id[..8.min(id.len())]);
                                     }
                                 }
                             }
@@ -374,11 +376,18 @@ impl SynoidApp {
 
     fn render_dashboard(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.vertical_centered(|ui| {
-             ui.add_space(20.0);
-             ui.label(egui::RichText::new("🚀 SYNOID Dashboard").size(24.0).color(COLOR_ACCENT_ORANGE).strong());
-             ui.add_space(10.0);
-             ui.label(egui::RichText::new("Autonomous Video Kernel v0.1.1").color(COLOR_TEXT_SECONDARY));
-             ui.add_space(30.0);
+            ui.add_space(20.0);
+            ui.label(
+                egui::RichText::new("🚀 SYNOID Dashboard")
+                    .size(24.0)
+                    .color(COLOR_ACCENT_ORANGE)
+                    .strong(),
+            );
+            ui.add_space(10.0);
+            ui.label(
+                egui::RichText::new("Autonomous Video Kernel v0.1.1").color(COLOR_TEXT_SECONDARY),
+            );
+            ui.add_space(30.0);
         });
 
         ui.columns(2, |cols| {
@@ -388,14 +397,23 @@ impl SynoidApp {
                 ui.add_space(10.0);
                 if ui.button("🔄 Refresh Nodes").clicked() {
                     let core = self.core.clone();
-                    tokio::spawn(async move { let _ = core.initialize_hive_mind().await; });
+                    tokio::spawn(async move {
+                        let _ = core.initialize_hive_mind().await;
+                    });
                 }
             });
 
             cols[1].group(|ui| {
                 ui.heading("🎓 Neuroplasticity");
                 ui.label("Learning Loop: Active");
-                ui.label(format!("Adaptation: {}", if state.is_autonomous_running { "Stable" } else { "Paused" }));
+                ui.label(format!(
+                    "Adaptation: {}",
+                    if state.is_autonomous_running {
+                        "Stable"
+                    } else {
+                        "Paused"
+                    }
+                ));
                 ui.add_space(10.0);
                 ui.toggle_value(&mut state.is_autonomous_running, "Autonomous Mode");
             });
@@ -427,7 +445,9 @@ impl SynoidApp {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("🗑 Clear Completed").clicked() {
                         let core = self.core.clone();
-                        tokio::spawn(async move { let _ = core.editor_queue.clear_completed().await; });
+                        tokio::spawn(async move {
+                            let _ = core.editor_queue.clear_completed().await;
+                        });
                     }
                 });
             });
@@ -435,51 +455,96 @@ impl SynoidApp {
             ui.add_space(5.0);
 
             if state.recent_jobs.is_empty() {
-                ui.label(egui::RichText::new("No active or recent jobs.").color(COLOR_TEXT_SECONDARY).italics());
+                ui.label(
+                    egui::RichText::new("No active or recent jobs.")
+                        .color(COLOR_TEXT_SECONDARY)
+                        .italics(),
+                );
             } else {
-                egui::ScrollArea::vertical().max_height(350.0).show(ui, |ui| {
-                    for job in state.recent_jobs.iter().rev() {
-                        ui.group(|ui| {
-                            ui.horizontal(|ui| {
-                                let status_color = match job.status {
-                                    crate::agent::editor_queue::JobStatus::Queued => egui::Color32::from_rgb(150, 150, 150),
-                                    crate::agent::editor_queue::JobStatus::Processing { .. } => COLOR_ACCENT_BLUE,
-                                    crate::agent::editor_queue::JobStatus::Completed { .. } => COLOR_ACCENT_GREEN,
-                                    crate::agent::editor_queue::JobStatus::Failed(_) => COLOR_ACCENT_RED,
-                                };
-                                
-                                ui.label(egui::RichText::new(format!("Job {}", &job.id.to_string()[..8])).strong());
-                                ui.label(egui::RichText::new(format!("{:?}", job.status)).color(status_color));
-                                
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.label(format!("{:.1}s", job.created_at.elapsed().as_secs_f32()));
-                                });
-                            });
-                            
-                            ui.label(egui::RichText::new(&job.intent).small().color(COLOR_TEXT_SECONDARY));
-                            
-                            if let crate::agent::editor_queue::JobStatus::Completed { kept_ratio, duration_secs, .. } = job.status {
+                egui::ScrollArea::vertical()
+                    .max_height(350.0)
+                    .show(ui, |ui| {
+                        for job in state.recent_jobs.iter().rev() {
+                            ui.group(|ui| {
                                 ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(format!("Kept: {:.0}% | Final: {:.1}s", kept_ratio * 100.0, duration_secs)).small());
-                                    
-                                    ui.add_space(10.0);
-                                    ui.label("Rate Edit:");
-                                    for i in 1..=5 {
-                                        let star = if i <= 3 { "⭐" } else { "☆" }; // Placeholder or real
-                                        if ui.button(format!("{} {}", i, star)).clicked() {
-                                            let core = self.core.clone();
-                                            let job_id = job.id;
-                                            tokio::spawn(async move {
-                                                core.record_user_rating(job_id, i as u8).await;
-                                            });
+                                    let status_color = match job.status {
+                                        crate::agent::editor_queue::JobStatus::Queued => {
+                                            egui::Color32::from_rgb(150, 150, 150)
                                         }
-                                    }
+                                        crate::agent::editor_queue::JobStatus::Processing {
+                                            ..
+                                        } => COLOR_ACCENT_BLUE,
+                                        crate::agent::editor_queue::JobStatus::Completed {
+                                            ..
+                                        } => COLOR_ACCENT_GREEN,
+                                        crate::agent::editor_queue::JobStatus::Failed(_) => {
+                                            COLOR_ACCENT_RED
+                                        }
+                                    };
+
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "Job {}",
+                                            &job.id.to_string()[..8]
+                                        ))
+                                        .strong(),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(format!("{:?}", job.status))
+                                            .color(status_color),
+                                    );
+
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            ui.label(format!(
+                                                "{:.1}s",
+                                                job.created_at.elapsed().as_secs_f32()
+                                            ));
+                                        },
+                                    );
                                 });
-                            }
-                        });
-                        ui.add_space(4.0);
-                    }
-                });
+
+                                ui.label(
+                                    egui::RichText::new(&job.intent)
+                                        .small()
+                                        .color(COLOR_TEXT_SECONDARY),
+                                );
+
+                                if let crate::agent::editor_queue::JobStatus::Completed {
+                                    kept_ratio,
+                                    duration_secs,
+                                    ..
+                                } = job.status
+                                {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "Kept: {:.0}% | Final: {:.1}s",
+                                                kept_ratio * 100.0,
+                                                duration_secs
+                                            ))
+                                            .small(),
+                                        );
+
+                                        ui.add_space(10.0);
+                                        ui.label("Rate Edit:");
+                                        for i in 1..=5 {
+                                            let star = if i <= 3 { "⭐" } else { "☆" }; // Placeholder or real
+                                            if ui.button(format!("{} {}", i, star)).clicked() {
+                                                let core = self.core.clone();
+                                                let job_id = job.id;
+                                                tokio::spawn(async move {
+                                                    core.record_user_rating(job_id, i as u8).await;
+                                                });
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                            ui.add_space(4.0);
+                        }
+                    });
             }
         });
     }
@@ -489,7 +554,9 @@ impl SynoidApp {
         let score = self.core.hci_score();
         let display = self.core.hci_display();
         let hci = &self.core.hci;
-        let director = hci.director_decisions.load(std::sync::atomic::Ordering::Relaxed);
+        let director = hci
+            .director_decisions
+            .load(std::sync::atomic::Ordering::Relaxed);
         let ai = hci.ai_decisions.load(std::sync::atomic::Ordering::Relaxed);
         let authorship_pct = hci.authorship_percent() as u32;
 
@@ -524,10 +591,8 @@ impl SynoidApp {
 
             // Progress bar: authorship percentage
             let bar_pct = (authorship_pct as f32 / 100.0).clamp(0.0, 1.0);
-            let (rect, _) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width(), 14.0),
-                egui::Sense::hover(),
-            );
+            let (rect, _) = ui
+                .allocate_exact_size(egui::vec2(ui.available_width(), 14.0), egui::Sense::hover());
             let painter = ui.painter();
             // Background track
             painter.rect_filled(rect, 4.0, egui::Color32::from_rgb(50, 50, 60));
@@ -562,8 +627,17 @@ impl SynoidApp {
             } else {
                 "Predominantly AI-generated"
             };
-            ui.label(egui::RichText::new(interp).size(11.0).color(COLOR_TEXT_SECONDARY));
-            ui.label(egui::RichText::new(&display).size(10.0).monospace().color(COLOR_TEXT_SECONDARY));
+            ui.label(
+                egui::RichText::new(interp)
+                    .size(11.0)
+                    .color(COLOR_TEXT_SECONDARY),
+            );
+            ui.label(
+                egui::RichText::new(&display)
+                    .size(10.0)
+                    .monospace()
+                    .color(COLOR_TEXT_SECONDARY),
+            );
         });
     }
 
@@ -581,24 +655,45 @@ impl SynoidApp {
             } else {
                 ui.add_space(50.0);
                 ui.label("No Preview Available");
-                ui.label(egui::RichText::new("Select a video file to begin").small().color(COLOR_TEXT_SECONDARY));
+                ui.label(
+                    egui::RichText::new("Select a video file to begin")
+                        .small()
+                        .color(COLOR_TEXT_SECONDARY),
+                );
                 ui.add_space(50.0);
             }
 
             ui.add_space(10.0);
             if !state.input_path.is_empty() {
-                ui.label(egui::RichText::new(&state.input_path).small().color(COLOR_TEXT_SECONDARY));
+                ui.label(
+                    egui::RichText::new(&state.input_path)
+                        .small()
+                        .color(COLOR_TEXT_SECONDARY),
+                );
                 ui.add_space(5.0);
                 ui.horizontal(|ui| {
                     if state.video_player.is_some() {
-                        if ui.button(egui::RichText::new("⏹ Stop").color(COLOR_ACCENT_RED)).clicked() {
+                        if ui
+                            .button(egui::RichText::new("⏹ Stop").color(COLOR_ACCENT_RED))
+                            .clicked()
+                        {
                             state.video_player = None;
                         }
                     } else {
-                        if ui.button(egui::RichText::new("▶ Play in Preview").color(COLOR_ACCENT_GREEN)).clicked() {
-                            match crate::agent::video_player::VideoPlayer::new(&state.input_path, state.video_position) {
+                        if ui
+                            .button(
+                                egui::RichText::new("▶ Play in Preview").color(COLOR_ACCENT_GREEN),
+                            )
+                            .clicked()
+                        {
+                            match crate::agent::video_player::VideoPlayer::new(
+                                &state.input_path,
+                                state.video_position,
+                            ) {
                                 Ok(vp) => state.video_player = Some(vp),
-                                Err(e) => self.core.log(&format!("[GUI] ❌ Failed to start video player: {}", e)),
+                                Err(e) => self
+                                    .core
+                                    .log(&format!("[GUI] ❌ Failed to start video player: {}", e)),
                             }
                         }
                     }
@@ -607,10 +702,7 @@ impl SynoidApp {
         });
     }
 
-
-
     // --- Command Panels ---
-
 
     fn render_clip_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("✂️ Clip Video").color(COLOR_ACCENT_BLUE));
@@ -693,10 +785,6 @@ impl SynoidApp {
         }
     }
 
-
-
-
-
     fn render_brain_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🧠 Brain Command").color(COLOR_ACCENT_BLUE));
         ui.separator();
@@ -747,11 +835,14 @@ impl SynoidApp {
         ui.add_space(10.0);
 
         ui.label("Creative Intent:");
-        if ui.add(
-            egui::TextEdit::multiline(&mut state.intent)
-                .desired_rows(3)
-                .desired_width(f32::INFINITY),
-        ).changed() {
+        if ui
+            .add(
+                egui::TextEdit::multiline(&mut state.intent)
+                    .desired_rows(3)
+                    .desired_width(f32::INFINITY),
+            )
+            .changed()
+        {
             let _ = std::fs::write("synoid_intent.txt", &state.intent);
         }
         ui.add_space(5.0);
@@ -763,16 +854,23 @@ impl SynoidApp {
 
         let has_input = !state.input_path.is_empty();
         if !has_input {
-            ui.label(egui::RichText::new("⚠️ Enter a URL or file path").size(12.0).color(COLOR_ACCENT_RED));
+            ui.label(
+                egui::RichText::new("⚠️ Enter a URL or file path")
+                    .size(12.0)
+                    .color(COLOR_ACCENT_RED),
+            );
         }
 
         ui.horizontal(|ui| {
             let button_enabled = has_input;
-            
+
             // Standard Embodiment (Logic from original embody_intent)
-            let embody_btn = egui::Button::new(egui::RichText::new("🤖 Execute Intent").size(16.0)).fill(
-                if button_enabled { COLOR_ACCENT_PURPLE } else { egui::Color32::from_rgb(80, 80, 80) }
-            );
+            let embody_btn = egui::Button::new(egui::RichText::new("🤖 Execute Intent").size(16.0))
+                .fill(if button_enabled {
+                    COLOR_ACCENT_PURPLE
+                } else {
+                    egui::Color32::from_rgb(80, 80, 80)
+                });
             if ui.add(embody_btn).clicked() && button_enabled {
                 let core = self.core.clone();
                 let input = PathBuf::from(&state.input_path);
@@ -785,9 +883,12 @@ impl SynoidApp {
             }
 
             // Optimized Smart Edit (Logic from original process_youtube_intent)
-            let smart_btn = egui::Button::new(egui::RichText::new("⚡ Optimized Edit").size(16.0)).fill(
-                if button_enabled { COLOR_ACCENT_ORANGE } else { egui::Color32::from_rgb(80, 80, 80) }
-            );
+            let smart_btn = egui::Button::new(egui::RichText::new("⚡ Optimized Edit").size(16.0))
+                .fill(if button_enabled {
+                    COLOR_ACCENT_ORANGE
+                } else {
+                    egui::Color32::from_rgb(80, 80, 80)
+                });
             if ui.add(smart_btn).clicked() && button_enabled {
                 let core = self.core.clone();
                 let input = state.input_path.clone();
@@ -798,11 +899,13 @@ impl SynoidApp {
                 };
                 let intent = state.intent.clone();
                 tokio::spawn(async move {
-                    let _ = core.process_youtube_intent(&input, &intent, output, None, false, 0).await;
+                    let _ = core
+                        .process_youtube_intent(&input, &intent, output, None, false, 0)
+                        .await;
                 });
             }
         });
-        
+
         ui.add_space(10.0);
         ui.label(egui::RichText::new("Note: 'Execute Intent' uses full embodied reasoning. 'Optimized Edit' is faster for specific requests.").small().color(COLOR_TEXT_SECONDARY));
     }
@@ -819,7 +922,9 @@ impl SynoidApp {
                 let core = self.core.clone();
                 let query = state.intent.clone();
                 tokio::spawn(async move {
-                    let _ = core.process_brain_request(&format!("find video {}", query)).await;
+                    let _ = core
+                        .process_brain_request(&format!("find video {}", query))
+                        .await;
                 });
             }
         });
@@ -847,7 +952,13 @@ impl SynoidApp {
         ui.separator();
         ui.add_space(10.0);
 
-        if ui.checkbox(&mut state.is_autonomous_running, "🚀 Autonomous Learning Loop (Videos + Code + Wiki)").changed() {
+        if ui
+            .checkbox(
+                &mut state.is_autonomous_running,
+                "🚀 Autonomous Learning Loop (Videos + Code + Wiki)",
+            )
+            .changed()
+        {
             let core = self.core.clone();
             let is_running = state.is_autonomous_running;
             tokio::spawn(async move {
@@ -869,50 +980,64 @@ impl SynoidApp {
 
         ui.label("YouTube / Reference URL:");
         ui.text_edit_singleline(&mut state.youtube_url);
-        
+
         let download_enabled = state.youtube_url.starts_with("http");
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("📥 Download Safe Video to Academy").size(14.0))
-                    .fill(if download_enabled { COLOR_ACCENT_BLUE } else { egui::Color32::from_rgb(80, 80, 80) }),
+                egui::Button::new(
+                    egui::RichText::new("📥 Download Safe Video to Academy").size(14.0),
+                )
+                .fill(if download_enabled {
+                    COLOR_ACCENT_BLUE
+                } else {
+                    egui::Color32::from_rgb(80, 80, 80)
+                }),
             )
             .clicked()
             && download_enabled
         {
             let core = self.core.clone();
             let url = state.youtube_url.clone();
-            
+
             tokio::spawn(async move {
                 // 1. Guard check
                 if let Err(e) = crate::agent::download_guard::DownloadGuard::validate_url(&url) {
                     tracing::warn!("[GUI] Download blocked by Sentinel: {}", e);
                     return;
                 }
-                
+
                 // 2. Setup Academy dir
                 let academy_dir = std::path::Path::new("D:\\SYNOID\\Academy");
                 let _ = tokio::fs::create_dir_all(academy_dir).await;
-                
+
                 // 3. Download
                 tracing::info!("[GUI] Fetching reference video for Academy: {}", url);
-                if let Ok(info) = crate::agent::source_tools::download_youtube(&url, academy_dir, None).await {
+                if let Ok(info) =
+                    crate::agent::source_tools::download_youtube(&url, academy_dir, None).await
+                {
                     // 4. Validate downloaded file
                     let local_path = info.local_path;
-                    if let Err(e) = crate::agent::download_guard::DownloadGuard::validate_downloaded_file(&local_path) {
+                    if let Err(e) =
+                        crate::agent::download_guard::DownloadGuard::validate_downloaded_file(
+                            &local_path,
+                        )
+                    {
                         tracing::warn!("[GUI] Downloaded file blocked by Sentinel: {}", e);
                         let _ = tokio::fs::remove_file(local_path).await;
                         return;
                     }
-                    
+
                     // 5. Learn immediately
-                    tracing::info!("[GUI] Download complete! Extracting neural style templates into Brain...");
+                    tracing::info!(
+                        "[GUI] Download complete! Extracting neural style templates into Brain..."
+                    );
                     let _ = core.learn_style(&local_path, &info.title).await;
                 } else {
                     tracing::error!("[GUI] Failed to fetch video from YouTube.");
                 }
             });
         }
-        
+
         ui.add_space(20.0);
 
         if ui
@@ -940,20 +1065,26 @@ impl SynoidApp {
         self.render_input_file_picker(ui, state);
         ui.add_space(20.0);
 
-        if ui.add(egui::Button::new(egui::RichText::new("💡 Analyze Video").size(16.0)).fill(COLOR_ACCENT_BLUE)).clicked() {
-             let core = self.core.clone();
-             let ui_ptr = self.ui_state.clone();
-             // Clone input path to move into async block
-             let input_path_str = state.input_path.clone();
-             
-             tokio::spawn(async move {
-                 let path = std::path::PathBuf::from(input_path_str);
-                 if let Ok(suggs) = core.get_suggestions(&path).await {
-                     if let Ok(mut s) = ui_ptr.lock() {
-                         s.suggestions = suggs;
-                     }
-                 }
-             });
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("💡 Analyze Video").size(16.0))
+                    .fill(COLOR_ACCENT_BLUE),
+            )
+            .clicked()
+        {
+            let core = self.core.clone();
+            let ui_ptr = self.ui_state.clone();
+            // Clone input path to move into async block
+            let input_path_str = state.input_path.clone();
+
+            tokio::spawn(async move {
+                let path = std::path::PathBuf::from(input_path_str);
+                if let Ok(suggs) = core.get_suggestions(&path).await {
+                    if let Ok(mut s) = ui_ptr.lock() {
+                        s.suggestions = suggs;
+                    }
+                }
+            });
         }
 
         if !state.suggestions.is_empty() {
@@ -961,15 +1092,13 @@ impl SynoidApp {
             ui.group(|ui| {
                 ui.label("Suggestions for this video:");
                 for (i, sugg) in state.suggestions.iter().enumerate() {
-                    if ui.button(format!("{}. {}", i+1, sugg)).clicked() {
-                         state.intent = sugg.clone();
+                    if ui.button(format!("{}. {}", i + 1, sugg)).clicked() {
+                        state.intent = sugg.clone();
                     }
                 }
             });
         }
     }
-
-
 
     fn render_guard_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("🛡️ Cyberdefense Sentinel").color(COLOR_ACCENT_RED));
@@ -990,7 +1119,8 @@ impl SynoidApp {
             if ui.button("📂").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .set_directory(get_default_videos_path())
-                    .pick_folder() {
+                    .pick_folder()
+                {
                     state.guard_watch_path = path.to_string_lossy().to_string();
                 }
             }
@@ -1017,7 +1147,11 @@ impl SynoidApp {
             });
         }
         ui.add_space(5.0);
-        ui.label(egui::RichText::new("Note: Requires SYNOID_ENABLE_SENTINEL=true environment variable.").small().color(COLOR_TEXT_SECONDARY));
+        ui.label(
+            egui::RichText::new("Note: Requires SYNOID_ENABLE_SENTINEL=true environment variable.")
+                .small()
+                .color(COLOR_TEXT_SECONDARY),
+        );
     }
 
     fn render_research_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
@@ -1051,17 +1185,21 @@ impl SynoidApp {
         ui.add_space(10.0);
 
         ui.label("Select file to scan for adjustable audio tracks:");
-        
+
         // Input File Picker with Scan side-effect
         ui.horizontal(|ui| {
-            let res = ui.add(egui::TextEdit::singleline(&mut state.input_path).desired_width(ui.available_width() - 40.0));
+            let res = ui.add(
+                egui::TextEdit::singleline(&mut state.input_path)
+                    .desired_width(ui.available_width() - 40.0),
+            );
             if ui.button("📂").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Media", &["mp4", "mkv", "avi", "mov", "wav", "mp3"])
                     .set_directory(get_default_videos_path())
-                    .pick_file() {
+                    .pick_file()
+                {
                     state.input_path = path.to_string_lossy().to_string();
-                    
+
                     // Trigger scan
                     let core = self.core.clone();
                     let ui_state_ptr = self.ui_state.clone();
@@ -1075,70 +1213,94 @@ impl SynoidApp {
                 }
             }
             if res.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                 // Trigger scan on enter
-                 let core = self.core.clone();
-                 let ui_state_ptr = self.ui_state.clone();
-                 let path = std::path::PathBuf::from(&state.input_path);
-                 tokio::spawn(async move {
-                     if let Ok(tracks) = core.get_audio_tracks(&path).await {
-                         let mut s = ui_state_ptr.lock().unwrap();
-                         s.detected_tracks = tracks;
-                     }
-                 });
+                // Trigger scan on enter
+                let core = self.core.clone();
+                let ui_state_ptr = self.ui_state.clone();
+                let path = std::path::PathBuf::from(&state.input_path);
+                tokio::spawn(async move {
+                    if let Ok(tracks) = core.get_audio_tracks(&path).await {
+                        let mut s = ui_state_ptr.lock().unwrap();
+                        s.detected_tracks = tracks;
+                    }
+                });
             }
         });
 
         ui.add_space(15.0);
         ui.label(egui::RichText::new("Adjustable Audio Tracks:").strong());
-        
+
         if state.detected_tracks.is_empty() {
             ui.add_space(5.0);
-            ui.label(egui::RichText::new("No tracks detected or file not scanned yet.").color(COLOR_TEXT_SECONDARY).italics());
+            ui.label(
+                egui::RichText::new("No tracks detected or file not scanned yet.")
+                    .color(COLOR_TEXT_SECONDARY)
+                    .italics(),
+            );
         } else {
-            egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
-                for track in &state.detected_tracks {
-                    ui.group(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("Track {}", track.index)).strong().color(COLOR_ACCENT_BLUE));
-                            ui.label(&track.title);
-                            if let Some(lang) = &track.language {
-                                ui.label(egui::RichText::new(format!("({})", lang)).small().color(COLOR_TEXT_SECONDARY));
-                            }
-                            
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.button("🔈 Solo").clicked() {
-                                    // Future: Implement solo logic
+            egui::ScrollArea::vertical()
+                .max_height(300.0)
+                .show(ui, |ui| {
+                    for track in &state.detected_tracks {
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("Track {}", track.index))
+                                        .strong()
+                                        .color(COLOR_ACCENT_BLUE),
+                                );
+                                ui.label(&track.title);
+                                if let Some(lang) = &track.language {
+                                    ui.label(
+                                        egui::RichText::new(format!("({})", lang))
+                                            .small()
+                                            .color(COLOR_TEXT_SECONDARY),
+                                    );
                                 }
-                                if ui.button("🔇 Mute").clicked() {
-                                    // Future: Implement mute logic
-                                }
+
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if ui.button("🔈 Solo").clicked() {
+                                            // Future: Implement solo logic
+                                        }
+                                        if ui.button("🔇 Mute").clicked() {
+                                            // Future: Implement mute logic
+                                        }
+                                    },
+                                );
+                            });
+
+                            // Heuristic: If title contains "Background", show a different icon or slider?
+                            // For now just show "Adjustable" as requested
+                            let slider_label = if track.title.to_lowercase().contains("background")
+                            {
+                                "Background Volume"
+                            } else if track.title.to_lowercase().contains("player")
+                                || track.title.to_lowercase().contains("mic")
+                            {
+                                "Player/Voice Volume"
+                            } else {
+                                "Track Volume"
+                            };
+
+                            ui.horizontal(|ui| {
+                                ui.label(slider_label);
+                                let mut vol = 1.0f32;
+                                ui.add(egui::Slider::new(&mut vol, 0.0..=2.0).show_value(true));
                             });
                         });
-                        
-                        // Heuristic: If title contains "Background", show a different icon or slider?
-                        // For now just show "Adjustable" as requested
-                        let slider_label = if track.title.to_lowercase().contains("background") {
-                            "Background Volume"
-                        } else if track.title.to_lowercase().contains("player") || track.title.to_lowercase().contains("mic") {
-                            "Player/Voice Volume"
-                        } else {
-                            "Track Volume"
-                        };
-                        
-                        ui.horizontal(|ui| {
-                            ui.label(slider_label);
-                            let mut vol = 1.0f32;
-                            ui.add(egui::Slider::new(&mut vol, 0.0..=2.0).show_value(true));
-                        });
-                    });
-                    ui.add_space(4.0);
-                }
-            });
+                        ui.add_space(4.0);
+                    }
+                });
         }
 
         ui.add_space(20.0);
-        if ui.button(egui::RichText::new("🎚️ Apply Mix to File").size(16.0)).clicked() {
-            self.core.log("Mixer application pending full audio-stitching implementation.");
+        if ui
+            .button(egui::RichText::new("🎚️ Apply Mix to File").size(16.0))
+            .clicked()
+        {
+            self.core
+                .log("Mixer application pending full audio-stitching implementation.");
         }
     }
 
@@ -1152,7 +1314,8 @@ impl SynoidApp {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Video", &["mp4", "mkv", "avi", "mov"])
                     .set_directory(get_default_videos_path())
-                    .pick_file() {
+                    .pick_file()
+                {
                     state.input_path = path.to_string_lossy().to_string();
                 }
             }
@@ -1166,7 +1329,8 @@ impl SynoidApp {
             if ui.button("📂").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .set_directory(get_default_videos_path())
-                    .save_file() {
+                    .save_file()
+                {
                     state.output_path = path.to_string_lossy().to_string();
                 }
             }
@@ -1174,54 +1338,81 @@ impl SynoidApp {
     }
     fn render_editor_layout(&mut self, ctx: &egui::Context, _state: &mut UiState) {
         let color_bg_darkest = egui::Color32::from_rgb(17, 17, 17); // #111111
-        let color_panel_bg = egui::Color32::from_rgb(26, 26, 26);   // #1A1A1A
-        let color_gold = egui::Color32::from_rgb(217, 178, 77);     // #D9B24D
+        let color_panel_bg = egui::Color32::from_rgb(26, 26, 26); // #1A1A1A
+        let color_gold = egui::Color32::from_rgb(217, 178, 77); // #D9B24D
         let color_text_light = egui::Color32::from_rgb(230, 230, 230);
         let color_text_dim = egui::Color32::from_rgb(120, 120, 120);
 
         // 1. Top Navbar
         egui::TopBottomPanel::top("editor_toolbar")
             .exact_height(50.0)
-            .frame(egui::Frame::none().fill(color_panel_bg).inner_margin(egui::Margin::symmetric(16.0, 10.0)))
+            .frame(
+                egui::Frame::none()
+                    .fill(color_panel_bg)
+                    .inner_margin(egui::Margin::symmetric(16.0, 10.0)),
+            )
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new("◀  SYNOID").color(color_gold).strong()).fill(egui::Color32::TRANSPARENT)).clicked() {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("◀  SYNOID").color(color_gold).strong(),
+                            )
+                            .fill(egui::Color32::TRANSPARENT),
+                        )
+                        .clicked()
+                    {
                         self.active_command = ActiveCommand::Dashboard;
                     }
-                    
+
                     ui.add_space(20.0);
-                    if ui.add(egui::Button::new("↶").fill(egui::Color32::TRANSPARENT)).clicked() {}
-                    if ui.add(egui::Button::new("↷").fill(egui::Color32::TRANSPARENT)).clicked() {}
+                    if ui
+                        .add(egui::Button::new("↶").fill(egui::Color32::TRANSPARENT))
+                        .clicked()
+                    {}
+                    if ui
+                        .add(egui::Button::new("↷").fill(egui::Color32::TRANSPARENT))
+                        .clicked()
+                    {}
 
                     // Session status pill
                     {
                         let session_status = _state.editor_api_status.clone();
                         ui.add_space(8.0);
                         ui.label(egui::RichText::new(&session_status).size(10.0).color(
-                            if session_status.starts_with('⚠') { egui::Color32::from_rgb(255, 100, 60) }
-                            else { egui::Color32::from_rgb(80, 200, 120) }
+                            if session_status.starts_with('⚠') {
+                                egui::Color32::from_rgb(255, 100, 60)
+                            } else {
+                                egui::Color32::from_rgb(80, 200, 120)
+                            },
                         ));
                     }
 
-                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_cross_align(egui::Align::Center), |ui| {
-                         ui.add_space(ui.available_width() / 2.0 - 100.0); // Rough center
-                         ui.label(egui::RichText::new("● My Project / ").color(color_text_dim));
-                         let display_name = if _state.input_path.is_empty() { 
-                             "New File".to_string() 
-                         } else { 
-                             std::path::Path::new(&_state.input_path)
-                                 .file_name()
-                                 .map(|n| n.to_string_lossy().to_string())
-                                 .unwrap_or_else(|| "Unknown File".to_string())
-                         };
-                         ui.label(egui::RichText::new(display_name).color(color_text_light));
-                    });
+                    ui.with_layout(
+                        egui::Layout::left_to_right(egui::Align::Center)
+                            .with_cross_align(egui::Align::Center),
+                        |ui| {
+                            ui.add_space(ui.available_width() / 2.0 - 100.0); // Rough center
+                            ui.label(egui::RichText::new("● My Project / ").color(color_text_dim));
+                            let display_name = if _state.input_path.is_empty() {
+                                "New File".to_string()
+                            } else {
+                                std::path::Path::new(&_state.input_path)
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| "Unknown File".to_string())
+                            };
+                            ui.label(egui::RichText::new(display_name).color(color_text_light));
+                        },
+                    );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // Open React Editor in browser
-                        let open_btn = egui::Button::new(egui::RichText::new("  🌐 Web Editor  ").color(color_text_light))
-                            .fill(egui::Color32::from_rgb(40, 40, 55))
-                            .rounding(egui::Rounding::same(16.0));
+                        let open_btn = egui::Button::new(
+                            egui::RichText::new("  🌐 Web Editor  ").color(color_text_light),
+                        )
+                        .fill(egui::Color32::from_rgb(40, 40, 55))
+                        .rounding(egui::Rounding::same(16.0));
                         if ui.add(open_btn).clicked() {
                             let url = "http://127.0.0.1:3000/editor";
                             if let Err(e) = open::that(url) {
@@ -1232,9 +1423,13 @@ impl SynoidApp {
                         ui.add_space(8.0);
 
                         // Export Button
-                        let export_btn = egui::Button::new(egui::RichText::new("  🎬 Export  ").color(egui::Color32::BLACK).strong())
-                            .fill(color_gold)
-                            .rounding(egui::Rounding::same(16.0));
+                        let export_btn = egui::Button::new(
+                            egui::RichText::new("  🎬 Export  ")
+                                .color(egui::Color32::BLACK)
+                                .strong(),
+                        )
+                        .fill(color_gold)
+                        .rounding(egui::Rounding::same(16.0));
 
                         if ui.add(export_btn).clicked() {
                             println!("[GUI] Export clicked! Starting production pipeline...");
@@ -1252,11 +1447,18 @@ impl SynoidApp {
                             };
 
                             tokio::spawn(async move {
-                                tracing::info!("[GUI] Pipeline starting for export to {:?}", output);
-                                let _ = core.run_unified_pipeline(&input, &output, "all", "cuda", intent, 1.0).await;
+                                tracing::info!(
+                                    "[GUI] Pipeline starting for export to {:?}",
+                                    output
+                                );
+                                let _ = core
+                                    .run_unified_pipeline(
+                                        &input, &output, "all", "cuda", intent, 1.0,
+                                    )
+                                    .await;
                             });
                         }
-                        
+
                         ui.add_space(16.0);
                         ui.label(egui::RichText::new("👤").size(20.0)); // Profile icon
                         ui.add_space(8.0);
@@ -1280,20 +1482,20 @@ impl SynoidApp {
                         ("💬", "Subtitles"),
                         ("✨", "AI Magic"),
                     ];
-                    
+
                     for (icon, label) in nav_items {
                         let is_active = _state.active_editor_tab == label;
                         let text_color = if is_active { color_gold } else { color_text_dim };
                         let bg_color = if is_active { egui::Color32::from_rgb(30, 26, 17) } else { egui::Color32::TRANSPARENT };
-                        
+
                         let btn_text = if label == "Text" && _state.is_transcribing { format!("⌛\nTranscribing...") } else { format!("{}\n{}", icon, label) };
                         let btn = ui.add_sized(
-                            [60.0, 56.0], 
+                            [60.0, 56.0],
                             egui::Button::new(egui::RichText::new(btn_text).size(11.0).color(text_color))
                             .fill(bg_color)
                             .rounding(egui::Rounding::same(8.0))
                         );
-                        
+
                         // Wiring functional bits based on clicks
                         if btn.clicked() {
                             _state.active_editor_tab = label.to_string();
@@ -1344,7 +1546,7 @@ impl SynoidApp {
                      ui.label(egui::RichText::new("Cloud").color(color_text_dim));
                 });
                 ui.add_space(16.0);
-                
+
                 if _state.active_editor_tab == "Media" {
                     // Current Selection
                     if !_state.input_path.is_empty() {
@@ -1378,19 +1580,19 @@ impl SynoidApp {
                             tracing::warn!("[GUI] No file selected or dialog cancelled.");
                         }
                     }
-                    
+
                     ui.add_space(20.0);
-                    
+
                     // Asset Grid Placholder View
                     ui.columns(2, |cols| {
                          for i in 0..6 {
                              let col = if i % 2 == 0 { &mut cols[0] } else { &mut cols[1] };
                              let rect = col.available_rect_before_wrap();
                              let padded = rect.shrink(4.0);
-                             
+
                              let item_rect = col.allocate_exact_size(egui::vec2(padded.width(), 80.0), egui::Sense::hover()).0;
                              col.painter().rect_filled(item_rect, 6.0, egui::Color32::from_rgb(40, 40, 40));
-                             
+
                              col.painter().text(
                                  item_rect.min + egui::vec2(8.0, 60.0),
                                  egui::Align2::LEFT_TOP,
@@ -1436,11 +1638,11 @@ impl SynoidApp {
                         ui.add_space(10.0);
                         ui.label(egui::RichText::new("✨ AI Director").color(color_gold).strong());
                         ui.label(egui::RichText::new("Describe how you want to edit the active asset.").color(color_text_dim).small());
-                        
+
                         ui.add_space(15.0);
                         ui.label("Your Prompt:");
                         ui.add(egui::TextEdit::multiline(&mut _state.intent).desired_rows(4).desired_width(ui.available_width()));
-                        
+
                         ui.add_space(10.0);
 
                         // Open React Editor shortcut
@@ -1457,12 +1659,12 @@ impl SynoidApp {
                         ui.add_space(10.0);
 
                         let disabled = _state.input_path.is_empty() || _state.intent.trim().is_empty() || _state.ai_edit_running;
-                        
+
                         let btn_label = if _state.ai_edit_running { "⏳ Running…" } else { "🪄 Execute AI Magic" };
                         let btn = egui::Button::new(egui::RichText::new(btn_label).strong().color(egui::Color32::BLACK))
                             .fill(if disabled { egui::Color32::from_rgb(100, 100, 100) } else { color_gold })
                             .rounding(egui::Rounding::same(8.0));
-                            
+
                         if ui.add_sized([ui.available_width(), 40.0], btn).clicked() && !disabled {
                             let core = self.core.clone();
                             let input = _state.input_path.clone();
@@ -1474,7 +1676,7 @@ impl SynoidApp {
                             let intent = _state.intent.clone();
                             let ui_ptr = self.ui_state.clone();
                             let session_id = _state.editor_session_id.clone();
-                            
+
                             // History for undo tracking
                             if _state.intent_history.last() != Some(&intent) {
                                 _state.intent_history.push(intent.clone());
@@ -1512,7 +1714,7 @@ impl SynoidApp {
                                 }
                             });
                         }
-                        
+
                         if disabled && !_state.ai_edit_running {
                             ui.add_space(5.0);
                             ui.label(egui::RichText::new("⚠️ Please select an asset and enter a prompt.").color(COLOR_ACCENT_RED).small());
@@ -1652,7 +1854,7 @@ impl SynoidApp {
                                   }
                               }
                           }
-                          
+
                           let is_playing = _state.video_player.as_ref().map_or(false, |p| p.playing);
                           if ui.add(egui::Button::new(egui::RichText::new(if is_playing { "⏸" } else { "▶" }).size(20.0).color(color_gold)).fill(egui::Color32::TRANSPARENT)).clicked() {
                               if let Some(player) = &mut _state.video_player {
@@ -1677,7 +1879,7 @@ impl SynoidApp {
                                   }
                               }
                           }
-                         
+
                          ui.add_space(16.0);
                          let pos_text = format_time(_state.video_position);
                          let dur_text = format_time(_state.video_duration);
@@ -1691,20 +1893,20 @@ impl SynoidApp {
                         ui.label("-");
                     });
                 });
-                
+
                 ui.add_space(12.0);
-                
+
                 // Track Area
                 egui::ScrollArea::both().show(ui, |ui| {
                     let start_y = ui.cursor().min.y;
-                    
+
                     // Ruler
                     {
                         let p = ui.painter();
                         let total_width = (_state.video_duration.max(60.0) as f32) * 10.0 * _state.timeline_zoom; // 10px per second rescaled
                         let ruler_rect = egui::Rect::from_min_size(egui::pos2(ui.cursor().min.x, start_y), egui::vec2(total_width, 20.0));
                         p.rect_filled(ruler_rect, 0.0, color_panel_bg);
-                        
+
                         let steps = (_state.video_duration / 10.0) as i32 + 1;
                         for i in 0..steps.max(20) {
                             let x = ui.cursor().min.x + (i as f32) * 100.0 * _state.timeline_zoom; // 100px per 10s scaled
@@ -1712,118 +1914,131 @@ impl SynoidApp {
                             p.line_segment([egui::pos2(x, start_y + 15.0), egui::pos2(x, start_y + 20.0)], egui::Stroke::new(1.0, color_text_dim));
                         }
                     }
-                    
+
                     ui.add_space(24.0);
-                    
+
                     let tracks = vec![
                         ("Video", egui::Color32::from_rgb(117, 72, 196), 0.0),
                         ("Effects", egui::Color32::from_rgb(220, 90, 150), 40.0),
                         ("Audio", egui::Color32::from_rgb(45, 140, 110), 80.0),
                     ];
-                    
+
                     {
                         let p = ui.painter();
                         for (i, (name, accent_color, y_offset)) in tracks.iter().enumerate() {
                             let track_y = start_y + 30.0 + y_offset;
-                            
+
                             // Left label area
                             let label_rect = egui::Rect::from_min_size(egui::pos2(ui.cursor().min.x, track_y), egui::vec2(60.0, 32.0));
                             p.rect_filled(label_rect, 0.0, color_bg_darkest);
                             p.text(label_rect.center(), egui::Align2::CENTER_CENTER, *name, egui::FontId::proportional(11.0), color_text_dim);
-                            
+
                             // Track background line
                             p.line_segment(
                                 [egui::pos2(ui.cursor().min.x + 60.0, track_y + 16.0), egui::pos2(ui.cursor().min.x + 1000.0, track_y + 16.0)],
                                 egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 40, 40))
                             );
-                            
+
                             // Clip Segment
                             let clip_rect = egui::Rect::from_min_size(egui::pos2(ui.cursor().min.x + 80.0 + (i as f32 * 20.0), track_y + 2.0), egui::vec2(300.0, 28.0));
                             p.rect_filled(clip_rect, 6.0, *accent_color);
                         }
-                        
+
                         // Playhead
                         let playhead_x = ui.cursor().min.x + 180.0;
                         p.line_segment([egui::pos2(playhead_x, start_y), egui::pos2(playhead_x, start_y + 150.0)], egui::Stroke::new(2.0, color_gold));
                         p.circle_filled(egui::pos2(playhead_x, start_y + 10.0), 6.0, color_gold);
                     }
-                    
+
                     ui.add_space(180.0);
                 });
             });
 
         // 5. Main Preview Window
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(color_bg_darkest).inner_margin(egui::Margin::same(32.0)))
+            .frame(
+                egui::Frame::none()
+                    .fill(color_bg_darkest)
+                    .inner_margin(egui::Margin::same(32.0)),
+            )
             .show(ctx, |ui| {
                 // Floating tools on right
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                     ui.vertical(|ui| {
-                         ui.add(egui::Button::new("🪄").fill(color_panel_bg).rounding(4.0));
-                         ui.add_space(4.0);
-                         ui.add(egui::Button::new("🔳").fill(color_panel_bg).rounding(4.0));
-                         ui.add_space(4.0);
-                         ui.add(egui::Button::new("◓").fill(color_panel_bg).rounding(4.0));
-                     });
-                     
-                     // The Video Frame
-                     let mut video_rect = ui.available_rect_before_wrap();
-                     
-                     if let Some(texture) = &self.preview_texture {
-                         let tex_size = texture.size_vec2();
-                         let aspect = tex_size.x / tex_size.y;
-                         let mut new_size = video_rect.size();
-                         if new_size.x / new_size.y > aspect {
-                             new_size.x = new_size.y * aspect;
-                         } else {
-                             new_size.y = new_size.x / aspect;
-                         }
-                         let center = video_rect.center();
-                         video_rect = egui::Rect::from_center_size(center, new_size);
-                     }
+                    ui.vertical(|ui| {
+                        ui.add(egui::Button::new("🪄").fill(color_panel_bg).rounding(4.0));
+                        ui.add_space(4.0);
+                        ui.add(egui::Button::new("🔳").fill(color_panel_bg).rounding(4.0));
+                        ui.add_space(4.0);
+                        ui.add(egui::Button::new("◓").fill(color_panel_bg).rounding(4.0));
+                    });
 
-                     // Handle click interaction to play/pause
-                     let response = ui.allocate_rect(video_rect, egui::Sense::click());
-                     if response.clicked() && !_state.input_path.is_empty() {
-                         let is_playing = _state.video_player.as_ref().map_or(false, |p| p.playing);
-                         if is_playing {
-                             if let Some(player) = &mut _state.video_player {
-                                 player.stop();
-                             }
-                             _state.video_player = None;
-                         } else {
-                             if let Ok(player) = crate::agent::video_player::VideoPlayer::new(&_state.input_path, _state.video_position) {
-                                 _state.video_player = Some(player);                             }
-                         }
-                     }
-                     if response.hovered() && !_state.input_path.is_empty() {
-                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                     }
+                    // The Video Frame
+                    let mut video_rect = ui.available_rect_before_wrap();
 
-                     ui.painter().rect_filled(video_rect, 12.0, egui::Color32::from_rgb(0, 0, 0)); // Pure black
-                     
-                     // Texture render if available
-                     if let Some(texture) = &self.preview_texture {
-                         ui.painter().image(
-                             texture.id(),
-                             video_rect,
-                             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                             egui::Color32::WHITE,
-                         );
-                     } else {
-                         // Placeholder Play button
-                         let center = video_rect.center();
-                         ui.painter().circle_filled(center, 40.0, egui::Color32::from_white_alpha(30));
-                         ui.painter().add(egui::Shape::convex_polygon(
-                             vec![
-                                 center + egui::vec2(-10.0, -15.0),
-                                 center + egui::vec2(-10.0, 15.0),
-                                 center + egui::vec2(15.0, 0.0),
-                             ],
-                             color_gold,
-                             egui::Stroke::NONE,
-                         ));
-                     }
+                    if let Some(texture) = &self.preview_texture {
+                        let tex_size = texture.size_vec2();
+                        let aspect = tex_size.x / tex_size.y;
+                        let mut new_size = video_rect.size();
+                        if new_size.x / new_size.y > aspect {
+                            new_size.x = new_size.y * aspect;
+                        } else {
+                            new_size.y = new_size.x / aspect;
+                        }
+                        let center = video_rect.center();
+                        video_rect = egui::Rect::from_center_size(center, new_size);
+                    }
+
+                    // Handle click interaction to play/pause
+                    let response = ui.allocate_rect(video_rect, egui::Sense::click());
+                    if response.clicked() && !_state.input_path.is_empty() {
+                        let is_playing = _state.video_player.as_ref().map_or(false, |p| p.playing);
+                        if is_playing {
+                            if let Some(player) = &mut _state.video_player {
+                                player.stop();
+                            }
+                            _state.video_player = None;
+                        } else {
+                            if let Ok(player) = crate::agent::video_player::VideoPlayer::new(
+                                &_state.input_path,
+                                _state.video_position,
+                            ) {
+                                _state.video_player = Some(player);
+                            }
+                        }
+                    }
+                    if response.hovered() && !_state.input_path.is_empty() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
+
+                    ui.painter()
+                        .rect_filled(video_rect, 12.0, egui::Color32::from_rgb(0, 0, 0)); // Pure black
+
+                    // Texture render if available
+                    if let Some(texture) = &self.preview_texture {
+                        ui.painter().image(
+                            texture.id(),
+                            video_rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                    } else {
+                        // Placeholder Play button
+                        let center = video_rect.center();
+                        ui.painter().circle_filled(
+                            center,
+                            40.0,
+                            egui::Color32::from_white_alpha(30),
+                        );
+                        ui.painter().add(egui::Shape::convex_polygon(
+                            vec![
+                                center + egui::vec2(-10.0, -15.0),
+                                center + egui::vec2(-10.0, 15.0),
+                                center + egui::vec2(15.0, 0.0),
+                            ],
+                            color_gold,
+                            egui::Stroke::NONE,
+                        ));
+                    }
                 });
             });
     }
@@ -1836,10 +2051,11 @@ impl eframe::App for SynoidApp {
         // --- BACKGROUND LOGIC ---
         {
             let mut state = self.ui_state.lock().unwrap();
-            
+
             // 1. Texture conversion
             if let Some(color_image) = state.preview_image.take() {
-                self.preview_texture = Some(ctx.load_texture("preview_frame", color_image, Default::default()));
+                self.preview_texture =
+                    Some(ctx.load_texture("preview_frame", color_image, Default::default()));
             }
 
             // 2. Auto-preview and auto-suggest when path changes
@@ -1849,11 +2065,13 @@ impl eframe::App for SynoidApp {
                 let ui_ptr = self.ui_state.clone();
                 let path = std::path::PathBuf::from(&state.input_path);
                 tracing::info!("[GUI] Auto-previewing changed input path: {:?}", path);
-                
+
                 let ctx_clone = ctx.clone();
                 tokio::spawn(async move {
                     // 1. Duration & Info
-                    if let Ok(duration) = crate::agent::source_tools::get_video_duration(&path).await {
+                    if let Ok(duration) =
+                        crate::agent::source_tools::get_video_duration(&path).await
+                    {
                         if let Ok(mut s) = ui_ptr.lock() {
                             s.video_duration = duration;
                             s.video_position = 0.0;
@@ -1871,14 +2089,20 @@ impl eframe::App for SynoidApp {
                                     Ok(img) => {
                                         let size = [img.width() as _, img.height() as _];
                                         let buffer = img.to_rgba8();
-                                        let color_img = egui::ColorImage::from_rgba_unmultiplied(size, buffer.as_raw());
-                                        
+                                        let color_img = egui::ColorImage::from_rgba_unmultiplied(
+                                            size,
+                                            buffer.as_raw(),
+                                        );
+
                                         if let Ok(mut s) = ui_ptr.lock() {
                                             s.preview_image = Some(color_img);
                                             ctx_clone.request_repaint();
                                         }
                                     }
-                                    Err(e) => tracing::error!("[GUI] Failed to decode preview frame: {}", e),
+                                    Err(e) => tracing::error!(
+                                        "[GUI] Failed to decode preview frame: {}",
+                                        e
+                                    ),
                                 }
                             }
                         }
@@ -1891,11 +2115,11 @@ impl eframe::App for SynoidApp {
             let mut new_texture_pixels: Option<(Vec<u8>, [usize; 2])> = None;
             let mut new_position: Option<f64> = None;
             let mut player_is_playing = false;
-            
+
             // Snapshot immutable fields before mutably borrowing video_player
             let cur_pos = state.video_position;
             let max_dur = state.video_duration;
-            
+
             if let Some(player) = &mut state.video_player {
                 let size = [player.width, player.height];
                 let fps = player.fps;
@@ -1912,7 +2136,8 @@ impl eframe::App for SynoidApp {
 
             if let Some((pixels, size)) = new_texture_pixels {
                 let color_image = egui::ColorImage::from_rgb([size[0], size[1]], &pixels);
-                self.preview_texture = Some(ctx.load_texture("video_frame", color_image, Default::default()));
+                self.preview_texture =
+                    Some(ctx.load_texture("video_frame", color_image, Default::default()));
             }
             if let Some(pos) = new_position {
                 state.video_position = pos;
@@ -1921,7 +2146,6 @@ impl eframe::App for SynoidApp {
                 ctx.request_repaint();
             }
         }
-
 
         if self.active_command != ActiveCommand::Editor {
             // Left Sidebar - Command Tree
@@ -1949,19 +2173,23 @@ impl eframe::App for SynoidApp {
                             .size(11.0)
                             .color(COLOR_TEXT_SECONDARY),
                     );
-                    
+
                     ui.add_space(8.0);
                     // Hive Mind Status Display
                     let hive_status = {
                         let state = self.ui_state.lock().unwrap();
                         state.hive_mind_status.clone()
                     };
-                    
+
                     if !hive_status.is_empty() {
-                         ui.group(|ui| {
-                             ui.label(egui::RichText::new("🐝 Hive Mind").color(COLOR_ACCENT_ORANGE).strong());
-                             ui.label(egui::RichText::new(hive_status).size(10.0));
-                         });
+                        ui.group(|ui| {
+                            ui.label(
+                                egui::RichText::new("🐝 Hive Mind")
+                                    .color(COLOR_ACCENT_ORANGE)
+                                    .strong(),
+                            );
+                            ui.label(egui::RichText::new(hive_status).size(10.0));
+                        });
                     }
 
                     ui.add_space(16.0);
@@ -1995,8 +2223,6 @@ impl eframe::App for SynoidApp {
                         new_cmd = Some(cmd);
                     }
 
-
-
                     // AI Core
                     if let Some(cmd) = self.render_tree_category(
                         ui,
@@ -2013,7 +2239,6 @@ impl eframe::App for SynoidApp {
                     ) {
                         new_cmd = Some(cmd);
                     }
-
 
                     // Security
                     if let Some(cmd) = self.render_tree_category(
@@ -2189,7 +2414,10 @@ pub fn run_gui(core: Arc<AgentCore>) -> Result<(), eframe::Error> {
         }
         // 3. Explicitly tell winit to use the X11 backend
         std::env::set_var("WINIT_UNIX_BACKEND", "x11");
-        tracing::info!("[GUI] WSL detected → forced X11 backend (DISPLAY={:?})", std::env::var("DISPLAY").ok());
+        tracing::info!(
+            "[GUI] WSL detected → forced X11 backend (DISPLAY={:?})",
+            std::env::var("DISPLAY").ok()
+        );
     }
 
     let options = eframe::NativeOptions {
@@ -2197,7 +2425,11 @@ pub fn run_gui(core: Arc<AgentCore>) -> Result<(), eframe::Error> {
             .with_inner_size([1280.0, 800.0])
             .with_title("SYNOID Command Center")
             .with_decorations(true),
-        renderer: if is_wsl() { eframe::Renderer::Glow } else { eframe::Renderer::Wgpu },
+        renderer: if is_wsl() {
+            eframe::Renderer::Glow
+        } else {
+            eframe::Renderer::Wgpu
+        },
         ..Default::default()
     };
 

@@ -45,9 +45,9 @@ impl IntegrityGuard {
                 // WalkDir is efficient. Let's collect file paths first.
                 let mut files = Vec::new();
                 for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
-                     if entry.file_type().is_file() {
+                    if entry.file_type().is_file() {
                         files.push(entry.path().to_path_buf());
-                     }
+                    }
                 }
 
                 for fpath in files {
@@ -119,6 +119,7 @@ impl IntegrityGuard {
             }
 
             Ok(format!("{:x}", hasher.finalize()))
-        }).await?
+        })
+        .await?
     }
 }

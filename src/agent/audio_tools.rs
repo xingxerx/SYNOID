@@ -21,10 +21,14 @@ pub struct AudioTrack {
 }
 
 /// Scan audio for beats and stats
-pub async fn scan_audio(path: &Path) -> Result<AudioAnalysis, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn scan_audio(
+    path: &Path,
+) -> Result<AudioAnalysis, Box<dyn std::error::Error + Send + Sync>> {
     info!("[EARS] Performing deep transient analysis: {:?}", path);
 
-    let duration = crate::agent::source_tools::get_video_duration(path).await.unwrap_or(0.0);
+    let duration = crate::agent::source_tools::get_video_duration(path)
+        .await
+        .unwrap_or(0.0);
 
     // Use real FFmpeg ebur128 analysis instead of hardcoded values
     let safe_path = crate::agent::production_tools::safe_arg_path(path);
@@ -214,8 +218,7 @@ pub async fn apply_spatial_pan(
     // support is limited).  A full dynamic implementation would use the
     // `amix` + `pan` filter with `enable='between(t,...)' expressions.
 
-    let avg_pan: f64 = keyframes.iter().map(|k| k.pan).sum::<f64>()
-        / keyframes.len() as f64;
+    let avg_pan: f64 = keyframes.iter().map(|k| k.pan).sum::<f64>() / keyframes.len() as f64;
 
     // Clamp to ±0.7, convert to stereotools balance (0.0 = left, 0.5 = centre, 1.0 = right)
     let balance = ((avg_pan + 1.0) / 2.0).clamp(0.0, 1.0);
@@ -242,15 +245,21 @@ pub async fn apply_spatial_pan(
 }
 
 /// Get all audio tracks from a file using ffprobe
-pub async fn get_audio_tracks(path: &Path) -> Result<Vec<AudioTrack>, Box<dyn std::error::Error + Send + Sync>> {
+pub async fn get_audio_tracks(
+    path: &Path,
+) -> Result<Vec<AudioTrack>, Box<dyn std::error::Error + Send + Sync>> {
     let safe_path = crate::agent::production_tools::safe_arg_path(path);
 
     let output = tokio::process::Command::new("ffprobe")
         .args([
-            "-v", "error",
-            "-select_streams", "a",
-            "-show_entries", "stream=index:stream_tags=title,language",
-            "-of", "json",
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=index:stream_tags=title,language",
+            "-of",
+            "json",
         ])
         .arg(&safe_path)
         .output()
@@ -264,8 +273,15 @@ pub async fn get_audio_tracks(path: &Path) -> Result<Vec<AudioTrack>, Box<dyn st
         for stream in streams {
             let index = stream.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
             let tags = stream.get("tags");
-            let title = tags.and_then(|t| t.get("title")).and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-            let language = tags.and_then(|t| t.get("language")).and_then(|v| v.as_str()).map(|s| s.to_string());
+            let title = tags
+                .and_then(|t| t.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            let language = tags
+                .and_then(|t| t.get("language"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             tracks.push(AudioTrack {
                 index,

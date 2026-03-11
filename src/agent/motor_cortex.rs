@@ -1,9 +1,9 @@
 use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
 use crate::agent::production_tools;
-use crate::agent::vision_tools::VisualScene;
-use crate::agent::transcription::TranscriptSegment;
 use crate::agent::smart_editor;
+use crate::agent::transcription::TranscriptSegment;
+use crate::agent::vision_tools::VisualScene;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::{info, warn};
@@ -36,7 +36,6 @@ impl EditPlan {
 }
 
 // MotorCortex defined below with impl block
-
 
 #[derive(Debug, Clone)]
 pub enum TransitionType {
@@ -134,7 +133,9 @@ pub struct MotorCortex {
 
 impl MotorCortex {
     pub fn new(api_url: &str) -> Self {
-        Self { api_url: api_url.to_string() }
+        Self {
+            api_url: api_url.to_string(),
+        }
     }
 
     pub async fn execute_smart_render(
@@ -156,7 +157,7 @@ impl MotorCortex {
         for i in 0..visual_data.len() {
             let start = visual_data[i].timestamp;
             let end = if i + 1 < visual_data.len() {
-                visual_data[i+1].timestamp
+                visual_data[i + 1].timestamp
             } else {
                 // Estimate last scene: default to 10s if we can't probe total duration easily here.
                 // In a full implementation, we would probe the file duration.
@@ -185,7 +186,8 @@ impl MotorCortex {
         });
 
         // We assume 'funny_mode' is false unless the intent carries specific markers
-        let funny_mode = intent.to_lowercase().contains("funny") || intent.to_lowercase().contains("comedy");
+        let funny_mode =
+            intent.to_lowercase().contains("funny") || intent.to_lowercase().contains("comedy");
 
         let transcript_opt = if transcript.is_empty() {
             None
@@ -196,7 +198,8 @@ impl MotorCortex {
         if dry_run {
             info!("[CORTEX] 🧪 Dry Run: Skipping smart_edit execution.");
             // Fallback to one-shot render in dry-run mode to generate command
-            return self.execute_one_shot_render(intent, input, output, visual_data, _audio_data, true)
+            return self
+                .execute_one_shot_render(intent, input, output, visual_data, _audio_data, true)
                 .await
                 .map(|args| format!("(Dry Run) Command: {}", args.join(" ")));
         }
@@ -210,13 +213,18 @@ impl MotorCortex {
             Some(editor_scenes),
             transcript_opt,
             None,
-        ).await {
+        )
+        .await
+        {
             Ok(summary) => {
                 info!("[CORTEX] ✅ Smart Edit completed via high-order logic.");
                 Ok(summary)
             }
             Err(e) => {
-                warn!("[CORTEX] ⚠️ Smart Edit pipeline failed: {}. Falling back to one-shot filter.", e);
+                warn!(
+                    "[CORTEX] ⚠️ Smart Edit pipeline failed: {}. Falling back to one-shot filter.",
+                    e
+                );
                 // Fallback to the old filter-only method if the complex edit fails
                 self.execute_one_shot_render(intent, input, output, visual_data, _audio_data, false)
                     .await
@@ -297,7 +305,11 @@ impl MotorCortex {
         args.push("ffmpeg".to_string());
         args.push("-y".to_string());
         args.push("-i".to_string());
-        args.push(production_tools::safe_arg_path(input).to_string_lossy().to_string());
+        args.push(
+            production_tools::safe_arg_path(input)
+                .to_string_lossy()
+                .to_string(),
+        );
 
         if !filters.is_empty() {
             args.push("-vf".to_string());
@@ -325,8 +337,11 @@ impl MotorCortex {
         args.push("-pix_fmt".to_string());
         args.push("yuv420p".to_string());
 
-        args.push(production_tools::safe_arg_path(output).to_string_lossy().to_string());
-
+        args.push(
+            production_tools::safe_arg_path(output)
+                .to_string_lossy()
+                .to_string(),
+        );
 
         // EXECUTE THE COMMAND
         if dry_run {

@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::process::{Command, Stdio, Child};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{sync_channel, Receiver, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -16,19 +16,29 @@ pub struct VideoPlayer {
 }
 
 impl VideoPlayer {
-    pub fn new(path: &str, timestamp: f64) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn new(
+        path: &str,
+        timestamp: f64,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let width = 640;
         let height = 360;
         let fps = 30.0;
 
         let mut child = Command::new("ffmpeg")
-            .arg("-ss").arg(format!("{:.3}", timestamp))
-            .arg("-i").arg(path)
-            .arg("-f").arg("image2pipe")
-            .arg("-pix_fmt").arg("rgb24")
-            .arg("-vcodec").arg("rawvideo")
-            .arg("-s").arg(format!("{}x{}", width, height))
-            .arg("-r").arg(fps.to_string())
+            .arg("-ss")
+            .arg(format!("{:.3}", timestamp))
+            .arg("-i")
+            .arg(path)
+            .arg("-f")
+            .arg("image2pipe")
+            .arg("-pix_fmt")
+            .arg("rgb24")
+            .arg("-vcodec")
+            .arg("rawvideo")
+            .arg("-s")
+            .arg(format!("{}x{}", width, height))
+            .arg("-r")
+            .arg(fps.to_string())
             .arg("-")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -46,7 +56,9 @@ impl VideoPlayer {
             let mut err_reader = std::io::BufReader::new(stderr);
             let mut line = String::new();
             while let Ok(n) = err_reader.read_line(&mut line) {
-                if n == 0 { break; }
+                if n == 0 {
+                    break;
+                }
                 if line.contains("Error") || line.contains("fatal") || line.contains("Can't") {
                     tracing::error!("[ffmpeg] {}", line.trim());
                 }
@@ -72,7 +84,8 @@ impl VideoPlayer {
         let _audio_process = Command::new("ffplay")
             .arg("-nodisp")
             .arg("-autoexit")
-            .arg("-ss").arg(format!("{:.3}", timestamp))
+            .arg("-ss")
+            .arg(format!("{:.3}", timestamp))
             .arg(path)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -98,7 +111,11 @@ impl VideoPlayer {
         // Kill ffplay instances just in case
         let _ = Command::new("pkill").arg("ffplay").spawn();
         #[cfg(target_os = "windows")]
-        let _ = Command::new("taskkill").arg("/F").arg("/IM").arg("ffplay.exe").spawn();
+        let _ = Command::new("taskkill")
+            .arg("/F")
+            .arg("/IM")
+            .arg("ffplay.exe")
+            .spawn();
     }
 
     pub fn get_next_frame(&mut self) -> Option<(bool, &Vec<u8>)> {
