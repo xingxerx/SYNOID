@@ -803,7 +803,7 @@ pub fn ensure_speech_continuity(
             }
 
             // Ensure even the "best" part of the sentence meets a minimum threshold if it's speech
-            let min_speech_score = if is_ruthless { 0.25 } else { 0.35 };
+            let min_speech_score = if is_ruthless { 0.35 } else { 0.45 };
             max_score = max_score.max(min_speech_score);
 
             for &i in &overlapping_indices {
@@ -813,7 +813,7 @@ pub fn ensure_speech_continuity(
                     let current_score = scenes[i].score;
 
                     if is_ruthless {
-                        if current_score < 0.1 {
+                        if current_score < 0.05 {
                             // Don't boost absolute trash in ruthless mode
                             continue;
                         }
@@ -1033,6 +1033,8 @@ pub fn score_scenes(
             } else {
                 if speech_ratio > 0.3 {
                     score += config.speech_boost;
+                } else if speech_ratio > 0.1 {
+                    score += config.speech_boost * 0.5;
                 }
             }
 
@@ -1071,6 +1073,19 @@ pub fn score_scenes(
         info!("[SMART] Applying speech continuity protection to prevent mid-word cuts.");
         ensure_speech_continuity(scenes, segments, config, intent.ruthless);
     }
+}
+
+fn scene_has_speech(scene: &Scene, transcript: Option<&[TranscriptSegment]>) -> bool {
+    if let Some(segments) = transcript {
+        for seg in segments {
+            let seg_start = seg.start.max(scene.start_time);
+            let seg_end = seg.end.min(scene.end_time);
+            if seg_end > seg_start + 0.1 {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Main smart editing function
@@ -1278,7 +1293,7 @@ pub async fn smart_edit(
             for seg in t {
                 let text_lower = seg.text.to_lowercase();
                 for bad_word in &profanity_words {
-                    if text_lower.contains(bad_word) {
+                    if word_boundary_match(&text_lower, bad_word) {
                         // Use word-level timestamp (narrow to ~0.5s window around the word)
                         let (ws, we) = estimate_word_timestamps(seg, bad_word);
                         censor_timestamps.push((ws, we));
@@ -1480,7 +1495,7 @@ pub async fn smart_edit(
         let filtered: Vec<Scene> = scenes_to_keep
             .iter()
             .cloned()
-            .filter(|s| s.duration >= 3.5)
+            .filter(|s| s.duration >= 3.5 || scene_has_speech(s, transcript.as_deref()))
             .collect();
         if !filtered.is_empty() {
             scenes_to_keep = filtered;
@@ -2351,6 +2366,20 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "bastard",
         "damn",
         "ass",
+        "motherfucker",
+        "motherfucking",
+        "bullshit",
+        "bullshitting",
+        "goddamn",
+        "goddamnit",
+        "dammit",
+        "whore",
+        "slut",
+        "piss",
+        "pissed",
+        "wtf",
+        "stfu",
+        "hell",
         // Racial slurs — n-word and variants
         "niggers",
         "nigger",
@@ -2358,6 +2387,8 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "nigga",
         "nigg",
         "n-word",
+        "negro",
+        "negroes",
         // Other racial/ethnic slurs
         "chink",
         "gook",
@@ -2386,6 +2417,13 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
     ]
 }
 
+pub fn word_boundary_match(text: &str, bad_word: &str) -> bool {
+    text.split(|c: char| !c.is_alphanumeric()).any(|token| {
+        let t = token.to_lowercase();
+        t == bad_word || t.starts_with(bad_word)
+    })
+}
+
 /// Estimate a narrow (word-level) timestamp within a transcript segment for a
 /// given bad word. Uses linear interpolation across the words in the segment.
 /// Returns `(start_secs, end_secs)` clamped to the segment bounds.
@@ -2399,7 +2437,7 @@ pub fn estimate_word_timestamps(
     let pad = 0.08_f64; // 80 ms padding on each side
 
     for (i, word) in words.iter().enumerate() {
-        if word.to_lowercase().contains(bad_word) {
+        if word_boundary_match(word, bad_word) {
             let word_start = seg.start + (i as f64 / n) * seg_dur - pad;
             let word_end = seg.start + ((i + 1) as f64 / n) * seg_dur + pad;
             return (word_start.max(seg.start), word_end.min(seg.end));
@@ -2560,15 +2598,53 @@ mod tests {
         // Basic profanity still present
         assert!(words.contains(&"fuck"));
         assert!(words.contains(&"shit"));
+        // New words present
+        assert!(words.contains(&"negro"));
+        assert!(words.contains(&"motherfucker"));
+        assert!(words.contains(&"bullshit"));
         // List is comprehensive (>20 entries)
         assert!(
-            words.len() > 20,
-            "profanity list should have >20 entries, has {}",
+            words.len() > 30,
+            "profanity list should have >30 entries, has {}",
             words.len()
         );
         // Racial slur present
         assert!(words.contains(&"nigger"));
         // Homophobic slur present
         assert!(words.contains(&"faggot"));
+    }
+
+    #[test]
+    fn test_word_boundary_matching() {
+        assert!(word_boundary_match("What the fuck is this", "fuck"));
+        assert!(word_boundary_match("Fucking hell!", "fuck")); // starts_with check
+        assert!(word_boundary_match("asshole", "ass"));
+        assert!(!word_boundary_match("I have a class today", "ass"));
+        assert!(!word_boundary_match("He passed the ball", "ass"));
+        assert!(word_boundary_match("this is bullshit.", "bullshit"));
+    }
+
+    #[test]
+    fn test_scene_has_speech() {
+        use crate::agent::transcription::TranscriptSegment;
+        let scene = Scene {
+            start_time: 2.0,
+            end_time: 4.0,
+            duration: 2.0,
+            score: 0.5,
+        };
+        let transcript = vec![TranscriptSegment {
+            start: 2.5,
+            end: 3.5,
+            text: "speech here".to_string(),
+        }];
+        assert!(scene_has_speech(&scene, Some(&transcript)));
+
+        let disjoint_transcript = vec![TranscriptSegment {
+            start: 5.0,
+            end: 6.0,
+            text: "later speech".to_string(),
+        }];
+        assert!(!scene_has_speech(&scene, Some(&disjoint_transcript)));
     }
 }

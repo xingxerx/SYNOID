@@ -227,6 +227,7 @@ pub async fn check_ytdlp() -> bool {
     // Otherwise it's a python interpreter, check module
     Command::new(&cmd)
         .args(["-m", "yt_dlp", "--version"])
+        .stdin(std::process::Stdio::null())
         .output()
         .await
         .map(|o| o.status.success())
@@ -267,6 +268,7 @@ fn build_ytdlp_info_args(
     }
 
     args.extend_from_slice(&[
+        "--no-warnings".to_string(),
         "--print".to_string(),
         "%(title)s".to_string(),
         "--print".to_string(),
@@ -309,6 +311,7 @@ fn build_ytdlp_download_args(
     args.push("youtube:player_client=ios,android".to_string());
 
     args.extend_from_slice(&[
+        "--no-warnings".to_string(),
         "-f".to_string(),
         "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best".to_string(),
         "-o".to_string(),
@@ -349,7 +352,15 @@ pub async fn download_youtube(
     let args = build_ytdlp_info_args(&python, url, auth_browser)?;
 
     // First, get video info without downloading
-    let info_output = Command::new(&python).args(&args).output().await?;
+    let info_output = tokio::time::timeout(
+        tokio::time::Duration::from_secs(30),
+        Command::new(&python)
+            .args(&args)
+            .stdin(std::process::Stdio::null())
+            .output(),
+    )
+    .await
+    .map_err(|_| format!("yt-dlp info command timed out"))??;
     if !info_output.status.success() {
         return Err(format!(
             "yt-dlp info failed with command '{}': {}",
@@ -387,7 +398,15 @@ pub async fn download_youtube(
 
     info!("[SOURCE] Starting download to: {}", output_template);
     // Reuse python command
-    let status = Command::new(&python).args(&download_args).status().await?;
+    let status = tokio::time::timeout(
+        tokio::time::Duration::from_secs(1800), // 30 mins
+        Command::new(&python)
+            .args(&download_args)
+            .stdin(std::process::Stdio::null())
+            .status(),
+    )
+    .await
+    .map_err(|_| format!("yt-dlp download command timed out"))??;
 
     if !status.success() {
         return Err("Download process failed".into());
@@ -431,6 +450,7 @@ pub async fn search_youtube(
     args.push("youtube:player_client=ios,android".to_string());
 
     args.extend_from_slice(&[
+        "--no-warnings".to_string(),
         "--print".to_string(),
         "%(title)s|%(id)s|%(duration)s|%(webpage_url)s".to_string(),
         "--no-download".to_string(),
@@ -438,7 +458,15 @@ pub async fn search_youtube(
     ]);
     args.push(search_query);
 
-    let output = Command::new(&python).args(&args).output().await?;
+    let output = tokio::time::timeout(
+        tokio::time::Duration::from_secs(30),
+        Command::new(&python)
+            .args(&args)
+            .stdin(std::process::Stdio::null())
+            .output(),
+    )
+    .await
+    .map_err(|_| format!("Search command timed out"))??;
 
     if !output.status.success() {
         return Err(format!(

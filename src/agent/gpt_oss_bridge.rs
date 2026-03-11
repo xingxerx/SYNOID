@@ -7,7 +7,7 @@
 use crate::agent::llm_provider::{MultiProviderLlm, ProviderConfig};
 use crate::agent::token_optimizer::create_default_optimizer;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::info;
 
 pub struct SynoidAgent {
     pub provider: Arc<MultiProviderLlm>,

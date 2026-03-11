@@ -689,8 +689,8 @@ pub async fn apply_audio_censor(
             // sine generates a continuous tone; we trim it to `dur` seconds,
             // lower the volume to 40 % so it blends cleanly, then delay it.
             filter_complex.push_str(&format!(
-                "sine=frequency=1000:sample_rate=44100:duration={dur:.4},\
-                 volume=0.65,\
+                "sine=frequency=1000:sample_rate=48000:duration={dur:.4},\
+                 volume=0.70,\
                  adelay={delay}|{delay}[beep{i}];",
                 dur = dur,
                 delay = delay_ms,

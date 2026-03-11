@@ -6,7 +6,6 @@ use crate::agent::brain::{Brain, Intent};
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use crate::agent::multi_agent::DirectorAgent;
 
-
 use std::path::Path;
 use tracing::{info, warn};
 
@@ -28,7 +27,6 @@ impl SuperEngine {
         // Brain utilizes LLM
         let brain = Brain::new(api_url, "llama3:latest");
         let gpt_brain = Some(SynoidAgent::new(api_url, "llama3:latest"));
-
 
         info!("[SUPER_ENGINE] Systems Online.");
         Ok(Self {
@@ -144,10 +142,6 @@ impl SuperEngine {
             results.push("ℹ️ No input video provided for editing.".to_string());
         }
 
-
-
-
-
         // === Phase 3: Summary ===
         let summary = format!(
             "🧠 MoE Orchestration Complete\n   Goal: \"{}\"\n   Plan: {} scenes\n   Experts dispatched: {}\n   Results:\n   {}",
@@ -176,7 +170,6 @@ impl SuperEngine {
                 }
             }
 
-
             Intent::Research { topic } => {
                 use crate::agent::source_tools;
                 match source_tools::search_youtube(&topic, 3).await {
@@ -200,10 +193,7 @@ impl SuperEngine {
                 "Embodied Edit Initiated: '{}' on {}",
                 instruction, input
             )),
-            Intent::DiscoverFile { query } => {
-                Ok(format!("DISCOVERY_MODE:{}", query))
-            }
-            Intent::DiscoverFile { query } => Ok(format!("Searching for: {}", query)),
+            Intent::DiscoverFile { query } => Ok(format!("DISCOVERY_MODE:{}", query)),
             Intent::Orchestrate { .. } => unreachable!("Handled in process_command"),
             Intent::Unknown { .. } => unreachable!("Handled in process_command"),
         }

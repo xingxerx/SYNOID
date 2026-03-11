@@ -22,6 +22,14 @@ struct LearnerState {
     repo_index: usize,
     processed_urls: HashSet<String>,
     known_repos: Vec<String>,
+    #[serde(default)]
+    downloaded_videos: Vec<VideoRecord>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+pub struct VideoRecord {
+    path: String,
+    score: f64,
 }
 
 impl LearnerState {
@@ -282,6 +290,8 @@ impl AutonomousLearner {
                                             kept_ratio: 0.5,
                                             outcome_xp: 0.8,
                                         };
+                                        let outcome_xp = pattern.outcome_xp;
+                                        let success_rating = pattern.success_rating;
                                         brain_lock.learning_kernel.memorize(topic, pattern);
 
                                         match brain_lock
@@ -300,6 +310,22 @@ impl AutonomousLearner {
                                                 if let Some(url) = &source.original_url {
                                                     state.processed_urls.insert(url.clone());
                                                 }
+                                                
+                                                state.downloaded_videos.push(VideoRecord {
+                                                    path: downloaded.local_path.to_string_lossy().to_string(),
+                                                    score: outcome_xp * (success_rating as f64),
+                                                });
+                                                
+                                                if state.downloaded_videos.len() > 10 {
+                                                    state.downloaded_videos.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+                                                    
+                                                    // Pop the last one (lowest score)
+                                                    if let Some(removed) = state.downloaded_videos.pop() {
+                                                        let _ = std::fs::remove_file(&removed.path);
+                                                        info!("[LEARNER] 🗑️ Limit reached (10 max). Deleted lowest scoring video (score: {:.2}): {}", removed.score, removed.path);
+                                                    }
+                                                }
+
                                                 state.save();
                                                 
                                                 info!("[LEARNER] 💾 Video persisted for review: {:?}", downloaded.local_path);
