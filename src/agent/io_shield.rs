@@ -1,5 +1,5 @@
 // SYNOID I/O Shield — Shadow Write & Atomic Move
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Implements the "Shadow Write" pattern:
 //   1. All renders write to a `.tmp` sidecar file.

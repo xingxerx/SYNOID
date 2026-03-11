@@ -1,5 +1,5 @@
 // SYNOID Unified Pipeline - GPU-Accelerated Processing Orchestrator
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Combines all processing stages into a single, GPU-accelerated pipeline.
 

@@ -1,5 +1,5 @@
 // SYNOID Video Editing Agent - Orchestrator for ML-Driven Betterment
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
 use crate::agent::autonomous_learner::AutonomousLearner;
 use crate::agent::brain::Brain;

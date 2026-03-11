@@ -1,0 +1,307 @@
+================================================================================
+SYNOID — AGENTIC VIDEO PRODUCTION KERNEL
+PRODUCT ROADMAP
+v0.1.1 Beta -> v1.0 Release | 2026
+Copyright (c) 2026 xingxerx. All Rights Reserved.
+================================================================================
+
+
+EXECUTIVE SUMMARY
+--------------------------------------------------------------------------------
+SYNOID is currently a functional Beta (v0.1.1) Agentic Video Production Kernel.
+The core Brain-Cortex AI pipeline, FFmpeg orchestration, YouTube sourcing, voice
+engine, and cyberdefense systems are operational. This roadmap defines the path
+from the current Beta state to a stable v1.0 release across four focused phases,
+addressing known gaps in GPU acceleration, module modularity, voice fidelity,
+and production hardening.
+
+Status Legend:
+  [IN PROGRESS] - Actively being worked on
+  [PLANNED]     - Scheduled and defined
+  [RESEARCH]    - Under investigation
+  [COMPLETE]    - Done and stable
+
+
+================================================================================
+PHASE 1 — FOUNDATION HARDENING
+Version: v0.2.0 | Timeline: Q2 2026 | Duration: ~6 Weeks
+================================================================================
+
+Goal: Address every known technical debt item identified in the February 2026
+Audit before new features are layered on top. The goal is a rock-solid,
+well-structured core.
+
+FEATURE / TASK              STATUS          DESCRIPTION
+--------------------------------------------------------------------------------
+Smart Editor Refactor       [IN PROGRESS]   Split smart_editor.rs (~43KB) into
+                                            scene_ops, filter_ops, and
+                                            transition_ops sub-modules. No file
+                                            should exceed 500 lines per code
+                                            standards.
+
+Motor Cortex EditGraph      [IN PROGRESS]   Harden the topological EditGraph in
+                                            graph.rs for complex non-linear
+                                            workflows. Replace JSON plan
+                                            interface with a proper DAG API.
+
+IO Shield Coverage Audit    [PLANNED]       Audit all file operations
+                                            project-wide. Any path that bypasses
+                                            io_shield.rs must be refactored.
+                                            Zero raw file paths without
+                                            validation.
+
+Dependency Health Check     [PLANNED]       Pin crate versions; resolve any
+                                            yanked or deprecated dependencies.
+                                            Ensure pkg-config requirements are
+                                            documented for all platforms.
+
+Integration Test Suite      [PLANNED]       Expand #[ignore] FFmpeg-dependent
+                                            tests into a full integration suite.
+                                            Target 80%+ coverage on the Brain,
+                                            Motor Cortex, and Smart Editor.
+
+Inline Documentation Pass   [PLANNED]       All public functions, structs, and
+                                            unsafe blocks must have doc comments.
+                                            Focus on FFI wrappers and async
+                                            boundaries.
+
+
+================================================================================
+PHASE 2 — GPU & AI ACCELERATION
+Version: v0.4.0 | Timeline: Q3 2026 | Duration: ~8 Weeks
+================================================================================
+
+Goal: Unlock the full performance ceiling of SYNOID by replacing CPU fallback
+paths with native GPU acceleration and deepening LLM integration throughout
+the pipeline.
+
+FEATURE / TASK              STATUS          DESCRIPTION
+--------------------------------------------------------------------------------
+Native cudarc Pipelines     [IN PROGRESS]   Expand cudarc integration throughout
+                                            all encoding/decoding loops. RTX 50
+                                            series (sm_120) support blocked by
+                                            Rust ML libs — target full NVENC
+                                            coverage for supported hardware.
+
+GPU Whisper Transcription   [PLANNED]       Activate the cuda feature flag for
+                                            whisper-rs to enable GPU-accelerated
+                                            transcription. Directly improves
+                                            caption accuracy and speed.
+
+Neuroplasticity XP Tuning   [PLANNED]       Refine XP thresholds and speed
+                                            multiplier curves. Validate that
+                                            CUDA batch sizes, parallel streams,
+                                            and FFmpeg presets scale correctly
+                                            with adaptation level.
+
+Multi-Agent Orchestration   [PLANNED]       Activate multi_agent.rs for parallel
+                                            sub-agent execution. Enable
+                                            concurrent research, download, and
+                                            edit operations without blocking
+                                            the Brain.
+
+Gemini / Veo B-Roll Engine  [RESEARCH]      Complete the Veo integration from
+                                            the Technical Design Document. Enable
+                                            context-aware 3-5s B-roll snippet
+                                            generation triggered by scene
+                                            analysis.
+
+Vision Tools: Google AI     [PLANNED]       Graduate the multi-provider vision
+                                            path out of experimental. Add
+                                            fallback ranking: Gemini -> Ollama
+                                            VLM -> ffprobe metadata.
+
+SeedVR2 Upscale Integration [RESEARCH]      Complete SeedVR2 neural upscaling in
+                                            upscale_engine.rs. Benchmark against
+                                            Real-ESRGAN and Lanczos; implement
+                                            auto-selection by content type.
+
+
+================================================================================
+PHASE 3 — FEATURE EXPANSION
+Version: v0.6.0 | Timeline: Q3-Q4 2026 | Duration: ~10 Weeks
+================================================================================
+
+Goal: Build out the high-impact features that differentiate SYNOID as a
+production-grade autonomous video tool: voice cloning fidelity, multicam AI,
+the motion engine, and an enhanced dashboard.
+
+FEATURE / TASK              STATUS          DESCRIPTION
+--------------------------------------------------------------------------------
+Voice Cloning v2            [PLANNED]       Upgrade candle-based voice engine to
+                                            production quality. Target <=500ms
+                                            TTS latency. Add pitch correction,
+                                            room simulation, and de-noise
+                                            post-processing.
+
+Transcription Accuracy      [PLANNED]       Integrate word-level timestamp
+                                            alignment for caption generation.
+                                            Validate against EBU R128 audio
+                                            normalization to ensure captions
+                                            reflect post-processed audio.
+
+Multicam AI SmartSwitch     [PLANNED]       Graduate multicam.rs from
+                                            experimental. Implement AI-driven
+                                            camera angle selection based on
+                                            scene energy, subject position, and
+                                            engagement heuristics.
+
+Motion Engine (Remotion)    [PLANNED]       Stabilize the emotion-engine
+                                            TypeScript layer. Expose all 20+
+                                            motion templates (Lower Third, Logo
+                                            Reveal, Counter, etc.) as callable
+                                            tasks from the Brain.
+
+Dashboard Analytics         [PLANNED]       Build out the Analytics panel in the
+                                            Command Center. Expose render times,
+                                            neuroplasticity XP, GPU utilization,
+                                            and per-session quality metrics.
+
+Sentinel v2                 [PLANNED]       Upgrade PressureWatcher to expose
+                                            real-time Green/Yellow/Red hardware
+                                            status in GUI sidebar. Add Atomic
+                                            Stop notifications with resume
+                                            prompts.
+
+Research Module++           [PLANNED]       Expand research_tools.rs with
+                                            multi-source aggregation (YouTube +
+                                            web scraping). Add citation export
+                                            and structured topic briefings for
+                                            Automated Journalism workflows.
+
+
+================================================================================
+PHASE 4 — v1.0 PRODUCTION RELEASE
+Version: v1.0.0 | Timeline: Q4 2026
+================================================================================
+
+Goal: Polish, security audit, and release-readiness. Every module must be
+stable, documented, and tested before the v1.0 tag.
+
+FEATURE / TASK              STATUS          DESCRIPTION
+--------------------------------------------------------------------------------
+Security Audit              [PLANNED]       Full audit of all FFI calls, IO
+                                            Shield boundaries, and external
+                                            process spawning. Penetration test
+                                            the IntegrityGuard and Sentinel
+                                            against common attack vectors.
+
+Performance Benchmarking    [PLANNED]       Establish benchmark baselines for
+                                            1080p and 4K workloads. Publish
+                                            p50/p95 render times for YouTube
+                                            download, upscale, and full pipeline
+                                            runs.
+
+Installer & Packaging       [PLANNED]       Create OS-native installers (Windows
+                                            .msi, Linux .deb/.AppImage). Bundle
+                                            FFmpeg, Whisper model, and default
+                                            Ollama model to reduce setup
+                                            friction.
+
+API & Plugin Docs           [PLANNED]       Document the Plugin trait interface
+                                            for third-party engine authors.
+                                            Publish Rust API docs (cargo doc)
+                                            and a contributor integration guide.
+
+Automated CI/CD             [PLANNED]       GitHub Actions pipeline: build ->
+                                            test -> integration test ->
+                                            benchmark -> tag. Enforce no
+                                            regressions on core modules before
+                                            merge.
+
+License Enforcement         [PLANNED]       Add SYNOID SIL v1.0 header to all
+                                            source files. Tooling to detect
+                                            license stripping in PRs.
+
+
+================================================================================
+MILESTONE TIMELINE
+================================================================================
+
+VERSION    TIMELINE        MILESTONE              KEY DELIVERABLES
+--------------------------------------------------------------------------------
+v0.1.1     Current         Beta Baseline          - CLI + GUI operational
+                                                  - Brain + Motor Cortex
+                                                    functional
+                                                  - FFmpeg pipeline, YouTube
+                                                    download, Voice Engine,
+                                                    Cyberdefense live
+
+v0.2.0     Q2 2026         Foundation             - smart_editor.rs split into
+                           Hardening                sub-modules
+                                                  - IO Shield coverage at 100%
+                                                  - Integration test suite at
+                                                    80%+ coverage
+                                                  - Full inline documentation
+                                                    pass complete
+
+v0.4.0     Q3 2026         GPU + AI               - cudarc native pipelines
+                           Acceleration             active
+                                                  - GPU Whisper transcription
+                                                    enabled
+                                                  - Gemini vision path
+                                                    production-ready
+                                                  - Multi-agent parallel
+                                                    orchestration live
+
+v0.6.0     Q3-Q4 2026      Feature                - Voice cloning v2 at
+                           Expansion                production quality
+                                                  - Multicam SmartSwitch
+                                                    graduated
+                                                  - Motion Engine templates
+                                                    callable from Brain
+                                                  - Dashboard analytics panel
+                                                    live
+
+v1.0.0     Q4 2026         Production             - Security audit passed
+                           Release                - OS-native installers
+                                                    published
+                                                  - Benchmark baselines
+                                                    documented
+                                                  - CI/CD pipeline enforced
+                                                  - Plugin API documented
+
+
+================================================================================
+RISK REGISTER
+================================================================================
+
+RISK                              SEVERITY    MITIGATION
+--------------------------------------------------------------------------------
+RTX 50 series (sm_120) CUDA       HIGH        Maintain NVENC FFmpeg path as
+incompatibility                               primary GPU route. Monitor
+                                              cudarc/wgpu upstream for sm_120
+                                              support. Track Rust ML lib
+                                              releases.
+
+smart_editor.rs complexity        MEDIUM      Enforce 500-line file limit via CI
+growth                                        lint check. Refactor to sub-modules
+                                              in Phase 1 before Phase 2 features
+                                              land.
+
+yt-dlp API breakage               MEDIUM      Pin yt-dlp version in build
+                                              scripts. Add health check on
+                                              startup. Fallback to direct HTTP
+                                              download for supported domains.
+
+LLM hallucination in intent       MEDIUM      Keep fast_classify() heuristic
+parsing                                       path as primary. LLM only invoked
+                                              for complex or ambiguous intents.
+                                              Add confidence scoring.
+
+16GB RAM Degraded Mode edge       LOW         Expand PressureWatcher
+cases                                         Yellow/Red thresholds based on
+                                              real-world 4K benchmark data
+                                              from Phase 4.
+
+SIL license enforcement           LOW         Automated license header check in
+in forks                                      CI. SYNOID identity markers
+                                              embedded in binary output
+                                              metadata.
+
+
+================================================================================
+SYNOID Roadmap — Confidential
+Copyright (c) 2026 xingxerx. All Rights Reserved.
+SYNOID Shared Improvement License (SIL) v1.0
+================================================================================

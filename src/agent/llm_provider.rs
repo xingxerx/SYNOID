@@ -1,5 +1,5 @@
 // SYNOID Multi-Provider LLM Bridge
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Routes LLM requests to the best available provider:
 //   - Groq (primary): Reasoning + Fast tasks via OpenAI-compatible API

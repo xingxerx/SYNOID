@@ -1,5 +1,5 @@
 // SYNOID Recovery Manifest — Crash-Proof State Persistence
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // The "Black Box" of the kernel. On Atomic Stop (or Ctrl-C), the
 // current render state is serialized to a JSON manifest so SYNOID

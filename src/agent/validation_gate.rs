@@ -1,5 +1,5 @@
 // SYNOID Validation Gate — Null-Decode Integrity Checker
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Performs a "Null Decode" pass on a media file: FFmpeg reads and decodes
 // every packet but writes nothing. Any bitstream corruption surfaces as

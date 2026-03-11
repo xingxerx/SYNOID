@@ -1,11 +1,12 @@
 // SYNOID Smart Editor - AI-Powered Intent-Based Video Editing
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // This module provides intelligent video editing based on natural language intent.
 // It analyzes scenes, scores them against user intent, and generates trimmed output.
 
 use crate::agent::production_tools;
 use crate::agent::transcription::{TranscriptSegment, TranscriptionEngine};
+use crate::agent::gpt_oss_bridge::SynoidAgent;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
@@ -350,6 +351,7 @@ pub struct Scene {
     pub end_time: f64,
     pub duration: f64,
     pub score: f64, // 0.0 = definitely remove, 1.0 = definitely keep
+    pub vision_tags: Vec<String>,
 }
 
 /// Merge adjacent kept-scenes whose gap is smaller than `max_gap_secs` AND that
@@ -741,6 +743,7 @@ pub async fn detect_scenes(
             end_time: end,
             duration: dur,
             score: 0.5, // Neutral score initially
+            vision_tags: Vec::new(),
         });
     }
 
@@ -751,6 +754,7 @@ pub async fn detect_scenes(
             end_time: total_duration,
             duration: total_duration,
             score: 1.0,
+            vision_tags: Vec::new(),
         });
     }
 
@@ -860,6 +864,7 @@ pub fn refine_scenes_with_transcript(
                     end_time: segment.start,
                     duration: segment.start - current_start,
                     score: 0.0, // Silence/Gap
+                    vision_tags: scene.vision_tags.clone(),
                 });
                 current_start = segment.start;
             }
@@ -872,6 +877,7 @@ pub fn refine_scenes_with_transcript(
                     end_time: seg_end_bounded,
                     duration: seg_end_bounded - current_start,
                     score: 0.5, // Initial neutral score
+                    vision_tags: scene.vision_tags.clone(),
                 });
                 current_start = seg_end_bounded;
             }
@@ -892,6 +898,7 @@ pub fn refine_scenes_with_transcript(
                 end_time: scene.end_time,
                 duration: scene.end_time - current_start,
                 score: 0.0,
+                vision_tags: scene.vision_tags.clone(),
             });
         }
     }
@@ -976,6 +983,26 @@ pub fn score_scenes(
             score += 0.15; // Moderate boost; require ≥2s to avoid micro-clips
         }
 
+        // Vision Heuristics
+        let mut has_bad_app = false;
+        let mut has_main_app = false;
+        for tag in &scene.vision_tags {
+            let t = tag.to_lowercase();
+            if t.contains("discord") || t.contains("browser") || t.contains("desktop") {
+                has_bad_app = true;
+            }
+            if t.contains("main_app") || t.contains("game") {
+                has_main_app = true;
+            }
+        }
+
+        if has_bad_app {
+            score -= 1.0; // Huge penalty for secondary apps
+            info!("[SMART] 🛑 Penalizing scene at {:.1}s due to detected background app.", scene.start_time);
+        } else if has_main_app {
+            score += 0.2; // Boost main app
+        }
+
         // Semantic Heuristics (Transcript Analysis)
         if let Some(segments) = transcript {
             let mut speech_duration = 0.0;
@@ -1036,6 +1063,11 @@ pub fn score_scenes(
                 } else if speech_ratio > 0.1 {
                     score += config.speech_boost * 0.5;
                 }
+            }
+
+            // NEW: Always preserve talking scenes by heavily boosting score
+            if speech_ratio > 0.1 {
+                score = score.max(0.95);
             }
 
             if intent.remove_silence {
@@ -1358,6 +1390,50 @@ pub async fn smart_edit(
     if let Some(t) = &transcript {
         log("[SMART] 🛠️ Refining scene boundaries with transcript gaps...");
         scenes = refine_scenes_with_transcript(scenes, t);
+    }
+
+    // 2.8 Semantic Vision Scan (Sampled)
+    log("[SMART] 👁️ Performing sampled vision scan on scenes...");
+    
+    let agent = SynoidAgent::new("", "gemini-2.0-flash");
+
+    if true { // Simplified condition to avoid using Options since we now instantiate synchronously
+        for scene in scenes.iter_mut() {
+            // Only scan scenes longer than 2 seconds to save tokens
+            // and only if the current score isn't already 0.0
+            if scene.duration >= 2.0 && scene.score >= 0.0 {
+                let mid_time = scene.start_time + scene.duration / 2.0;
+                let frame_path = format!("temp_frame_{}_{}.jpg", scene.start_time.to_bits(), scene.end_time.to_bits());
+                
+                let status = tokio::process::Command::new("ffmpeg")
+                    .args([
+                        "-y",
+                        "-ss",
+                        &mid_time.to_string(),
+                        "-i",
+                        input.to_str().unwrap_or_default(),
+                        "-frames:v",
+                        "1",
+                        "-q:v",
+                        "2",
+                        &frame_path,
+                    ])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .await;
+
+                if let Ok(st) = status {
+                    if st.success() {
+                        if let Ok(desc) = crate::agent::vision_tools::describe_frame_multi_provider(&agent, &PathBuf::from(&frame_path), mid_time).await {
+                            log(&format!("[SMART] Vision tag for scene ({:.1}s): {:?}", mid_time, desc.tags));
+                            scene.vision_tags = desc.tags;
+                        }
+                    }
+                }
+                let _ = tokio::fs::remove_file(&frame_path).await;
+            }
+        }
     }
 
     // 3. Score scenes based on intent AND transcript
@@ -2480,6 +2556,7 @@ mod tests {
             end_time: 10.0,
             duration: 10.0,
             score: 0.5,
+            vision_tags: Vec::new(),
         }];
 
         let transcript = vec![
@@ -2523,12 +2600,14 @@ mod tests {
                 end_time: 20.0,
                 duration: 10.0,
                 score: 0.5,
+                vision_tags: Vec::new(),
             },
             Scene {
                 start_time: 900.0,
                 end_time: 910.0,
                 duration: 10.0,
                 score: 0.5,
+                vision_tags: Vec::new(),
             },
         ];
 
@@ -2558,6 +2637,7 @@ mod tests {
             end_time: 5.0,
             duration: 5.0,
             score: 0.5,
+            vision_tags: Vec::new(),
         }];
 
         let intent = EditIntent::from_text("remove boring");
@@ -2632,6 +2712,7 @@ mod tests {
             end_time: 4.0,
             duration: 2.0,
             score: 0.5,
+            vision_tags: Vec::new(),
         };
         let transcript = vec![TranscriptSegment {
             start: 2.5,

@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_variables)]
 // SYNOID Multi-Agent Systems (MAS)
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
 use crate::agent::reasoning::{ReasoningEffort, ReasoningManager};
 use serde::{Deserialize, Serialize};

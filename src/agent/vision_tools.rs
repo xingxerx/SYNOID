@@ -1,5 +1,5 @@
 // SYNOID Vision Tools
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -275,7 +275,7 @@ pub async fn build_semantic_index(
 
 /// Describe a frame using the multi-provider LLM bridge.
 /// Routes to Google AI Studio (Gemini) with Ollama VLM fallback.
-async fn describe_frame_multi_provider(
+pub async fn describe_frame_multi_provider(
     agent: &crate::agent::gpt_oss_bridge::SynoidAgent,
     frame_path: &PathBuf,
     timestamp: f64,
@@ -286,7 +286,7 @@ async fn describe_frame_multi_provider(
     std::fs::File::open(frame_path)?.read_to_end(&mut bytes)?;
     let b64 = base64_encode(&bytes);
 
-    let prompt = "Describe this video frame in one sentence. Then list up to 8 tags (objects, locations, actions, emotions) separated by commas.";
+    let prompt = "Describe this video frame in one sentence. Then list up to 8 tags (objects, locations, actions, emotions) separated by commas. IMPORTANT: If the screen shows Discord, a web browser, or the desktop environment, you MUST include 'discord', 'browser', or 'desktop' in the tags. If it shows a video game or the main application, include 'main_app'.";
 
     let raw = agent
         .vision_reason(prompt, &b64)
@@ -343,7 +343,7 @@ async fn describe_frame_with_vlm(
     std::fs::File::open(frame_path)?.read_to_end(&mut bytes)?;
     let b64 = base64_encode(&bytes);
 
-    let prompt = "Describe this video frame in one sentence. Then list up to 8 tags (objects, locations, actions, emotions) separated by commas.";
+    let prompt = "Describe this video frame in one sentence. Then list up to 8 tags (objects, locations, actions, emotions) separated by commas. IMPORTANT: If the screen shows Discord, a web browser, or the desktop environment, you MUST include 'discord', 'browser', or 'desktop' in the tags. If it shows a video game or the main application, include 'main_app'.";
 
     let raw = agent
         .vision_reason(prompt, &b64)

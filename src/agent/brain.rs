@@ -1,5 +1,5 @@
 // SYNOID Brain - Intent Classification & Heuristics
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Connected to: Neuroplasticity (adaptive speed) + GPU/CUDA backend
 // The Brain accelerates with experience and uses GPU when available.

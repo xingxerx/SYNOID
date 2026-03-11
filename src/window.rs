@@ -1,5 +1,5 @@
 // SYNOID Embodied Agent GUI with Tree-Organized Commands
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // "Command Center" Premium Interface Design
 // Deep Dark Theme | Tree Sidebar | Professional Typography

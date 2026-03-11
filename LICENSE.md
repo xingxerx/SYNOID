@@ -1,6 +1,6 @@
 # SYNOID Shared Improvement License (SIL) v1.0
 
-**Copyright © 2026 Xing. All Rights Reserved.**
+**Copyright © 2026 xingxerx. All Rights Reserved.**
 
 ## Preamble
 
@@ -51,7 +51,7 @@ This license governs the use, modification, and distribution of SYNOID and all a
 
 5.1. Contributors who submit Improvements agree to:
    - Respond to issues related to their contributions
-   - Collaborate on fixing problems their code may cause
+   - Collaborate on fixingxerx problems their code may cause
    - Maintain compatibility with the core Software
 
 5.2. The copyright holder reserves the right to:

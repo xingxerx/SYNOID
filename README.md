@@ -35,8 +35,8 @@ Whether you are repurposing long-form content, restoring legacy footage, or buil
 The heart of SYNOID is the **Command Center**, a premium dark-mode interface organizing all capabilities into a streamlined workflow:
 
 - **Media**: Upload videos (YouTube/Local), clip segments, and strictly compress files without quality loss.
-- **Visual**: Vectorize footage to SVG for artistic effects.
-- **AI Core**: Direct the "Brain" with natural language, run embodied agents, and learn editing styles.
+- **Visual**: Vectorize footage to SVG for artistic effects, and use **Gemini Vision** for frame-by-frame context awareness (detecting UI elements, specific apps, etc.).
+- **AI Core**: Direct the "Brain" with natural language powered by **Groq** and **Ollama**, run embodied agents, and learn editing styles. Enjoy real-time API key hot-reloading straight from the `.env` file via the Hive Status panel.
 - **Voice Studio**: Unified interface to record samples and generate speech (Simulated/Experimental).
 - **Security**: Monitor system integrity and active processes with the Cyberdefense Sentinel (Experimental).
 - **Research**: AI-powered topic research and video sourcing.
@@ -95,6 +95,14 @@ cargo build --release
 ```
 
 ### Run GUI
+
+**With Live-Reloading (Recommended for development):**
+Automatically recompiles on code changes without restarting the terminal.
+```bash
+cargo watch -x "run --release -- gui"
+```
+
+**Standard Run:**
 ```bash
 cargo run --release -- gui
 ```

@@ -1,5 +1,5 @@
 // SYNOID SignalSentinel — Graceful Shutdown Handler
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Intercepts OS termination signals (Ctrl-C / SIGTERM) and invokes
 // an emergency save callback before exiting, ensuring zero data loss.

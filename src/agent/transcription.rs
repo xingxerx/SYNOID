@@ -159,7 +159,7 @@ impl TranscriptionEngine {
                 }
             }
         } else {
-            info!("[SOVEREIGN] 🐌 Downmixing/resampling in memory. (Channels: {}, Rate: {}). This uses significant RAM.", spec.channels, spec.sample_rate);
+            info!("[SOVEREIGN] 🐌 Downmixingxerx/resampling in memory. (Channels: {}, Rate: {}). This uses significant RAM.", spec.channels, spec.sample_rate);
 
             // Manual conversion and downmix to mono simultaneously
             let channels = spec.channels as usize;

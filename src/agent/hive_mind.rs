@@ -1,5 +1,5 @@
 // SYNOID Hive Mind - Collaborative Intelligence Network
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -95,6 +95,20 @@ impl HiveMind {
     /// Connect to Ollama and discover all available intelligence.
     /// Cloud models (Groq/Google) are registered statically from env vars.
     pub async fn refresh_models(&mut self) -> Result<(), String> {
+        // [HOT RELOAD] Re-read .env to pull any newly added API keys dynamically
+        if let Ok(content) = std::fs::read_to_string(".env") {
+            for line in content.lines() {
+                let s = line.trim();
+                if s.starts_with('#') || s.is_empty() { continue; }
+                if let Some((k, v)) = s.split_once('=') {
+                    let key = k.trim();
+                    let val = v.trim().trim_matches('"').trim_matches('\'');
+                    std::env::set_var(key, val);
+                }
+            }
+        }
+        self.cloud_enabled = std::env::var("GROQ_API_KEY").is_ok() || std::env::var("GOOGLE_AI_KEY").is_ok();
+
         // Register cloud models first
         self.register_cloud_models();
 
@@ -287,6 +301,14 @@ impl HiveMind {
     /// Check if vision is available via Google AI Studio.
     pub fn has_cloud_vision(&self) -> bool {
         std::env::var("GOOGLE_AI_KEY").is_ok()
+    }
+
+    pub fn get_vision_model(&self) -> String {
+        if self.has_cloud_vision() {
+            std::env::var("GOOGLE_VISION_MODEL").unwrap_or_else(|_| "gemini-2.0-flash (Google)".to_string())
+        } else {
+            "None".to_string()
+        }
     }
 
     /// Get the active backend for reasoning tasks.

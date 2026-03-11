@@ -1,5 +1,5 @@
 // SYNOID Video Stitcher — Lossless Chunk Concatenation
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // After chunked rendering, the Stitcher joins verified segments using
 // FFmpeg's concat demuxer (`-f concat`).  Because we use `-c copy`,

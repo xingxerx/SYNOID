@@ -1,5 +1,5 @@
 // SYNOID Neuroplasticity — Adaptive Speed Doubling
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // The Brain grows faster with experience. Processing speed doubles
 // at fixed experience thresholds, modelling biological neuroplasticity

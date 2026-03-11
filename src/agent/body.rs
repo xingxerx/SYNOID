@@ -1,5 +1,5 @@
 // SYNOID Body Interface
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
 pub struct Body {}
 

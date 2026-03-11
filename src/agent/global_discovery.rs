@@ -1,5 +1,5 @@
-// SYNOID Global Discovery - System-wide Media Indexing
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// SYNOID Global Discovery - System-wide Media Indexingxerx
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
 use std::path::PathBuf;
 use std::sync::Arc;

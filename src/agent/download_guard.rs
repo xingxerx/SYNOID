@@ -1,5 +1,5 @@
 // SYNOID Download Guard — Safe Acquisition Layer
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Protects the multi-agent mixture from downloading viruses, malware,
 // or corrupt media. Every URL is screened before fetch, and every

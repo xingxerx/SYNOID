@@ -1,5 +1,5 @@
 // SYNOID Editor API — Full REST backend for the React NLE editor
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
 use axum::{
     body::Body,

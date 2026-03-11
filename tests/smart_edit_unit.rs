@@ -10,6 +10,7 @@ async fn test_smart_edit_fallback() {
             end_time: 10.0,
             duration: 10.0,
             score: 0.5,
+            vision_tags: vec![],
         }, // Boring/Silence
     ];
     let intent = EditIntent {
@@ -39,6 +40,7 @@ async fn test_smart_edit_fallback() {
         end_time: 40.0,
         duration: 40.0,
         score: 0.5,
+        vision_tags: vec![],
     }];
     score_scenes(&mut scenes, &intent, None, &config, 40.0);
 
@@ -57,6 +59,7 @@ async fn test_speech_protection_ruthless() {
         end_time: 5.0,
         duration: 5.0,
         score: 0.5,
+        vision_tags: vec![],
     }];
 
     let transcript = vec![TranscriptSegment {
@@ -99,6 +102,7 @@ async fn test_full_density_preserves_long_scenes() {
         end_time: 60.0,
         duration: 60.0,
         score: 0.5,
+        vision_tags: vec![],
     }];
 
     let intent = EditIntent::from_text("Edit the whole video making it 60 minutes long");

@@ -1,5 +1,5 @@
 // SYNOID GptOssBridge - High-level Agent Interface
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Bridges the SYNOID Agent's high-level reasoning with the MultiProviderLlm.
 // Handles reasoning, vision, and intent-based routing.

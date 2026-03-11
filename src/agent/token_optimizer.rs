@@ -1,5 +1,5 @@
 // SYNOID Token Optimizer
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Tracks token usage across free-tier LLM providers and enforces budgets
 // so SYNOID never burns through the free limits.

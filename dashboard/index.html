@@ -308,7 +308,7 @@
             if (apiKey) {
                 options.headers = {
                     ...options.headers,
-                    'Authorization': `Bearer ${apiKey}`
+                    'x-api-key': apiKey
                 };
             }
 

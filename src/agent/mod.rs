@@ -1,5 +1,5 @@
 // SYNOID Agent Modules
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
 pub mod academy;
 pub mod audio_tools;
@@ -44,3 +44,4 @@ pub mod multicam; // AI Multicam Sync & SmartSwitch
 pub mod upscale_engine; // SeedVR2 / Real-ESRGAN / Lanczos upscaling
 
 pub mod core; // Exposed Core Logic
+pub mod video_style_learner; // Learn editing style from local reference videos

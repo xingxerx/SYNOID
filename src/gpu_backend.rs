@@ -1,5 +1,5 @@
 // SYNOID GPU Backend - FFmpeg NVENC Acceleration + Neuroplasticity Bridge
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Uses FFmpeg NVENC for GPU encoding - no Rust CUDA deps needed
 // RTX 5080 (sm_120) not yet supported by cudarc/wgpu

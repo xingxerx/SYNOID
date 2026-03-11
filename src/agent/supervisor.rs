@@ -1,5 +1,5 @@
 // SYNOID Antifragile Supervisor — Self-Healing Execution Loop
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Wraps high-risk tasks in a Try-Heal-Retry loop:
 //   1. Execute inside catch_unwind

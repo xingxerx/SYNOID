@@ -1,5 +1,5 @@
 // SYNOID Agent Core - The "Ghost"
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // This is the central logic kernel that powers both the CLI and GUI.
 // It maintains state, manages long-running processes, and routes intent.
@@ -152,6 +152,38 @@ impl AgentCore {
         }
     }
 
+    /// Learn editing style from videos already present in the Download directory.
+    ///
+    /// Analyses up to 10 MP4s, stores patterns in the LearningKernel, awards
+    /// quality-weighted XP to Neuroplasticity, and writes a tuned EditingStrategy
+    /// to cortex_cache so every subsequent edit inherits the learned style.
+    pub async fn learn_from_downloads(&self) {
+        use crate::agent::video_style_learner;
+
+        self.log("[CORE] 🎓 Learning editing style from downloaded reference videos...");
+        self.set_status("🎓 Learning from videos...");
+
+        let profiles = {
+            let mut brain = self.brain.lock().await;
+            let p = video_style_learner::learn_from_downloads(&mut brain).await;
+            let report = brain.neuroplasticity.acceleration_report();
+            (p, report)
+        };
+
+        if profiles.0.is_empty() {
+            self.log("[CORE] ⚠️ No reference videos found in Download dir — skipping style sync.");
+        } else {
+            video_style_learner::synthesise_and_save_strategy(&profiles.0);
+            self.log(&format!(
+                "[CORE] ✅ Learned {} video style(s) | {}",
+                profiles.0.len(),
+                profiles.1
+            ));
+        }
+
+        self.set_status("⚡ Ready");
+    }
+
     /// Connect GPU context to the Brain for CUDA-accelerated processing.
     /// Call this after async GPU detection completes.
     pub async fn connect_gpu_to_brain(&self) {
@@ -172,9 +204,10 @@ impl AgentCore {
     pub async fn get_hive_status(&self) -> String {
         let brain = self.brain.lock().await;
         format!(
-            "🧠 Reasoning: {}\n⚡ Fast: {}\n📚 Models Loaded: {}",
+            "🧠 Reasoning: {}\n⚡ Fast: {}\n👁️ Vision: {}\n📚 Models Loaded: {}",
             brain.hive_mind.get_reasoning_model(),
             brain.hive_mind.get_fast_model(),
+            brain.hive_mind.get_vision_model(),
             brain.hive_mind.models.len()
         )
     }
@@ -1011,10 +1044,10 @@ mod tests {
         assert_eq!(AgentCore::sanitize_input("'C:\\Path'"), "C:\\Path");
 
         // Test hidden control characters (LRE \u{202a})
-        let input = "\u{202a}C:\\Users\\xing\\Videos\\test.mp4";
+        let input = "\u{202a}C:\\Users\\xingxerx\\Videos\\test.mp4";
         assert_eq!(
             AgentCore::sanitize_input(input),
-            "C:\\Users\\xing\\Videos\\test.mp4"
+            "C:\\Users\\xingxerx\\Videos\\test.mp4"
         );
 
         // Test combination

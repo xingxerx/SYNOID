@@ -1,5 +1,5 @@
 // SYNOID PressureWatcher — Real-time Hardware Stress Monitor
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // The "Nervous System" of the kernel. Polls CPU/RAM to produce a
 // PressureLevel (Green/Yellow/Red) that the Supervisor and GUI consume.

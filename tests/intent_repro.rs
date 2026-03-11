@@ -41,12 +41,14 @@ fn test_continuity_synchronization() {
             end_time: 2.0,
             duration: 2.0,
             score: 0.1,
+            vision_tags: vec![],
         }, // Part of sentence
         Scene {
             start_time: 2.0,
             end_time: 4.0,
             duration: 2.0,
             score: 0.6,
+            vision_tags: vec![],
         }, // Good part of sentence
     ];
 

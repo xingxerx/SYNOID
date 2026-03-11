@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 // SYNOID Research Tools
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Web research capabilities for finding AI editing tips, tutorials, and techniques.
 

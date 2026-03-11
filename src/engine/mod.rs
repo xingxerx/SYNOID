@@ -1,5 +1,5 @@
 // SYNOID Engine Module
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // DAG-based edit graph and frame types for the node pipeline.
 

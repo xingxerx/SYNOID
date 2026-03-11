@@ -1,5 +1,5 @@
 // SYNOID Health Check & Watchdog System
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Provides continuous self-monitoring, crash recovery, and uptime guarantees.
 // The HealthMonitor runs as a background task and periodically checks system health.

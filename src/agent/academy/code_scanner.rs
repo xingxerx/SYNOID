@@ -1,5 +1,5 @@
 // SYNOID Code Scanner
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use serde::{Deserialize, Serialize};

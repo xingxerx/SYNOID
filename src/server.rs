@@ -187,13 +187,26 @@ async fn auth_middleware(
     let api_key =
         std::env::var("SYNOID_API_KEY").unwrap_or_else(|_| "synoid_secret_v1".to_string());
 
-    match headers.get("x-api-key") {
-        Some(key) if key == api_key.as_str() => Ok(next.run(request).await),
-        _ => {
-            error!("❌ access denied: missing or invalid api key");
-            Err(StatusCode::UNAUTHORIZED)
+    // 1. Check x-api-key header
+    if let Some(key) = headers.get("x-api-key") {
+        if key == api_key.as_str() {
+            return Ok(next.run(request).await);
         }
     }
+
+    // 2. Check ?api_key= query parameter (used by streaming endpoints)
+    if let Some(query) = request.uri().query() {
+        for pair in query.split('&') {
+            if let Some(val) = pair.strip_prefix("api_key=") {
+                if val == api_key.as_str() {
+                    return Ok(next.run(request).await);
+                }
+            }
+        }
+    }
+
+    error!("❌ access denied: missing or invalid api key");
+    Err(StatusCode::UNAUTHORIZED)
 }
 
 #[axum::debug_handler]

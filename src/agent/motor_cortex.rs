@@ -170,6 +170,7 @@ impl MotorCortex {
                     end_time: end,
                     duration: end - start,
                     score: 0.5,
+                    vision_tags: Vec::new(),
                 });
             }
         }

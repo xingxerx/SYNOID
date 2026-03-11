@@ -1,5 +1,5 @@
 // SYNOID Main Entry Point
-// Copyright (c) 2026 Xing_The_Creator | SYNOID
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
 use synoid_core::agent;
 use synoid_core::agent::core::AgentCore;
@@ -210,6 +210,9 @@ enum Commands {
         scale: f64,
     },
 
+    /// Learn editing style from videos already in D:\SYNOID\Download (up to 10)
+    LearnDownloads,
+
     /// Start Autonomous Learning Loop
     Autonomous,
 
@@ -338,6 +341,13 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             tokio::spawn(async move {
                 info!("🌐 Auto-launching Dashboard Server...");
                 server::start_server(port, server_state).await;
+            });
+
+            // Auto-learn from downloaded reference videos in the background
+            let core_for_learning = core.clone();
+            tokio::spawn(async move {
+                info!("🎓 Auto-learning from reference videos in Download folder...");
+                core_for_learning.learn_from_downloads().await;
             });
 
             // Launch GUI (Blocking) — pass AgentCore
@@ -513,6 +523,12 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             core.run_unified_pipeline(&input, &output, &stages, &gpu, intent, scale)
                 .await?;
         }
+        Commands::LearnDownloads => {
+            info!("🎓 Learning editing style from downloaded reference videos...");
+            core.learn_from_downloads().await;
+            info!("✅ Style learning complete.");
+        }
+
         Commands::Autonomous => {
             use agent::autonomous_learner::AutonomousLearner;
             use agent::brain::Brain;
