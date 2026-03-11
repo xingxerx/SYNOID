@@ -1,13 +1,11 @@
 use tokio::process::Command;
 use super::types::{Scene, EditIntent, EditingStrategy, EditDensity};
 use crate::agent::transcription::TranscriptSegment;
-use tracing::{info, warn};
-use crate::agent::vision_tools;
-use std::path::{Path, PathBuf};
+use tracing::info;
+use std::path::Path;
 // SYNOID Smart Editor Refactoring
 
 const SILENCE_REFINEMENT_THRESHOLD: f64 = 2.0; // Seconds of silence to trigger a scene split (≤2 s pause = natural speech rhythm, not a cut point)
-use regex::Captures;
 pub fn merge_neighboring_scenes(
     scenes: Vec<Scene>,
     transcript: &[TranscriptSegment],

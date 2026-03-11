@@ -17,7 +17,6 @@ pub use transition_ops::*;
 use crate::agent::production_tools;
 use crate::agent::transcription::{TranscriptSegment, TranscriptionEngine};
 use crate::agent::gpt_oss_bridge::SynoidAgent;
-use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -153,8 +152,11 @@ pub async fn smart_edit(
 
     // 0. Pre-process: Enhance Audio & Transcribe (Code follows...)
     // This creates a clean audio spine for the edit
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let job_prefix = &job_id[..8];
+
     let work_dir = input.parent().ok_or("Input path has no parent")?;
-    let enhanced_audio_path = work_dir.join("synoid_audio_enhanced.wav");
+    let enhanced_audio_path = work_dir.join(format!("synoid_{}_audio_enhanced.wav", job_prefix));
 
     log("[SMART] 🎙️ Enhancing audio (High-Pass + Compression + Normalization)...");
     match production_tools::enhance_audio(input, &enhanced_audio_path).await {
@@ -180,7 +182,7 @@ pub async fn smart_edit(
         ));
         Some(t)
     } else if use_enhanced_audio {
-        let whisper_audio_path = work_dir.join("synoid_audio_whisper.wav");
+        let whisper_audio_path = work_dir.join(format!("synoid_{}_audio_whisper.wav", job_prefix));
 
         // Extract 16kHz mono specifically for Whisper from the enhanced audio
         log("[SMART] 🎧 Extracting 16kHz mono audio for Whisper...");
@@ -234,7 +236,7 @@ pub async fn smart_edit(
     if intent.censor_profanity {
         if let Some(t) = &transcript {
             log("[SMART] 🤬 Applying audio censorship pass based on transcript...");
-            let censored_path = work_dir.join("synoid_audio_censored.wav");
+            let censored_path = work_dir.join(format!("synoid_{}_audio_censored.wav", job_prefix));
 
             // Comprehensive list of words to bleep — racial slurs, hate speech, and profanity
             let profanity_words = get_profanity_word_list();
@@ -615,8 +617,7 @@ pub async fn smart_edit(
         neuro_transition_name, neuro_transition_dur, neuro_level
     ));
 
-    let job_id = uuid::Uuid::new_v4().to_string();
-    let segments_dir = work_dir.join(format!("synoid_temp_{}", &job_id[..8]));
+    let segments_dir = work_dir.join(format!("synoid_temp_{}", job_prefix));
     if segments_dir.exists() {
         fs::remove_dir_all(&segments_dir)?;
     }

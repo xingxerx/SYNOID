@@ -184,7 +184,14 @@ impl LearnedVideoCache {
 // Core public API
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Returns the directory that holds reference videos for this instance.
+pub fn get_download_dir() -> PathBuf {
+    let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
+    PathBuf::from(format!("D:\\SYNOID\\Download{}", suffix))
+}
+
 /// Directory that holds reference videos downloaded by the autonomous learner.
+#[deprecated(note = "Use get_download_dir() instead")]
 pub const DOWNLOAD_DIR: &str = r"D:\SYNOID\Download";
 /// Maximum reference videos to keep / learn from at any one time.
 pub const MAX_VIDEOS: usize = 10;
@@ -204,9 +211,10 @@ pub struct LearnResult {
 /// does real work — and only awards XP — for genuinely new or changed files.
 /// Returns all profiles (cached + new) so the caller can synthesise a strategy.
 pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
-    let download_dir = Path::new(DOWNLOAD_DIR);
+    let download_dir_buf = get_download_dir();
+    let download_dir = download_dir_buf.as_path();
     if !download_dir.exists() {
-        warn!("[STYLE_LEARNER] Download dir not found: {}", DOWNLOAD_DIR);
+        warn!("[STYLE_LEARNER] Download dir not found: {:?}", download_dir);
         return LearnResult { profiles: Vec::new(), has_new: false };
     }
 
@@ -230,7 +238,7 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
     videos.truncate(MAX_VIDEOS);
 
     if videos.is_empty() {
-        info!("[STYLE_LEARNER] No MP4 files found in {}", DOWNLOAD_DIR);
+        info!("[STYLE_LEARNER] No MP4 files found in {:?}", get_download_dir());
         return LearnResult { profiles: Vec::new(), has_new: false };
     }
 

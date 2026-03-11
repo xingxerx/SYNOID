@@ -161,4 +161,26 @@ impl VideoEditorQueue {
         let mut jobs = self.jobs.lock().await;
         jobs.retain(|j| !matches!(j.status, JobStatus::Completed { .. } | JobStatus::Failed(_)));
     }
+
+    /// Blocks until all queued and processing jobs are completed.
+    /// Useful for graceful shutdown.
+    pub async fn wait_for_completion(&self) {
+        info!("[QUEUE] Waiting for all video jobs to complete before shutting down...");
+        loop {
+            let active_count = {
+                let jobs = self.jobs.lock().await;
+                jobs.iter()
+                    .filter(|j| matches!(j.status, JobStatus::Queued | JobStatus::Processing))
+                    .count()
+            };
+
+            if active_count == 0 {
+                info!("[QUEUE] All video jobs completed. Safe to shutdown.");
+                break;
+            }
+
+            // Yield and check again
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
 }

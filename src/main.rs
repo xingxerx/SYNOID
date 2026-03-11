@@ -214,7 +214,11 @@ enum Commands {
     LearnDownloads,
 
     /// Start Autonomous Learning Loop
-    Autonomous,
+    Autonomous {
+        /// Optional port for instance isolation (e.g., 3001)
+        #[arg(short, long)]
+        port: Option<u16>,
+    },
 
     /// Start the Dashboard Web Server
     Serve {
@@ -277,6 +281,17 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         );
     }
 
+    let args = Cli::parse();
+
+    // Auto-set Instance ID based on port if in GUI mode
+    if let Commands::Gui { port } = args.command {
+        if port != 3000 {
+            let instance_id = format!("_{}", port);
+            std::env::set_var("SYNOID_INSTANCE_ID", &instance_id);
+            info!("🔷 Auto-Isolated Instance: '{}' (port {})", instance_id, port);
+        }
+    }
+
     let api_url =
         std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
 
@@ -301,32 +316,11 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
     });
-
-    let args = Cli::parse();
-
     match args.command {
         Commands::Gui { port } => {
             use crate::agent::health::HealthMonitor;
             use synoid_core::server;
             use synoid_core::state::KernelState;
-
-            // Set instance ID so all state files are scoped to this port.
-            // Default instance (3000) keeps "cortex_cache/" unchanged.
-            let instance_id = if port == 3000 {
-                String::new()
-            } else {
-                format!("_{}", port)
-            };
-            std::env::set_var("SYNOID_INSTANCE_ID", &instance_id);
-            info!(
-                "🔷 Instance ID: '{}' (port {})",
-                if instance_id.is_empty() {
-                    "default"
-                } else {
-                    &instance_id
-                },
-                port
-            );
 
             // Start health monitor (heartbeat every 30 seconds)
             let health = HealthMonitor::new(30);
@@ -352,7 +346,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
             // Launch GUI (Blocking) — pass AgentCore
             info!("🖥️ Launching GUI Command Center...");
-            let res = tokio::task::block_in_place(|| window::run_gui(core));
+            let core_in_gui = core.clone();
+            let res = tokio::task::block_in_place(|| window::run_gui(core_in_gui));
             if let Err(e) = res {
                 error!("GUI Error: {}", e);
             }
@@ -361,8 +356,11 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             health.stop();
             info!("{}", health.status_report());
             info!("🛑 GUI closed. Shutting down all background tasks...");
+            // Graceful shutdown: ensure background video rendering completes before exiting
+            info!("⏳ Waiting for active video editing jobs to finish...");
+            core.editor_queue.wait_for_completion().await;
 
-            // Force-exit to kill all spawned tokio tasks (server, hive mind poller, editor queue).
+            // Force-exit to kill all spawned tokio tasks (server, hive mind poller, health monitor).
             // Without this, background tasks keep the process alive as a ghost.
             std::process::exit(0);
         }
@@ -529,11 +527,19 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             info!("✅ Style learning complete.");
         }
 
-        Commands::Autonomous => {
+        Commands::Autonomous { port } => {
             use agent::autonomous_learner::AutonomousLearner;
             use agent::brain::Brain;
             use tokio::signal;
             use tokio::sync::Mutex;
+
+            if let Some(p) = port {
+                if p != 3000 {
+                    let instance_id = format!("_{}", p);
+                    std::env::set_var("SYNOID_INSTANCE_ID", &instance_id);
+                    info!("🔷 Auto-Isolated Learning Instance: '{}' (port {})", instance_id, p);
+                }
+            }
 
             info!("🚀 Starting Autonomous Learning Loop...");
             let brain = Arc::new(Mutex::new(Brain::new(&api_url, "llama3:latest")));
@@ -542,6 +548,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             learner.start();
 
             info!("Press Ctrl+C to stop.");
+            // We need a longer timeout for downloads if we are being watched
             signal::ctrl_c().await?;
             learner.stop();
             info!("🛑 Autonomous Loop Stopped.");

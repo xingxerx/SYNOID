@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use regex::Captures;
-use crate::agent::transcription::TranscriptSegment;
 use std::fs;
 use tracing::{info, warn};
 // SYNOID Smart Editor Refactoring

@@ -1,8 +1,7 @@
 use super::types::Scene;
-use std::path::{Path, PathBuf};
 // SYNOID Smart Editor Refactoring
 
-fn build_smooth_xfade_filter(
+pub fn build_smooth_xfade_filter(
     scenes: &[Scene],
     audio_input_idx: usize,
     transition_duration: f64,

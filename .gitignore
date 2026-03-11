@@ -76,3 +76,12 @@ brain_memory.json
 temp_verification/
 check_errors*.txt
 .claude/
+
+# Additions for Watch & Multi-Instance Isolation
+Download/
+Download*/
+cortex_cache/
+cortex_cache*/
+target_*/
+.cargo/
+*.part

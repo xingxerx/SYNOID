@@ -1,10 +1,8 @@
 use super::types::{Scene};
-use crate::agent::transcription::TranscriptSegment;
 use tracing::{info, warn};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::fs;
 use tokio::process::Command;
-use crate::agent::production_tools;
 // SYNOID Smart Editor Refactoring
 
 pub async fn insert_cut_markers(

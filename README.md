@@ -130,6 +130,43 @@ Finally, utilize the Engagement Consolidator to structure the final video, prior
 
 ---
 
+## 🤖 Advanced & Agentic Workflows
+
+### 🧬 Recursive Learning Loop
+When SYNOID is run using `cargo watch` while the **Autonomous Learning Loop** is active, it creates a powerful **self-recursive improvement cycle**:
+1. **Scouting**: The agent downloads a high-quality video (e.g., from YouTube).
+2. **Analysis**: It processes the video, identifies editing patterns, and updates its `EditingStrategy`.
+3. **Trigger**: Writing the new strategy to `cortex_cache/` triggers `cargo watch` to recompile/restart the GUI.
+4. **Resumption**: The GUI re-launches with a fresh "Brain" that immediately applies the newly learned patterns to the next video it processes.
+
+This allows the agent to essentially "dream" and practice new styles in the background, becoming more accurate with every restart.
+
+### 👥 Running Multiple Instances
+You can run multiple independent SYNOID agents on the same machine by isolating their memory and ports:
+
+**Instance A (Default):**
+```bash
+cargo run --release -- gui
+```
+
+**Instance B (Isolated):**
+```bash
+# Providing a different port now automatically isolates the state!
+cargo run --release -- gui --port 3001
+```
+
+> [!WARNING]
+> **Windows File Locks**: If you try to run `cargo watch` or `cargo run` for a second instance while the first is already running, you may get an `Access is denied (os error 5)` or `Blocking waiting for file lock` because Cargo shares the global package registry. 
+> 
+> To fix this, use **Absolute Isolation** (creates a private cargo home):
+> ```bash
+> $env:CARGO_TARGET_DIR="target_3001"; $env:CARGO_HOME="target_3001\.cargo"; cargo watch -x "run --release -- gui --port 3001"
+> ```
+> This will re-download/re-compile dependencies into the new folder, but it is **100% safe** from file locks while other instances are running.
+
+
+---
+
 ## 🏗️ Architecture
 
 SYNOID is built on a modular "Brain-Cortex" architecture:
