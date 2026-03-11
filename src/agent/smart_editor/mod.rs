@@ -14,6 +14,7 @@ pub use transition_ops::*;
 // This module provides intelligent video editing based on natural language intent.
 // It analyzes scenes, scores them against user intent, and generates trimmed output.
 
+use std::sync::Arc;
 use crate::agent::production_tools;
 use crate::agent::transcription::{TranscriptSegment, TranscriptionEngine};
 use crate::agent::gpt_oss_bridge::SynoidAgent;
@@ -312,46 +313,72 @@ pub async fn smart_edit(
         scenes = refine_scenes_with_transcript(scenes, t);
     }
 
-    // 2.8 Semantic Vision Scan (Sampled)
+    // 2.8 Semantic Vision Scan (Parallelized)
     log("[SMART] 👁️ Performing sampled vision scan on scenes...");
     
-    let agent = SynoidAgent::new("", "gemini-2.0-flash");
+    let agent = Arc::new(SynoidAgent::new("", "gemini-2.0-flash"));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(6)); // Concurrency limit
+    let mut vision_tasks = Vec::new();
 
-    if true { // Simplified condition to avoid using Options since we now instantiate synchronously
-        for scene in scenes.iter_mut() {
-            // Only scan scenes longer than 2 seconds to save tokens
-            // and only if the current score isn't already 0.0
-            if scene.duration >= 2.0 && scene.score >= 0.0 {
-                let mid_time = scene.start_time + scene.duration / 2.0;
-                let frame_path = format!("temp_frame_{}_{}.jpg", scene.start_time.to_bits(), scene.end_time.to_bits());
-                
-                let status = tokio::process::Command::new("ffmpeg")
-                    .args([
-                        "-y",
-                        "-ss",
-                        &mid_time.to_string(),
-                        "-i",
-                        input.to_str().unwrap_or_default(),
-                        "-frames:v",
-                        "1",
-                        "-q:v",
-                        "2",
-                        &frame_path,
-                    ])
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status()
-                    .await;
+    let scenes_to_scan: Vec<(usize, f64, f64)> = scenes.iter().enumerate()
+        .filter(|(_, s)| s.duration >= 2.0 && s.score >= 0.0)
+        .map(|(i, s)| (i, s.start_time, s.end_time))
+        .collect();
+    
+    let total_to_scan = scenes_to_scan.len();
+    log(&format!("[SMART] Parallel Vision Scan: {}/{} scenes meet criteria", total_to_scan, scenes.len()));
 
-                if let Ok(st) = status {
-                    if st.success() {
-                        if let Ok(desc) = crate::agent::vision_tools::describe_frame_multi_provider(&agent, &PathBuf::from(&frame_path), mid_time).await {
-                            log(&format!("[SMART] Vision tag for scene ({:.1}s): {:?}", mid_time, desc.tags));
-                            scene.vision_tags = desc.tags;
-                        }
+    for (i, start_time, end_time) in scenes_to_scan {
+        let agent = agent.clone();
+        let semaphore = semaphore.clone();
+        let input_path = input.to_path_buf();
+        let frame_path = format!("temp_frame_{}_{}.jpg", start_time.to_bits(), end_time.to_bits());
+        let mid_time = start_time + (end_time - start_time) / 2.0;
+
+        vision_tasks.push(tokio::spawn(async move {
+            let _permit = semaphore.acquire().await.unwrap();
+            
+            let status = tokio::process::Command::new("ffmpeg")
+                .args([
+                    "-y",
+                    "-ss",
+                    &mid_time.to_string(),
+                    "-i",
+                    input_path.to_str().unwrap_or_default(),
+                    "-frames:v",
+                    "1",
+                    "-q:v",
+                    "2",
+                    &frame_path,
+                ])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .await;
+
+            let mut tags = Vec::new();
+            if let Ok(st) = status {
+                if st.success() {
+                    if let Ok(desc) = crate::agent::vision_tools::describe_frame_multi_provider(&agent, &PathBuf::from(&frame_path), mid_time).await {
+                        tags = desc.tags;
                     }
                 }
-                let _ = tokio::fs::remove_file(&frame_path).await;
+            }
+            let _ = tokio::fs::remove_file(&frame_path).await;
+            (i, tags)
+        }));
+    }
+
+    // Collect results and apply them
+    let mut completed = 0;
+    for task in vision_tasks {
+        if let Ok((i, tags)) = task.await {
+            completed += 1;
+            if !tags.is_empty() {
+                scenes[i].vision_tags = tags;
+            }
+            if completed % 10 == 0 || completed == total_to_scan {
+                info!("[SMART] Vision progress: {}/{} scenes analyzed", completed, total_to_scan);
             }
         }
     }

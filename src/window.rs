@@ -65,7 +65,7 @@ fn format_time(seconds: f64) -> String {
     format!("{:02}:{:02}:{:02}", hrs, mins, secs)
 }
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ActiveCommand {
     Dashboard,
     // Media
@@ -88,7 +88,13 @@ pub enum ActiveCommand {
     Discovery,
 }
 
-#[derive(Default, Clone)]
+impl Default for ActiveCommand {
+    fn default() -> Self {
+        Self::Dashboard
+    }
+}
+
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TreeState {
     pub media_expanded: bool,
     pub visual_expanded: bool,
@@ -145,32 +151,114 @@ pub struct UiState {
     pub recent_jobs: Vec<crate::agent::editor_queue::EditJob>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 struct PersistedSettings {
+    input_path: String,
+    output_path: String,
+    intent: String,
+    youtube_url: String,
+    clip_start: String,
+    clip_duration: String,
+    compress_size: String,
+    scale_factor: String,
+    research_topic: String,
+    style_name: String,
     is_autonomous_running: bool,
     guard_mode: String,
+    guard_watch_path: String,
+    active_editor_tab: String,
+    active_command: ActiveCommand,
+    tree_state: TreeState,
+    timeline_zoom: f32,
+    track_audio: String,
+    track_overlay: String,
+    discovery_query: String,
 }
 
-fn load_settings() -> PersistedSettings {
-    if let Ok(data) = std::fs::read_to_string("synoid_settings.json") {
+impl Default for PersistedSettings {
+    fn default() -> Self {
+        Self {
+            input_path: String::new(),
+            output_path: "Video/output.mp4".to_string(),
+            intent: String::new(),
+            youtube_url: String::new(),
+            clip_start: "0.0".to_string(),
+            clip_duration: "10.0".to_string(),
+            compress_size: "25.0".to_string(),
+            scale_factor: "2.0".to_string(),
+            research_topic: String::new(),
+            style_name: String::new(),
+            is_autonomous_running: false,
+            guard_mode: "all".to_string(),
+            guard_watch_path: String::new(),
+            active_editor_tab: "Media".to_string(),
+            active_command: ActiveCommand::Dashboard,
+            tree_state: TreeState {
+                media_expanded: true,
+                visual_expanded: true,
+                ai_core_expanded: true,
+                security_expanded: false,
+                research_expanded: false,
+                audio_expanded: true,
+            },
+            timeline_zoom: 0.5,
+            track_audio: String::new(),
+            track_overlay: String::new(),
+            discovery_query: String::new(),
+        }
+    }
+}
+
+fn load_settings(instance_id: &str) -> PersistedSettings {
+    let filename = format!("synoid_settings_{}.json", instance_id);
+
+    if let Ok(data) = std::fs::read_to_string(&filename) {
         if let Ok(settings) = serde_json::from_str(&data) {
             return settings;
         }
     }
-    PersistedSettings {
-        is_autonomous_running: false,
-        guard_mode: "all".to_string(),
-    }
+    PersistedSettings::default()
 }
 
-fn save_settings(state: &UiState) {
+fn save_settings(
+    instance_id: &str,
+    state: &UiState,
+    active_command: ActiveCommand,
+    tree_state: &TreeState,
+) {
+    let filename = format!("synoid_settings_{}.json", instance_id);
+    let intent_filename = format!("synoid_intent_{}.txt", instance_id);
+
+    // Save settings
     let settings = PersistedSettings {
+        input_path: state.input_path.clone(),
+        output_path: state.output_path.clone(),
+        intent: state.intent.clone(),
+        youtube_url: state.youtube_url.clone(),
+        clip_start: state.clip_start.clone(),
+        clip_duration: state.clip_duration.clone(),
+        compress_size: state.compress_size.clone(),
+        scale_factor: state.scale_factor.clone(),
+        research_topic: state.research_topic.clone(),
+        style_name: state.style_name.clone(),
         is_autonomous_running: state.is_autonomous_running,
         guard_mode: state.guard_mode.clone(),
+        guard_watch_path: state.guard_watch_path.clone(),
+        active_editor_tab: state.active_editor_tab.clone(),
+        active_command,
+        tree_state: tree_state.clone(),
+        timeline_zoom: state.timeline_zoom,
+        track_audio: state.track_audio.clone(),
+        track_overlay: state.track_overlay.clone(),
+        discovery_query: state.discovery_query.clone(),
     };
     if let Ok(json) = serde_json::to_string_pretty(&settings) {
-        let _ = std::fs::write("synoid_settings.json", json);
+        let _ = std::fs::write(filename, json);
     }
+
+    // Save intent
+    let _ = std::fs::write(intent_filename, &state.intent);
 }
 
 pub struct SynoidApp {
@@ -184,27 +272,55 @@ pub struct SynoidApp {
 impl SynoidApp {
     pub fn new(core: Arc<AgentCore>) -> Self {
         let mut ui_state = UiState::default();
-        if let Ok(saved_intent) = std::fs::read_to_string("synoid_intent.txt") {
-            ui_state.intent = saved_intent;
-        }
-        let settings = load_settings();
+        let instance_id = &core.instance_id;
+        let intent_filename = format!("synoid_intent_{}.txt", instance_id);
+        let mut settings = load_settings(instance_id);
 
-        ui_state.output_path = "Video/output.mp4".to_string();
-        ui_state.clip_start = "0.0".to_string();
-        ui_state.clip_duration = "10.0".to_string();
-        ui_state.compress_size = "25.0".to_string();
-        ui_state.scale_factor = "2.0".to_string();
-        ui_state.active_editor_tab = "Media".to_string();
-        ui_state.guard_mode = settings.guard_mode;
-        ui_state.timeline_zoom = 0.5;
+        if settings.intent.is_empty() {
+            if let Ok(saved_intent) = std::fs::read_to_string(intent_filename) {
+                settings.intent = saved_intent;
+            }
+        }
+
+        ui_state.input_path = settings.input_path.clone();
+        ui_state.output_path = settings.output_path.clone();
+        ui_state.intent = settings.intent.clone();
+        ui_state.youtube_url = settings.youtube_url.clone();
+        ui_state.clip_start = settings.clip_start.clone();
+        ui_state.clip_duration = settings.clip_duration.clone();
+        ui_state.compress_size = settings.compress_size.clone();
+        ui_state.scale_factor = settings.scale_factor.clone();
+        ui_state.research_topic = settings.research_topic.clone();
+        ui_state.style_name = settings.style_name.clone();
+        ui_state.active_editor_tab = settings.active_editor_tab.clone();
+        ui_state.guard_mode = settings.guard_mode.clone();
+        ui_state.guard_watch_path = settings.guard_watch_path.clone();
+        ui_state.timeline_zoom = settings.timeline_zoom;
         ui_state.intent_history = vec![ui_state.intent.clone()];
         ui_state.intent_history_index = 0;
-        ui_state.track_audio = String::new();
-        ui_state.track_overlay = String::new();
+        ui_state.track_audio = settings.track_audio.clone();
+        ui_state.track_overlay = settings.track_overlay.clone();
         ui_state.editor_session_id = None;
         ui_state.editor_api_status = "No active session".to_string();
         ui_state.ai_edit_running = false;
         ui_state.is_autonomous_running = settings.is_autonomous_running;
+        ui_state.discovery_query = settings.discovery_query.clone();
+
+        let tree_state = settings.tree_state.clone();
+        let active_command = settings.active_command;
+
+        // Auto-start autonomous learning if enabled in settings
+        if ui_state.is_autonomous_running {
+            let core_auton = core.clone();
+            let inst_id = core.instance_id.clone();
+            tokio::spawn(async move {
+                tracing::info!(
+                    "[GUI] Auto-starting Autonomous Learner for instance {}",
+                    inst_id
+                );
+                core_auton.start_autonomous_learning();
+            });
+        }
 
         // Start background poller for Hive Mind status
         let core_clone = core.clone();
@@ -226,15 +342,8 @@ impl SynoidApp {
         Self {
             core,
             ui_state: return_state,
-            tree_state: TreeState {
-                media_expanded: true,
-                visual_expanded: true,
-                ai_core_expanded: true,
-                security_expanded: false,
-                research_expanded: false,
-                audio_expanded: true,
-            },
-            active_command: ActiveCommand::Dashboard,
+            tree_state,
+            active_command,
             preview_texture: None,
         }
     }
@@ -446,8 +555,25 @@ impl SynoidApp {
                     }
                 ));
                 ui.add_space(10.0);
-                if ui.toggle_value(&mut state.is_autonomous_running, "Autonomous Mode").changed() {
-                    save_settings(state);
+                if ui
+                    .toggle_value(&mut state.is_autonomous_running, "Autonomous Mode")
+                    .changed()
+                {
+                    save_settings(
+                        &self.core.instance_id,
+                        state,
+                        self.active_command,
+                        &self.tree_state,
+                    );
+                    let core = self.core.clone();
+                    let running = state.is_autonomous_running;
+                    tokio::spawn(async move {
+                        if running {
+                            core.start_autonomous_learning();
+                        } else {
+                            core.stop_autonomous_learning();
+                        }
+                    });
                 }
             });
         });
@@ -876,7 +1002,12 @@ impl SynoidApp {
             )
             .changed()
         {
-            let _ = std::fs::write("synoid_intent.txt", &state.intent);
+            save_settings(
+                &self.core.instance_id,
+                state,
+                self.active_command,
+                &self.tree_state,
+            );
         }
         ui.add_space(5.0);
 
@@ -1139,49 +1270,96 @@ impl SynoidApp {
         ui.add_space(10.0);
 
         ui.label("Monitor Mode:");
-        if ui.horizontal(|ui| {
-            let mut changed = false;
-            changed |= ui.radio_value(&mut state.guard_mode, "all".to_string(), "All").changed();
-            changed |= ui.radio_value(&mut state.guard_mode, "sys".to_string(), "Processes").changed();
-            changed |= ui.radio_value(&mut state.guard_mode, "file".to_string(), "Files").changed();
-            changed
-        }).inner {
-            save_settings(state);
+        if ui
+            .horizontal(|ui| {
+                let mut changed = false;
+                changed |= ui
+                    .radio_value(&mut state.guard_mode, "all".to_string(), "All")
+                    .changed();
+                changed |= ui
+                    .radio_value(&mut state.guard_mode, "sys".to_string(), "Processes")
+                    .changed();
+                changed |= ui
+                    .radio_value(&mut state.guard_mode, "file".to_string(), "Files")
+                    .changed();
+                changed
+            })
+            .inner
+        {
+            save_settings(
+                &self.core.instance_id,
+                state,
+                self.active_command,
+                &self.tree_state,
+            );
         }
         ui.add_space(10.0);
 
         ui.label("Watch Path (optional):");
         ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut state.guard_watch_path);
+            if ui
+                .text_edit_singleline(&mut state.guard_watch_path)
+                .changed()
+            {
+                save_settings(
+                    &self.core.instance_id,
+                    state,
+                    self.active_command,
+                    &self.tree_state,
+                );
+            }
             if ui.button("📂").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .set_directory(get_default_videos_path())
                     .pick_folder()
                 {
                     state.guard_watch_path = path.to_string_lossy().to_string();
+                    save_settings(
+                        &self.core.instance_id,
+                        state,
+                        self.active_command,
+                        &self.tree_state,
+                    );
                 }
             }
         });
         ui.add_space(20.0);
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🛡️ Activate Sentinel").size(16.0))
-                    .fill(COLOR_ACCENT_RED),
-            )
-            .clicked()
-        {
-            let core = self.core.clone();
-            let mode = state.guard_mode.clone();
-            let watch = if !state.guard_watch_path.is_empty() {
-                Some(PathBuf::from(&state.guard_watch_path))
-            } else {
-                None
-            };
+        let sentinel_active = self
+            .core
+            .sentinel_active
+            .load(std::sync::atomic::Ordering::Relaxed);
 
-            tokio::spawn(async move {
-                core.activate_sentinel(&mode, watch).await;
-            });
+        if sentinel_active {
+            if ui
+                .add(
+                    egui::Button::new(egui::RichText::new("🛑 Stop Sentinel").size(16.0))
+                        .fill(egui::Color32::from_rgb(100, 100, 100)),
+                )
+                .clicked()
+            {
+                self.core.stop_sentinel();
+            }
+        } else {
+            if ui
+                .add(
+                    egui::Button::new(egui::RichText::new("🛡️ Activate Sentinel").size(16.0))
+                        .fill(COLOR_ACCENT_RED),
+                )
+                .clicked()
+            {
+                let core = self.core.clone();
+                let mode = state.guard_mode.clone();
+                let watch = if !state.guard_watch_path.is_empty() {
+                    Some(PathBuf::from(&state.guard_watch_path))
+                } else {
+                    None
+                };
+
+                tokio::spawn(async move {
+                    core.activate_sentinel(&mode, watch).await;
+                });
+            }
         }
         ui.add_space(5.0);
         ui.label(
@@ -1536,6 +1714,7 @@ impl SynoidApp {
                         // Wiring functional bits based on clicks
                         if btn.clicked() {
                             _state.active_editor_tab = label.to_string();
+                            save_settings(&self.core.instance_id, _state, self.active_command, &self.tree_state);
                             match label {
                                 "Text" | "Subtitles" => { 
                                     let input_path = _state.input_path.clone();
@@ -2082,6 +2261,18 @@ impl SynoidApp {
 }
 
 impl eframe::App for SynoidApp {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        if let Ok(state) = self.ui_state.lock() {
+            save_settings(
+                &self.core.instance_id,
+                &state,
+                self.active_command,
+                &self.tree_state,
+            );
+            tracing::info!("[GUI] Settings saved on exit.");
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.configure_style(ctx);
 

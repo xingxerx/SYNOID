@@ -16,8 +16,8 @@ pub struct VideoEditingAgent {
 }
 
 impl VideoEditingAgent {
-    pub fn new(brain: Arc<Mutex<Brain>>) -> Self {
-        let learner = Arc::new(AutonomousLearner::new(brain.clone()));
+    pub fn new(brain: Arc<Mutex<Brain>>, instance_id: &str) -> Self {
+        let learner = Arc::new(AutonomousLearner::new(brain.clone(), instance_id));
         Self { brain, learner }
     }
 

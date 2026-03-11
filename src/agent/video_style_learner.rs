@@ -184,10 +184,9 @@ impl LearnedVideoCache {
 // Core public API
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Returns the directory that holds reference videos for this instance.
+/// Returns the shared directory that holds reference videos for learning.
 pub fn get_download_dir() -> PathBuf {
-    let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
-    PathBuf::from(format!("D:\\SYNOID\\Download{}", suffix))
+    PathBuf::from(DOWNLOAD_DIR)
 }
 
 /// Directory that holds reference videos downloaded by the autonomous learner.
@@ -215,7 +214,10 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
     let download_dir = download_dir_buf.as_path();
     if !download_dir.exists() {
         warn!("[STYLE_LEARNER] Download dir not found: {:?}", download_dir);
-        return LearnResult { profiles: Vec::new(), has_new: false };
+        return LearnResult {
+            profiles: Vec::new(),
+            has_new: false,
+        };
     }
 
     // Collect MP4 files up to MAX_VIDEOS
@@ -238,8 +240,14 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
     videos.truncate(MAX_VIDEOS);
 
     if videos.is_empty() {
-        info!("[STYLE_LEARNER] No MP4 files found in {:?}", get_download_dir());
-        return LearnResult { profiles: Vec::new(), has_new: false };
+        info!(
+            "[STYLE_LEARNER] No MP4 files found in {:?}",
+            get_download_dir()
+        );
+        return LearnResult {
+            profiles: Vec::new(),
+            has_new: false,
+        };
     }
 
     let mut cache = LearnedVideoCache::load();
@@ -272,7 +280,9 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
             // Still register the pattern in the kernel (it's loaded fresh each run)
             // but do NOT award XP — we already earned it
             let genre = VideoGenre::from_filename(filename);
-            brain.learning_kernel.memorize(genre.intent_tag(), cached_profile.to_pattern());
+            brain
+                .learning_kernel
+                .memorize(genre.intent_tag(), cached_profile.to_pattern());
             all_profiles.push(cached_profile.clone());
             continue;
         }
@@ -326,7 +336,10 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
         );
     }
 
-    LearnResult { profiles: all_profiles, has_new: new_count > 0 }
+    LearnResult {
+        profiles: all_profiles,
+        has_new: new_count > 0,
+    }
 }
 
 /// Remove a video from the learned cache after it has been deleted from disk.
@@ -335,7 +348,10 @@ pub fn remove_from_cache(filename: &str) {
     let mut cache = LearnedVideoCache::load();
     if cache.0.remove(filename).is_some() {
         cache.save();
-        info!("[STYLE_LEARNER] 🗑️ Removed '{}' from learned cache", filename);
+        info!(
+            "[STYLE_LEARNER] 🗑️ Removed '{}' from learned cache",
+            filename
+        );
     }
 }
 
@@ -588,6 +604,20 @@ mod tests {
         assert!(quality_score(0.3) < 0.5);
         assert!(quality_score(15.0) < 0.5);
         assert!(quality_score(2.0) >= 0.9);
+    }
+
+    #[test]
+    fn download_dir_is_shared_and_not_instance_specific() {
+        let previous = std::env::var("SYNOID_INSTANCE_ID").ok();
+        std::env::set_var("SYNOID_INSTANCE_ID", "3001");
+
+        assert_eq!(get_download_dir(), PathBuf::from(DOWNLOAD_DIR));
+
+        if let Some(value) = previous {
+            std::env::set_var("SYNOID_INSTANCE_ID", value);
+        } else {
+            std::env::remove_var("SYNOID_INSTANCE_ID");
+        }
     }
 
     #[test]

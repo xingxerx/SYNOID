@@ -283,9 +283,9 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let args = Cli::parse();
 
-    // Auto-set Instance ID based on port if in GUI mode
+    // Auto-set Instance ID based on port if in GUI mode and not already set
     if let Commands::Gui { port } = args.command {
-        if port != 3000 {
+        if port != 3000 && std::env::var("SYNOID_INSTANCE_ID").is_err() {
             let instance_id = format!("_{}", port);
             std::env::set_var("SYNOID_INSTANCE_ID", &instance_id);
             info!("🔷 Auto-Isolated Instance: '{}' (port {})", instance_id, port);
@@ -294,9 +294,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let api_url =
         std::env::var("SYNOID_API_URL").unwrap_or("http://localhost:11434/v1".to_string());
+    let instance_id = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_else(|_| "default".to_string());
 
     // Initialize the Ghost (Agent Core)
-    let core = Arc::new(AgentCore::new(&api_url));
+    let core = Arc::new(AgentCore::new(&api_url, &instance_id));
 
     // Connect Brain → GPU/CUDA backend (neuroplasticity-tuned acceleration)
     core.connect_gpu_to_brain().await;
@@ -543,7 +544,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
             info!("🚀 Starting Autonomous Learning Loop...");
             let brain = Arc::new(Mutex::new(Brain::new(&api_url, "llama3:latest")));
-            let learner = AutonomousLearner::new(brain);
+            let instance_id = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_else(|_| "default".to_string());
+            let learner = AutonomousLearner::new(brain, &instance_id);
 
             learner.start();
 

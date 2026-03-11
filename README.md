@@ -155,14 +155,19 @@ cargo run --release -- gui
 cargo run --release -- gui --port 3001
 ```
 
-> [!WARNING]
-> **Windows File Locks**: If you try to run `cargo watch` or `cargo run` for a second instance while the first is already running, you may get an `Access is denied (os error 5)` or `Blocking waiting for file lock` because Cargo shares the global package registry. 
-> 
-> To fix this, use **Absolute Isolation** (creates a private cargo home):
-> ```bash
-> $env:CARGO_TARGET_DIR="target_3001"; $env:CARGO_HOME="target_3001\.cargo"; cargo watch -x "run --release -- gui --port 3001"
-> ```
-> This will re-download/re-compile dependencies into the new folder, but it is **100% safe** from file locks while other instances are running.
+
+### 🎓 Isolated Autonomous Learning
+To run a dedicated, isolated learning instance (e.g., to "teach" the agent while using the main instance), use the provided `teach.ps1` script. This handles all the complex environment variables and file locks for you.
+
+```powershell
+# Run an isolated learning instance on port 3001 (Recommended)
+.\teach.ps1 3001
+```
+
+This script automatically:
+- Sets a private **Cargo Home** and **Target Directory** to prevent file locks.
+- Configures **Watch Ignores** for `target`, `Download`, and `cortex_cache` to prevent restart loops.
+- Launches the `autonomous` mode on the specified port.
 
 
 ---

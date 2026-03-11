@@ -96,6 +96,7 @@ pub struct AgentCore {
     pub status: Arc<Mutex<String>>,
     pub logs: Arc<Mutex<Vec<String>>>,
     pub sentinel_active: Arc<AtomicBool>,
+    pub instance_id: String,
 
     // Sub-systems (Async Mutex for heavy async tasks)
     pub brain: Arc<AsyncMutex<Brain>>,
@@ -120,9 +121,10 @@ pub struct AgentCore {
 }
 
 impl AgentCore {
-    pub fn new(api_url: &str) -> Self {
+    pub fn new(api_url: &str, instance_id: &str) -> Self {
         Self {
             api_url: api_url.to_string(),
+            instance_id: instance_id.to_string(),
             status: Arc::new(Mutex::new("⚡ System Ready".to_string())),
             logs: Arc::new(Mutex::new(vec![
                 "[SYSTEM] SYNOID Core initialized.".to_string()
@@ -131,12 +133,12 @@ impl AgentCore {
             brain: Arc::new(AsyncMutex::new(Brain::new(api_url, "llama3:latest"))),
             cortex: Arc::new(AsyncMutex::new(MotorCortex::new(api_url))),
             discovery: Arc::new(GlobalDiscovery::new()),
-
             pipeline: Arc::new(AsyncMutex::new(None)),
             autonomous_learner: Arc::new(Mutex::new(None)), // Lazy init
-            editor_queue: Arc::new(VideoEditorQueue::new(Arc::new(AsyncMutex::new(
-                Brain::new(api_url, "llama3:latest"),
-            )))),
+            editor_queue: Arc::new(VideoEditorQueue::new(
+                Arc::new(AsyncMutex::new(Brain::new(api_url, "llama3:latest"))),
+                instance_id,
+            )),
             video_editing_agent: Arc::new(Mutex::new(None)), // Lazy init
             hci: Arc::new(HciTracker::new()),
         }
@@ -148,6 +150,7 @@ impl AgentCore {
             self.log("[CORE] 🤖 Initializing Video Editing Agent...");
             *vea = Some(crate::agent::video_editing_agent::VideoEditingAgent::new(
                 self.brain.clone(),
+                &self.instance_id,
             ));
         }
     }
@@ -327,7 +330,8 @@ impl AgentCore {
         let sanitized_url = Self::sanitize_input(url);
         self.log(&format!("[CORE] Processing YouTube: {}", sanitized_url));
 
-        let output_dir = Path::new("downloads");
+        let output_dir_buf = crate::agent::video_style_learner::get_download_dir();
+        let output_dir = output_dir_buf.as_path();
         let path_obj = Path::new(&sanitized_url);
 
         // Check if input is a local file string or has a drive letter
@@ -757,7 +761,7 @@ impl AgentCore {
         if let Some(job) = jobs.iter().find(|j| j.id == job_id) {
             // Re-trigger learner with the official user-vetted quality
             let learner =
-                crate::agent::autonomous_learner::AutonomousLearner::new(self.brain.clone());
+                crate::agent::autonomous_learner::AutonomousLearner::new(self.brain.clone(), &self.instance_id);
             // We use a simplified learn_from_edit or a new one?
             // Let's use the one we updated, but since we don't have duration here easily
             // we use values from the job if available.
@@ -1018,7 +1022,7 @@ impl AgentCore {
         let mut learner_guard = self.autonomous_learner.lock().unwrap();
         if learner_guard.is_none() {
             // Create new learner sharing the same brain
-            let learner = AutonomousLearner::new(self.brain.clone());
+            let learner = AutonomousLearner::new(self.brain.clone(), &self.instance_id);
             *learner_guard = Some(learner);
         }
 

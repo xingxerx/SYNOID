@@ -157,7 +157,11 @@ pub async fn get_python_command() -> String {
     }
 
     // 2. Candidate python commands to try (in order of preference for Linux/WSL then Windows)
-    let candidates = ["python3", "python", "py"]; // 'python3' first for WSL
+    let candidates = if cfg!(windows) {
+        vec!["python", "python3", "py"]
+    } else {
+        vec!["python3", "python"]
+    };
 
     let mut best_fallback = None;
 

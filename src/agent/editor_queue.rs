@@ -47,12 +47,13 @@ pub struct VideoEditorQueue {
 }
 
 impl VideoEditorQueue {
-    pub fn new(brain: Arc<Mutex<Brain>>) -> Self {
+    pub fn new(brain: Arc<Mutex<Brain>>, instance_id: &str) -> Self {
         let jobs = Arc::new(Mutex::new(Vec::<EditJob>::new()));
         let (tx, mut rx) = mpsc::unbounded_channel::<Uuid>();
 
         let jobs_worker = jobs.clone();
         let brain_worker = brain.clone();
+        let instance_id_worker = instance_id.to_string();
 
         // Spawn the worker loop
         tokio::spawn(async move {
@@ -113,6 +114,7 @@ impl VideoEditorQueue {
                                 let learner =
                                     crate::agent::autonomous_learner::AutonomousLearner::new(
                                         brain_worker.clone(),
+                                        &instance_id_worker,
                                     );
                                 learner
                                     .learn_from_edit(&job.intent, &job.input, duration, kept_ratio)

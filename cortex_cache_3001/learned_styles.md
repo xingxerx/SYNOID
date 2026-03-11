@@ -48,3 +48,923 @@
 - **Kept Ratio**: 50.0%
 - **Outcome XP**: 0.70
 
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\4 Editing Secrets Small Channels Learn Too Late.mp4
+- **Avg Scene Duration**: 4.10s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\How To Edit A Documentary Like Johnny Harris.mp4
+- **Avg Scene Duration**: 4.07s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+
+### general
+- **Source Video**: D:\SYNOID\Download_3001\How to edit SO good your viewers get addicted to your videos.mp4
+- **Avg Scene Duration**: 9.69s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: neutral
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.65
+
+### vlog
+- **Source Video**: D:\SYNOID\Download_3001\How to edit Vlogs LIKE A PRO_.mp4
+- **Avg Scene Duration**: 89.86s
+- **Transition Speed**: 0.80
+- **Music Sync Strictness**: 0.50
+- **Color Grade Style**: warm_bright
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 0.30
+
+### documentary
+- **Source Video**: D:\SYNOID\Download_3001\You Can Make a Netflix Style Doco About Literally Anything.mp4
+- **Avg Scene Duration**: 4.17s
+- **Transition Speed**: 1.00
+- **Music Sync Strictness**: 0.30
+- **Color Grade Style**: natural_desaturated
+- **Success Rating**: 5★
+- **Kept Ratio**: 50.0%
+- **Outcome XP**: 1.00
+

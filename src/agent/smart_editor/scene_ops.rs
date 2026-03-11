@@ -230,43 +230,50 @@ pub async fn detect_scenes(
     Ok(scenes)
 }
 
-/// NEW: Ensure scenes that carry a single sentence are kept together
 pub fn ensure_speech_continuity(
     scenes: &mut [Scene],
     transcript: &[TranscriptSegment],
     config: &EditingStrategy,
-    is_ruthless: bool, // NEW: Check if ruthless mode is active
+    is_ruthless: bool,
 ) {
+    if transcript.is_empty() || scenes.is_empty() {
+        return;
+    }
+
     info!(
-        "[SMART] 🔗 Enforcing Speech Continuity (Boost: {}, Ruthless: {})...",
+        "[SMART] 🔗 Enforcing Speech Continuity (O(N+M) optimized, Boost: {}, Ruthless: {})...",
         config.continuity_boost, is_ruthless
     );
 
-    // 1. Map sentences to scenes
-    // If a sentence overlaps multiple scenes, and ANY of those scenes is 'kept' (score > 0.3),
-    // we must force ALL overlapping scenes to be kept.
-
+    // Optimized O(N+M)
+    let mut scene_idx = 0;
     for segment in transcript {
-        // Find all scenes this segment touches
+        // Advance scene_idx to first potential overlap
+        while scene_idx < scenes.len() && scenes[scene_idx].end_time <= segment.start {
+            scene_idx += 1;
+        }
+
         let mut overlapping_indices = Vec::new();
         let mut should_preserve_sentence = false;
 
-        for (i, scene) in scenes.iter().enumerate() {
+        for i in scene_idx..scenes.len() {
+            let scene = &scenes[i];
+            if scene.start_time >= segment.end {
+                break;
+            }
+
             let overlap_start = segment.start.max(scene.start_time);
             let overlap_end = segment.end.min(scene.end_time);
 
             if overlap_end > overlap_start {
                 overlapping_indices.push(i);
-                // If any part of this sentence is already good enough to keep, save the whole thing
                 if scene.score > 0.3 {
                     should_preserve_sentence = true;
                 }
             }
         }
 
-        // If we decided this sentence is important, synchronize scores across all segments
         if should_preserve_sentence {
-            // Find the maximum score in this sentence
             let mut max_score: f64 = 0.0;
             for &i in &overlapping_indices {
                 if scenes[i].score > max_score {
@@ -274,30 +281,19 @@ pub fn ensure_speech_continuity(
                 }
             }
 
-            // Ensure even the "best" part of the sentence meets a minimum threshold if it's speech
             let min_speech_score = if is_ruthless { 0.35 } else { 0.45 };
             max_score = max_score.max(min_speech_score);
 
             for &i in &overlapping_indices {
                 if scenes[i].score < max_score {
-                    // In ruthless mode, we only boost if the gap isn't too large or score too low
-                    // Trying to preserve flow without keeping dead air
                     let current_score = scenes[i].score;
-
                     if is_ruthless {
                         if current_score < 0.05 {
-                            // Don't boost absolute trash in ruthless mode
                             continue;
                         }
-                        // Partial boost
                         scenes[i].score = (current_score + max_score) / 2.0;
                     } else {
-                        // Full boost (Classic behavior)
                         scenes[i].score = max_score;
-                    }
-
-                    if scenes[i].score > current_score + 0.05 {
-                        // overly verbose log removed for perf
                     }
                 }
             }
@@ -355,6 +351,8 @@ pub fn refine_scenes_with_transcript(
                 transcript_iter.next();
             } else {
                 // Segment spans across to next visual scene, don't consume it yet
+                // CRITICAL: If we didn't advance and didn't consume, we must break to avoid infinite loop
+                // (Though logically this shouldn't happen if segments are sorted)
                 break;
             }
         }
@@ -376,64 +374,51 @@ pub fn refine_scenes_with_transcript(
     refined
 }
 
-/// Score scenes based on user intent and transcript
 pub fn score_scenes(
     scenes: &mut [Scene],
     intent: &EditIntent,
     transcript: Option<&[TranscriptSegment]>,
     config: &EditingStrategy,
-    total_duration: f64, // NEW: Needed for positional scoring
+    total_duration: f64,
 ) {
     info!(
-        "[SMART] Scoring {} scenes based on intent (Total Duration: {:.2}s)...",
-        scenes.len(),
-        total_duration
+        "[SMART] Scoring {} scenes (O(N+M) optimized)...",
+        scenes.len()
     );
 
-    // 1. Base Scoring
+    // Prepare transcript lookup for O(N+M)
+    let mut seg_ptr = 0;
+
     for scene in scenes.iter_mut() {
         // Base score depends on density
         let mut score: f64 = match intent.density {
-            EditDensity::Highlights => 0.25, // Strictly need a reason to keep
-            EditDensity::Balanced => 0.35,   // Moderate baseline
-            EditDensity::Full => 0.60,       // Keep by default
+            EditDensity::Highlights => 0.25,
+            EditDensity::Balanced => 0.35,
+            EditDensity::Full => 0.60,
         };
 
-        // --- NEW: Progressive Ruthlessness (The "Boring Ending" Fix) ---
-        // We want to be lenient at the start to hook the viewer, then increasingly ruthless.
         let progress = if total_duration > 0.0 {
             scene.start_time / total_duration
         } else {
             0.0
         };
 
-        // 1. Preservation Phase (First 20%): Boost to establish context/hook
         if progress < 0.2 {
             score += 0.1;
         }
 
-        // 2. Progressive Decay (20% -> 100%)
-        // Multiplier for penalties: Starts at 1.0, ramps up to 1.5x at the end.
-        // Capped at 1.5x (was 3.0x) to avoid over-penalising the second half of
-        // the video, which was the root cause of large narrative jumps.
         let penalty_multiplier = if progress > 0.2 {
             1.0 + ((progress - 0.2) / 0.8) * 0.5
         } else {
             1.0
         };
 
-        // Terminal clarity removed — let content quality drive cuts, not position.
-        // The old -0.08 penalty was destroying story conclusions.
-
-        // Visual Heuristics
         if intent.remove_boring {
             let boring_penalty = match intent.density {
                 EditDensity::Highlights => 0.4,
                 EditDensity::Balanced => 0.2,
                 EditDensity::Full => 0.05,
             };
-
-            // Apply positional multiplier to boring penalty
             let effective_penalty = boring_penalty * penalty_multiplier;
 
             if scene.duration > config.boring_penalty_threshold {
@@ -441,14 +426,13 @@ pub fn score_scenes(
             } else if scene.duration > 15.0 {
                 score -= effective_penalty / 2.0;
             }
-            // (Removed: +0.2 bias for <3s clips — was causing choppy micro-cuts)
         }
 
         if intent.keep_action
             && scene.duration < config.action_duration_threshold
             && scene.duration >= 2.0
         {
-            score += 0.15; // Moderate boost; require ≥2s to avoid micro-clips
+            score += 0.15;
         }
 
         // Vision Heuristics
@@ -465,28 +449,37 @@ pub fn score_scenes(
         }
 
         if has_bad_app {
-            score -= 1.0; // Huge penalty for secondary apps
+            score -= 1.0;
             info!("[SMART] 🛑 Penalizing scene at {:.1}s due to detected background app.", scene.start_time);
         } else if has_main_app {
-            score += 0.2; // Boost main app
+            score += 0.2;
         }
 
-        // Semantic Heuristics (Transcript Analysis)
+        // Semantic Heuristics (Transcript Analysis) - OPTIMIZED O(N+M)
         if let Some(segments) = transcript {
             let mut speech_duration = 0.0;
             let mut has_keyword = false;
-            let mut is_fun = false; // NEW: Fun heuristic
+            let mut is_fun = false;
 
-            for seg in segments {
-                let seg_start = seg.start.max(scene.start_time);
-                let seg_end = seg.end.min(scene.end_time);
+            // Advance pointer to first relevant segment
+            while seg_ptr < segments.len() && segments[seg_ptr].end <= scene.start_time {
+                seg_ptr += 1;
+            }
 
-                if seg_end > seg_start {
-                    speech_duration += seg_end - seg_start;
+            // Check all overlapping segments
+            for i in seg_ptr..segments.len() {
+                let seg = &segments[i];
+                if seg.start >= scene.end_time {
+                    break;
+                }
 
+                let overlap_start = seg.start.max(scene.start_time);
+                let overlap_end = seg.end.min(scene.end_time);
+
+                if overlap_end > overlap_start {
+                    speech_duration += overlap_end - overlap_start;
                     let text_lower = seg.text.to_lowercase();
 
-                    // Custom Keywords
                     if !intent.custom_keywords.is_empty() {
                         for keyword in &intent.custom_keywords {
                             if text_lower.contains(&keyword.to_lowercase()) {
@@ -495,22 +488,11 @@ pub fn score_scenes(
                         }
                     }
 
-                    // --- NEW: Fun Detection ---
-                    // 1. Punctuation excitement
                     if seg.text.contains("!") || seg.text.contains("?!") {
                         is_fun = true;
                     }
-                    // 2. Fun/Excitement keywords
                     let fun_words = [
-                        "wow",
-                        "haha",
-                        "lol",
-                        "cool",
-                        "omg",
-                        "whoa",
-                        "crazy",
-                        "funny",
-                        "hilarious",
+                        "wow", "haha", "lol", "cool", "omg", "whoa", "crazy", "funny", "hilarious",
                     ];
                     if fun_words.iter().any(|&w| text_lower.contains(w)) {
                         is_fun = true;
@@ -520,7 +502,6 @@ pub fn score_scenes(
 
             let speech_ratio = speech_duration / scene.duration;
 
-            // More nuanced speech scoring
             if intent.keep_speech {
                 if speech_ratio > config.speech_ratio_threshold {
                     score += config.speech_boost;
@@ -533,13 +514,12 @@ pub fn score_scenes(
                 }
             }
 
-            // NEW: Always preserve talking scenes by heavily boosting score
             if speech_ratio > 0.1 {
                 score = score.max(0.95);
             }
 
             if intent.remove_silence {
-                let penalty = config.silence_penalty * penalty_multiplier; // Apply multiplier
+                let penalty = config.silence_penalty * penalty_multiplier;
                 if speech_ratio < 0.05 {
                     score += penalty;
                 } else if speech_ratio < 0.2 {
@@ -552,23 +532,17 @@ pub fn score_scenes(
             }
 
             if is_fun {
-                score += 0.25; // Significant boost for fun/excitement
+                score += 0.25;
             }
         }
 
         if intent.ruthless || intent.density == EditDensity::Highlights {
-            // "Ruthless" or "Highlights": Everything is slightly penalized unless it's action or speech
             score -= 0.05;
-
-            // (Removed: +0.2 micro-segment bias in ruthless mode — was causing rapid-fire cuts)
         }
 
         scene.score = score.clamp(0.0, 1.0);
     }
 
-    // 2. Post-Scoring: Integrity Pass
-    // ENHANCEMENT: Always apply continuity protection, even in RUTHLESS mode,
-    // to ensure words aren't cut in half.
     if let Some(segments) = transcript {
         info!("[SMART] Applying speech continuity protection to prevent mid-word cuts.");
         ensure_speech_continuity(scenes, segments, config, intent.ruthless);
@@ -578,9 +552,12 @@ pub fn score_scenes(
 pub fn scene_has_speech(scene: &Scene, transcript: Option<&[TranscriptSegment]>) -> bool {
     if let Some(segments) = transcript {
         for seg in segments {
-            let seg_start = seg.start.max(scene.start_time);
-            let seg_end = seg.end.min(scene.end_time);
-            if seg_end > seg_start + 0.1 {
+            if seg.start >= scene.end_time {
+                break;
+            }
+            let overlap_start = seg.start.max(scene.start_time);
+            let overlap_end = seg.end.min(scene.end_time);
+            if overlap_end > overlap_start + 0.1 {
                 return true;
             }
         }

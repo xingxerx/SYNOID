@@ -31,15 +31,14 @@ pub struct VideoRecord {
 }
 
 impl LearnerState {
-    fn path() -> PathBuf {
-        let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
-        let dir = PathBuf::from(format!("cortex_cache{}", suffix));
+    fn path(instance_id: &str) -> PathBuf {
+        let dir = PathBuf::from(format!("cortex_cache{}", instance_id));
         let _ = fs::create_dir_all(&dir);
         dir.join("learner_state.json")
     }
 
-    fn load() -> Self {
-        if let Ok(data) = fs::read_to_string(Self::path()) {
+    fn load(instance_id: &str) -> Self {
+        if let Ok(data) = fs::read_to_string(Self::path(instance_id)) {
             if let Ok(state) = serde_json::from_str::<LearnerState>(&data) {
                 info!(
                     "[LEARNER] 🧠 Restored state: {} topics processed, {} repos known",
@@ -53,9 +52,9 @@ impl LearnerState {
         Self::default()
     }
 
-    fn save(&self) {
+    fn save(&self, instance_id: &str) {
         if let Ok(data) = serde_json::to_string_pretty(self) {
-            let _ = fs::write(Self::path(), data);
+            let _ = fs::write(Self::path(instance_id), data);
         } else {
             error!("[LEARNER] ❌ Failed to serialize learner state");
         }
@@ -68,11 +67,13 @@ pub struct AutonomousLearner {
     state: Arc<Mutex<LearnerState>>,
     learning_topics: Vec<String>,
     wiki_targets: Vec<String>,
+    instance_id: String,
 }
 
 impl AutonomousLearner {
-    pub fn new(brain: Arc<Mutex<Brain>>) -> Self {
+    pub fn new(brain: Arc<Mutex<Brain>>, instance_id: &str) -> Self {
         let mut state = LearnerState::default();
+        let inst_id = instance_id.to_string();
 
         // Pre-populate some known repos if empty (fresh state)
         if state.known_repos.is_empty() {
@@ -86,7 +87,7 @@ impl AutonomousLearner {
         }
 
         // Merge saved state
-        let saved = LearnerState::load();
+        let saved = LearnerState::load(&inst_id);
         if !saved.known_repos.is_empty() {
             state = saved;
         }
@@ -95,6 +96,7 @@ impl AutonomousLearner {
             is_running: Arc::new(AtomicBool::new(false)),
             brain,
             state: Arc::new(Mutex::new(state)),
+            instance_id: inst_id,
             learning_topics: vec![
                 "cinematic travel video".to_string(),
                 "gaming montage editing".to_string(),
@@ -126,6 +128,8 @@ impl AutonomousLearner {
         // Initialize Sentinel and Scanner (non-async)
         let mut sentinel = crate::agent::defense::Sentinel::new();
         let scanner = CodeScanner::new("http://localhost:11434/v1");
+
+        let instance_id = self.instance_id.clone();
 
         info!("[LEARNER] 🚀 Autonomous Learning Loop Started (Sentinel Active)");
 
@@ -186,9 +190,9 @@ impl AutonomousLearner {
 
                                 info!("[LEARNER] 📥 Acquiring candidate: {}", source.title);
 
-                                let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
-                                let download_dir_path = format!("D:\\SYNOID\\Download{}", suffix);
-                                let download_dir = std::path::Path::new(&download_dir_path);
+                                let download_dir_buf =
+                                    crate::agent::video_style_learner::get_download_dir();
+                                let download_dir = download_dir_buf.as_path();
                                 let _ = std::fs::create_dir_all(download_dir);
 
                                 let download_result = source_tools::download_youtube(
@@ -208,7 +212,10 @@ impl AutonomousLearner {
                                             continue;
                                         }
 
-                                        info!("[LEARNER] 🎓 New video acquired: '{}'", downloaded.title);
+                                        info!(
+                                            "[LEARNER] 🎓 New video acquired: '{}'",
+                                            downloaded.title
+                                        );
 
                                         // ── Full style-learning pass ──────────────────────────────────────
                                         // Run video_style_learner on the entire Download folder.
@@ -299,7 +306,7 @@ impl AutonomousLearner {
                                             score: new_score,
                                         });
 
-                                        state.save();
+                                        state.save(&instance_id);
 
                                         info!(
                                             "[LEARNER] ✅ '{}' learned & memorized (Speed: {:.1}× - {})",
@@ -367,7 +374,7 @@ impl AutonomousLearner {
 
                             // Advance repo index
                             state.repo_index += 1;
-                            state.save();
+                            state.save(&instance_id);
                         }
                         Err(e) => {
                             warn!("[LEARNER] Analysis skipped (Stealth Mode/Limit): {}", e);
@@ -457,7 +464,7 @@ impl AutonomousLearner {
                 }
 
                 state.topic_index += 1;
-                state.save();
+                state.save(&instance_id);
 
                 info!(
                     "[LEARNER] ✅ Cycle #{} Summary: Topic '{}' processed. Next cycle in 30s.",
