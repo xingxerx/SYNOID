@@ -5,6 +5,7 @@
 use crate::agent::reasoning::{ReasoningEffort, ReasoningManager};
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use crate::agent::process_utils::CommandExt;
 use tracing::info;
 
 #[allow(dead_code)]
@@ -257,6 +258,7 @@ impl RenderJob {
         }
 
         let status = Command::new("ffmpeg")
+            .stealth()
             .arg("-y")
             .arg("-i")
             .arg(&self.input_manifest)

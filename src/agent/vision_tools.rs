@@ -1,6 +1,7 @@
 // SYNOID Vision Tools
 // Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
+use crate::agent::process_utils::CommandExt;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
@@ -24,6 +25,7 @@ pub async fn scan_visual(
     // Using ffmpeg to detect scene changes (>0.3 difference)
     // metadata=print:file=- outputs metadata to stdout
     let output = Command::new("ffmpeg")
+        .stealth()
         .args(["-v", "error", "-i"])
         .arg(path)
         .args([
@@ -320,6 +322,7 @@ async fn extract_frame(
     output: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Command::new("ffmpeg")
+        .stealth()
         .args(["-y", "-ss", &time_secs.to_string(), "-i"])
         .arg(video_path)
         .args(["-frames:v", "1", "-q:v", "2"])
@@ -465,6 +468,7 @@ pub async fn generative_extend(
             ),
         )?;
         let status = Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-f", "concat", "-safe", "0", "-i"])
             .arg(&concat_list)
             .args(["-c", "copy"])
@@ -478,6 +482,7 @@ pub async fn generative_extend(
         // Fallback: freeze-frame extend using FFmpeg's tpad filter
         info!("[GEN-EXTEND] ComfyUI unavailable; falling back to freeze-frame extend.");
         let status = Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-i"])
             .arg(input_path)
             .args([
@@ -580,6 +585,7 @@ async fn request_comfyui_extension(
     let comfy_out = PathBuf::from("/tmp/comfyui_output/synoid_ext_00001.webp");
     if comfy_out.exists() {
         Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-i"])
             .arg(&comfy_out)
             .args(["-c:v", "libx264", "-c:a", "aac"])
@@ -622,6 +628,7 @@ pub async fn correct_eye_contact(
 
     // Non-destructive copy (preserves original while infra is wired up)
     let status = Command::new("ffmpeg")
+        .stealth()
         .args(["-y", "-i"])
         .arg(input_path)
         .args(["-c", "copy"])

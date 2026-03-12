@@ -19,6 +19,7 @@ use crate::agent::smart_editor::EditingStrategy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 use tracing::{info, warn};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -186,14 +187,34 @@ impl LearnedVideoCache {
 
 /// Returns the shared directory that holds reference videos for learning.
 pub fn get_download_dir() -> PathBuf {
-    PathBuf::from(DOWNLOAD_DIR)
+    PathBuf::from(SHARED_DOWNLOAD_DIR)
 }
 
 /// Directory that holds reference videos downloaded by the autonomous learner.
+pub const SHARED_DOWNLOAD_DIR: &str = r"D:\SYNOID\Download";
 #[deprecated(note = "Use get_download_dir() instead")]
-pub const DOWNLOAD_DIR: &str = r"D:\SYNOID\Download";
+pub const DOWNLOAD_DIR: &str = SHARED_DOWNLOAD_DIR;
 /// Maximum reference videos to keep / learn from at any one time.
 pub const MAX_VIDEOS: usize = 10;
+
+fn modified_time_key(path: &Path) -> u128 {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|meta| meta.modified().ok())
+        .and_then(|mtime| mtime.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0)
+}
+
+fn prioritize_videos_for_learning(mut videos: Vec<PathBuf>) -> Vec<PathBuf> {
+    videos.sort_by(|a, b| {
+        modified_time_key(b)
+            .cmp(&modified_time_key(a))
+            .then_with(|| a.cmp(b))
+    });
+    videos.truncate(MAX_VIDEOS);
+    videos
+}
 
 /// Return value from `learn_from_downloads`.
 pub struct LearnResult {
@@ -235,9 +256,8 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
         })
         .unwrap_or_default();
 
-    // Deterministic order (alphabetical) so results are reproducible
-    videos.sort();
-    videos.truncate(MAX_VIDEOS);
+    // Prefer the newest downloads so freshly acquired videos are learned first.
+    videos = prioritize_videos_for_learning(videos);
 
     if videos.is_empty() {
         info!(
@@ -611,7 +631,7 @@ mod tests {
         let previous = std::env::var("SYNOID_INSTANCE_ID").ok();
         std::env::set_var("SYNOID_INSTANCE_ID", "3001");
 
-        assert_eq!(get_download_dir(), PathBuf::from(DOWNLOAD_DIR));
+        assert_eq!(get_download_dir(), PathBuf::from(SHARED_DOWNLOAD_DIR));
 
         if let Some(value) = previous {
             std::env::set_var("SYNOID_INSTANCE_ID", value);
@@ -649,5 +669,41 @@ mod tests {
         assert!((strategy.min_scene_score - 0.22).abs() < f64::EPSILON);
         // Fast content → lower scene_threshold
         assert!(strategy.scene_threshold <= 0.25);
+    }
+
+    #[test]
+    fn prioritize_videos_prefers_newest_files() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("synoid_video_sort_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let mut files = Vec::new();
+        for idx in 0..12 {
+            let path = temp_dir.join(format!("video_{idx:02}.mp4"));
+            std::fs::write(&path, format!("{idx}")).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(25));
+            files.push(path);
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::fs::write(temp_dir.join("video_10.mp4"), "10-refresh").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        std::fs::write(temp_dir.join("video_11.mp4"), "11-refresh").unwrap();
+
+        let selected = prioritize_videos_for_learning(files.clone());
+        let selected_names: Vec<String> = selected
+            .iter()
+            .filter_map(|path| path.file_name().and_then(|name| name.to_str()))
+            .map(|name| name.to_string())
+            .collect();
+
+        assert_eq!(selected.len(), MAX_VIDEOS);
+        assert!(selected_names.contains(&"video_11.mp4".to_string()));
+        assert!(selected_names.contains(&"video_10.mp4".to_string()));
+        assert!(!selected_names.contains(&"video_00.mp4".to_string()));
+        assert!(!selected_names.contains(&"video_01.mp4".to_string()));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

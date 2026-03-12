@@ -8,6 +8,7 @@
 // tunes CUDA batch sizes, thread counts, and FFmpeg presets so the
 // system gets faster as it learns.
 
+use crate::agent::process_utils::CommandExt;
 use std::process::Command;
 use tracing::{info, warn};
 
@@ -97,6 +98,7 @@ impl GpuContext {
     /// Try to detect NVIDIA GPU via nvidia-smi
     fn try_nvenc() -> Option<Self> {
         let output = Command::new("nvidia-smi")
+            .stealth()
             .args(["--query-gpu=name,driver_version", "--format=csv,noheader"])
             .output()
             .ok()?;

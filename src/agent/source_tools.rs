@@ -7,10 +7,31 @@
 // 3. Directory scanning for video files
 // 4. YouTube Search via ytsearch
 
+use crate::agent::process_utils::CommandExt;
 use crate::agent::production_tools::safe_arg_path;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::info;
+
+pub(crate) fn sanitize_title_for_filename(title: &str) -> String {
+    let sanitized: String = title
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    let trimmed = sanitized.trim();
+    if trimmed.is_empty() {
+        "Unknown".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
 
 /// Find the Deno binary path to pass to yt-dlp's --js-runtimes flag.
 fn find_deno_path() -> Option<String> {
@@ -35,7 +56,7 @@ fn find_deno_path() -> Option<String> {
 
     // Fallback: resolve via PATH
     let resolver = if cfg!(windows) { "where" } else { "which" };
-    if let Ok(out) = std::process::Command::new(resolver).arg("deno").output() {
+    if let Ok(out) = std::process::Command::new(resolver).stealth().arg("deno").output() {
         if out.status.success() {
             let path = String::from_utf8_lossy(&out.stdout)
                 .lines()
@@ -80,7 +101,7 @@ pub async fn get_python_command() -> String {
     for &bin in &standalone_candidates {
         // Toki's Command on Windows might fail to execute python scripts with shebangs if running in some mixed WSL setups.
         // First try it natively.
-        match Command::new(bin).arg("--version").output().await {
+        match Command::new(bin).stealth().arg("--version").output().await {
             Ok(output) => {
                 if output.status.success() {
                     tracing::info!("[SOURCE] ✅ Found standalone 'yt-dlp' binary at '{}'", bin);
@@ -103,6 +124,7 @@ pub async fn get_python_command() -> String {
                 if e.kind() != std::io::ErrorKind::NotFound {
                     tracing::info!("[SOURCE] Trying to execute '{}' via python3...", bin);
                     if let Ok(py_out) = Command::new("python3")
+                        .stealth()
                         .arg(bin)
                         .arg("--version")
                         .output()
@@ -123,12 +145,12 @@ pub async fn get_python_command() -> String {
     }
 
     // 1.5 Try to find yt-dlp using 'which'
-    if let Ok(output) = Command::new("which").arg("yt-dlp").output().await {
+    if let Ok(output) = Command::new("which").stealth().arg("yt-dlp").output().await {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() {
                 // Test the found path
-                match Command::new(&path).arg("--version").output().await {
+                match Command::new(&path).stealth().arg("--version").output().await {
                     Ok(out) => {
                         if out.status.success() {
                             tracing::info!(
@@ -168,7 +190,7 @@ pub async fn get_python_command() -> String {
     for cmd in candidates {
         // Check if command exists
         let check_args = vec!["--version"];
-        match Command::new(cmd).args(&check_args).output().await {
+        match Command::new(cmd).stealth().args(&check_args).output().await {
             Ok(output) => {
                 if output.status.success() {
                     // Command exists, record it as a fallback
@@ -178,7 +200,7 @@ pub async fn get_python_command() -> String {
 
                     // Now check for yt-dlp module
                     let module_args = vec!["-m", "yt_dlp", "--version"];
-                    match Command::new(cmd).args(&module_args).output().await {
+                    match Command::new(cmd).stealth().args(&module_args).output().await {
                         Ok(mod_out) => {
                             if mod_out.status.success() {
                                 tracing::info!(
@@ -230,6 +252,7 @@ pub async fn check_ytdlp() -> bool {
 
     // Otherwise it's a python interpreter, check module
     Command::new(&cmd)
+        .stealth()
         .args(["-m", "yt_dlp", "--version"])
         .stdin(std::process::Stdio::null())
         .output()
@@ -383,16 +406,7 @@ pub async fn download_youtube(
     let height: u32 = lines.next().unwrap_or("0").parse().unwrap_or(0);
 
     // Prepare output filename (sanitized)
-    let safe_title: String = title
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == ' ' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
+    let safe_title = sanitize_title_for_filename(&title);
     let filename = format!("{}.mp4", safe_title);
     let output_path = output_dir.join(&filename);
     let output_template = output_path.to_string_lossy().to_string();
@@ -405,6 +419,7 @@ pub async fn download_youtube(
     let status = tokio::time::timeout(
         tokio::time::Duration::from_secs(1800), // 30 mins
         Command::new(&python)
+            .stealth()
             .args(&download_args)
             .stdin(std::process::Stdio::null())
             .status(),
@@ -522,6 +537,7 @@ pub async fn get_video_duration(
     let output = tokio::time::timeout(
         tokio::time::Duration::from_secs(10),
         Command::new("ffprobe")
+            .stealth()
             .kill_on_drop(true) // Ensure process is killed if timeout occurs
             .args([
                 "-v",
@@ -699,6 +715,15 @@ mod tests {
     fn test_bad_browser_name() {
         let res = build_ytdlp_info_args("python", "url", Some("-bad"));
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_sanitize_title_for_filename() {
+        assert_eq!(
+            sanitize_title_for_filename("So You Want To See The World? (Travel Film)"),
+            "So You Want To See The World_ _Travel Film_"
+        );
+        assert_eq!(sanitize_title_for_filename("   "), "Unknown");
     }
 
     #[tokio::test]

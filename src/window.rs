@@ -1123,6 +1123,12 @@ impl SynoidApp {
             )
             .changed()
         {
+            save_settings(
+                &self.core.instance_id,
+                state,
+                self.active_command,
+                &self.tree_state,
+            );
             let core = self.core.clone();
             let is_running = state.is_autonomous_running;
             tokio::spawn(async move {

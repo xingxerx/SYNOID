@@ -5,6 +5,7 @@
 // every packet but writes nothing. Any bitstream corruption surfaces as
 // text on stderr.
 
+use crate::agent::process_utils::CommandExt;
 use std::path::Path;
 use std::process::Command;
 use tracing::{error, info};
@@ -25,6 +26,7 @@ impl ValidationGate {
         };
 
         let output = Command::new("ffmpeg")
+            .stealth()
             .args([
                 "-v", "error", // Only report real errors
                 "-i", path_str, "-f", "null", // Don't produce output

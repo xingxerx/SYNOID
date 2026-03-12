@@ -4,6 +4,7 @@
 // This module provides FFmpeg wrappers for trimming, clipping, and
 // intelligent compression to target file sizes.
 
+use crate::agent::process_utils::CommandExt;
 use crate::agent::source_tools::get_video_duration;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
@@ -212,6 +213,7 @@ pub async fn enhance_audio(
     let safe_output = safe_arg_path(output);
 
     let status = Command::new("ffmpeg")
+        .stealth()
         .args(["-y", "-nostdin", "-i"])
         .arg(&safe_input)
         .args([
@@ -377,6 +379,7 @@ pub async fn extract_audio_wav(
     );
 
     let output = Command::new("ffmpeg")
+        .stealth()
         .arg("-y")
         .arg("-i")
         .arg(safe_arg_path(input_video))
@@ -456,6 +459,7 @@ pub async fn burn_subtitles(
     let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
 
     let mut cmd = Command::new("ffmpeg");
+    cmd.stealth();
     cmd.arg("-y")
         .arg("-hide_banner")
         .arg("-loglevel")
@@ -607,6 +611,7 @@ pub async fn apply_audio_censor(
         let safe_input = safe_arg_path(input_audio);
         let safe_output = safe_arg_path(output_audio);
         let st = Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-i"])
             .arg(&safe_input)
             .arg("-c:a")

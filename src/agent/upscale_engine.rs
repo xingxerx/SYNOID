@@ -14,6 +14,7 @@
 // The engine detects which backends are locally available and routes
 // accordingly, falling back gracefully when a model is missing.
 
+use crate::agent::process_utils::CommandExt;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -175,6 +176,7 @@ impl UpscaleEngine {
         info!("[UPSCALE-SEEDVR2] Extracting frames…");
         let fps = Self::probe_fps(input_path).await.unwrap_or(30.0);
         let status = Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-i"])
             .arg(input_path)
             .args(["-vf", "scale=iw:ih", "-qscale:v", "1"])
@@ -196,6 +198,7 @@ impl UpscaleEngine {
         // Try CLI binary first, then Python fallback
         let seedvr2_ok = if which_exists("seedvr2") {
             Command::new("seedvr2")
+                .stealth()
                 .args(["--input", &frames_in.to_string_lossy()])
                 .args(["--output", &frames_out.to_string_lossy()])
                 .args(["--resolution", &scale])
@@ -206,6 +209,7 @@ impl UpscaleEngine {
         } else {
             // Python fallback
             Command::new("python3")
+                .stealth()
                 .args([
                     "seedvr2_infer.py",
                     "--input",
@@ -230,6 +234,7 @@ impl UpscaleEngine {
         // 3. Re-assemble frames + original audio
         info!("[UPSCALE-SEEDVR2] Re-assembling video…");
         let status = Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-framerate", &fps.to_string(), "-i"])
             .arg(frames_out.join("%06d.png"))
             .args(["-i"])
@@ -289,6 +294,7 @@ impl UpscaleEngine {
         let fps = Self::probe_fps(input_path).await.unwrap_or(30.0);
 
         Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-i"])
             .arg(input_path)
             .args(["-qscale:v", "1"])
@@ -301,6 +307,7 @@ impl UpscaleEngine {
         let scale_factor = Self::compute_scale_factor(input_path, config).await;
 
         let esrgan_ok = Command::new("realesrgan-ncnn-vulkan")
+            .stealth()
             .args(["-i", &frames_in.to_string_lossy()])
             .args(["-o", &frames_out.to_string_lossy()])
             .args(["-s", &scale_factor.to_string()])
@@ -317,6 +324,7 @@ impl UpscaleEngine {
         }
 
         Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-framerate", &fps.to_string(), "-i"])
             .arg(frames_out.join("%06d.png"))
             .args(["-i"])
@@ -368,6 +376,7 @@ impl UpscaleEngine {
         };
 
         let status = Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-i"])
             .arg(input_path)
             .args([
@@ -410,6 +419,7 @@ impl UpscaleEngine {
 
     async fn probe_fps(path: &Path) -> Option<f64> {
         let out = Command::new("ffprobe")
+            .stealth()
             .args([
                 "-v",
                 "error",
@@ -445,6 +455,7 @@ impl UpscaleEngine {
     async fn compute_scale_factor(input_path: &Path, config: &UpscaleConfig) -> u32 {
         // Ask ffprobe for the source width
         let out = Command::new("ffprobe")
+            .stealth()
             .args([
                 "-v",
                 "error",

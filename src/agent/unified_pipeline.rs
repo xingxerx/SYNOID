@@ -8,6 +8,7 @@ use crate::gpu_backend::{get_gpu_context, GpuBackend, GpuContext};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::process::Command;
+use crate::agent::process_utils::CommandExt;
 use tracing::{info, warn};
 
 /// Pipeline stages that can be executed
@@ -239,6 +240,7 @@ impl UnifiedPipeline {
         // Remux with enhanced audio using GPU encoder
         let encoder = self.gpu.ffmpeg_encoder();
         let mut cmd = Command::new("ffmpeg");
+        cmd.stealth();
         cmd.args(["-y", "-nostdin"]);
 
         // Add hardware acceleration if available
@@ -280,6 +282,7 @@ impl UnifiedPipeline {
 
         // let encoder = self.gpu.ffmpeg_encoder();
         let mut cmd = Command::new("ffmpeg");
+        cmd.stealth();
         cmd.args(["-y", "-nostdin"]);
 
         // Add hardware acceleration for decoding if available

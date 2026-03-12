@@ -4,11 +4,17 @@
 // This is the central logic kernel that powers both the CLI and GUI.
 // It maintains state, manages long-running processes, and routes intent.
 
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::info;
+
+use crate::agent::process_utils::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt as WinCommandExt;
 
 use crate::agent::brain::Brain;
 use crate::agent::defense::{IntegrityGuard, Sentinel};
@@ -21,6 +27,155 @@ use crate::agent::unified_pipeline::{PipelineConfig, PipelineStage, UnifiedPipel
 use crate::agent::autonomous_learner::AutonomousLearner;
 use crate::agent::editor_queue::{EditJob, JobStatus, VideoEditorQueue};
 use crate::gpu_backend;
+
+const AUTONOMOUS_PID_FILE: &str = "autonomous_worker.pid";
+const AUTONOMOUS_LOG_FILE: &str = "autonomous_worker.log";
+
+
+
+fn autonomous_runtime_dir(instance_id: &str) -> PathBuf {
+    PathBuf::from(format!("cortex_cache{}", instance_id))
+}
+
+fn autonomous_pid_path(instance_id: &str) -> PathBuf {
+    autonomous_runtime_dir(instance_id).join(AUTONOMOUS_PID_FILE)
+}
+
+fn autonomous_log_path(instance_id: &str) -> PathBuf {
+    autonomous_runtime_dir(instance_id).join(AUTONOMOUS_LOG_FILE)
+}
+
+fn ensure_autonomous_runtime_dir(instance_id: &str) -> std::io::Result<PathBuf> {
+    let dir = autonomous_runtime_dir(instance_id);
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+fn parse_pid(contents: &str) -> Option<u32> {
+    contents.trim().parse().ok()
+}
+
+fn read_autonomous_pid(instance_id: &str) -> Option<u32> {
+    parse_pid(&fs::read_to_string(autonomous_pid_path(instance_id)).ok()?)
+}
+
+fn write_autonomous_pid(instance_id: &str, pid: u32) -> std::io::Result<()> {
+    ensure_autonomous_runtime_dir(instance_id)?;
+    fs::write(autonomous_pid_path(instance_id), pid.to_string())
+}
+
+fn clear_autonomous_pid(instance_id: &str) {
+    let pid_path = autonomous_pid_path(instance_id);
+    if let Err(err) = fs::remove_file(pid_path) {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!("[CORE] Failed to clear autonomous worker PID file: {}", err);
+        }
+    }
+}
+
+fn is_pid_running(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+
+    #[cfg(windows)]
+    {
+        let filter = format!("PID eq {}", pid);
+        return Command::new("tasklist")
+            .stealth()
+            .args(["/FI", &filter, "/FO", "CSV", "/NH"])
+            .output()
+            .map(|output| {
+                output.status.success()
+                    && String::from_utf8_lossy(&output.stdout).contains(&format!("\"{}\"", pid))
+            })
+            .unwrap_or(false);
+    }
+
+    #[cfg(not(windows))]
+    {
+        Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+}
+
+fn active_autonomous_pid(instance_id: &str) -> Option<u32> {
+    let pid = read_autonomous_pid(instance_id)?;
+    if is_pid_running(pid) {
+        Some(pid)
+    } else {
+        clear_autonomous_pid(instance_id);
+        None
+    }
+}
+
+fn spawn_autonomous_worker(api_url: &str, instance_id: &str) -> Result<(u32, PathBuf), String> {
+    ensure_autonomous_runtime_dir(instance_id).map_err(|e| e.to_string())?;
+
+    let log_path = autonomous_log_path(instance_id);
+    let stdout = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|e| e.to_string())?;
+    let stderr = stdout.try_clone().map_err(|e| e.to_string())?;
+    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+    let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
+
+    let mut command = Command::new(exe_path);
+    command.stealth();
+    command
+        .arg("autonomous")
+        .env("SYNOID_API_URL", api_url)
+        .env("SYNOID_INSTANCE_ID", instance_id)
+        .current_dir(current_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr));
+
+    #[cfg(windows)]
+    command.creation_flags(0x08000000 | 0x00000008 | 0x00000200); // CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+
+    let child = command.spawn().map_err(|e| e.to_string())?;
+    let pid = child.id();
+    write_autonomous_pid(instance_id, pid).map_err(|e| e.to_string())?;
+
+    Ok((pid, log_path))
+}
+
+fn stop_autonomous_worker(instance_id: &str) -> Result<Option<u32>, String> {
+    let Some(pid) = read_autonomous_pid(instance_id) else {
+        return Ok(None);
+    };
+
+    if !is_pid_running(pid) {
+        clear_autonomous_pid(instance_id);
+        return Ok(None);
+    }
+
+    #[cfg(windows)]
+    let status = Command::new("taskkill")
+        .stealth()
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .status()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(not(windows))]
+    let status = Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .status()
+        .map_err(|e| e.to_string())?;
+
+    if status.success() || !is_pid_running(pid) {
+        clear_autonomous_pid(instance_id);
+        Ok(Some(pid))
+    } else {
+        Err(format!("failed to stop autonomous worker PID {}", pid))
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Human Control Index (Feature 7)
@@ -760,8 +915,10 @@ impl AgentCore {
         let jobs = self.editor_queue.list_jobs_detailed().await;
         if let Some(job) = jobs.iter().find(|j| j.id == job_id) {
             // Re-trigger learner with the official user-vetted quality
-            let learner =
-                crate::agent::autonomous_learner::AutonomousLearner::new(self.brain.clone(), &self.instance_id);
+            let learner = crate::agent::autonomous_learner::AutonomousLearner::new(
+                self.brain.clone(),
+                &self.instance_id,
+            );
             // We use a simplified learn_from_edit or a new one?
             // Let's use the one we updated, but since we don't have duration here easily
             // we use values from the job if available.
@@ -1017,27 +1174,82 @@ impl AgentCore {
 
     pub fn start_autonomous_learning(&self) {
         self.set_status("🚀 Starting Autonomous Loop...");
-        self.log("[CORE] Initializing Autonomous Learner...");
+        self.log("[CORE] Starting autonomous learner with background priority...");
 
-        let mut learner_guard = self.autonomous_learner.lock().unwrap();
-        if learner_guard.is_none() {
-            // Create new learner sharing the same brain
-            let learner = AutonomousLearner::new(self.brain.clone(), &self.instance_id);
-            *learner_guard = Some(learner);
+        if let Some(pid) = active_autonomous_pid(&self.instance_id) {
+            self.log(&format!(
+                "[CORE] Autonomous worker already running in background (PID {}).",
+                pid
+            ));
+            self.set_status("🎓 Autonomous loop running in background");
+            return;
         }
 
-        if let Some(learner) = learner_guard.as_ref() {
-            learner.start();
+        match spawn_autonomous_worker(&self.api_url, &self.instance_id) {
+            Ok((pid, log_path)) => {
+                self.log(&format!(
+                    "[CORE] Autonomous worker launched in background (PID {}).",
+                    pid
+                ));
+                self.log(&format!(
+                    "[CORE] Background download log: {}",
+                    log_path.display()
+                ));
+                self.set_status("🎓 Autonomous loop running in background");
+            }
+            Err(err) => {
+                self.log(&format!(
+                    "[CORE] Background worker failed to start: {}",
+                    err
+                ));
+                self.log("[CORE] Falling back to in-process learner.");
+
+                let mut learner_guard = self.autonomous_learner.lock().unwrap();
+                if learner_guard.is_none() {
+                    let learner = AutonomousLearner::new(self.brain.clone(), &self.instance_id);
+                    *learner_guard = Some(learner);
+                }
+
+                if let Some(learner) = learner_guard.as_ref() {
+                    learner.start();
+                }
+            }
         }
     }
 
     pub fn stop_autonomous_learning(&self) {
         self.set_status("🛑 Stopping Autonomous Loop...");
+
+        let mut stopped_any = false;
+
+        match stop_autonomous_worker(&self.instance_id) {
+            Ok(Some(pid)) => {
+                self.log(&format!(
+                    "[CORE] Autonomous background worker stopped (PID {}).",
+                    pid
+                ));
+                stopped_any = true;
+            }
+            Ok(None) => {}
+            Err(err) => self.log(&format!(
+                "[CORE] Failed to stop autonomous background worker: {}",
+                err
+            )),
+        }
+
         let learner_guard = self.autonomous_learner.lock().unwrap();
         if let Some(learner) = learner_guard.as_ref() {
-            learner.stop();
-            self.log("[CORE] Autonomous Loop signal sent: STOP");
+            if learner.is_active() {
+                learner.stop();
+                self.log("[CORE] In-process autonomous loop signal sent: STOP");
+                stopped_any = true;
+            }
         }
+
+        if !stopped_any {
+            self.log("[CORE] No autonomous learner was running.");
+        }
+
         self.set_status("⚡ Ready");
     }
 }
@@ -1084,5 +1296,24 @@ mod tests {
         let url = "https://youtube.com/watch?v=123";
         assert!(!(url.len() > 1 && url.chars().nth(1) == Some(':')));
         assert!(!url.starts_with("\\\\"));
+    }
+
+    #[test]
+    fn autonomous_runtime_files_are_instance_scoped() {
+        assert_eq!(
+            autonomous_pid_path("_3012"),
+            PathBuf::from("cortex_cache_3012").join(AUTONOMOUS_PID_FILE)
+        );
+        assert_eq!(
+            autonomous_log_path("default"),
+            PathBuf::from("cortex_cachedefault").join(AUTONOMOUS_LOG_FILE)
+        );
+    }
+
+    #[test]
+    fn parse_pid_accepts_trimmed_numbers_only() {
+        assert_eq!(parse_pid(" 1234\n"), Some(1234));
+        assert_eq!(parse_pid("not-a-pid"), None);
+        assert_eq!(parse_pid(""), None);
     }
 }

@@ -1,6 +1,7 @@
 // SYNOID Audio Tools
 // Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
+use crate::agent::process_utils::CommandExt;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tokio::process::Command as AsyncCommand;
@@ -33,6 +34,7 @@ pub async fn scan_audio(
     // Use real FFmpeg ebur128 analysis instead of hardcoded values
     let safe_path = crate::agent::production_tools::safe_arg_path(path);
     let output = tokio::process::Command::new("ffmpeg")
+        .stealth()
         .args(["-v", "error", "-i"])
         .arg(&safe_path)
         .args(["-filter_complex", "ebur128", "-f", "null", "-"])
@@ -105,6 +107,7 @@ pub async fn match_dialogue(
     );
 
     let status = AsyncCommand::new("ffmpeg")
+        .stealth()
         .args(["-y", "-i"])
         .arg(source_path)
         .args(["-af", &af_chain, "-c:a", "aac", "-b:a", "192k"])
@@ -124,6 +127,7 @@ pub async fn match_dialogue(
 async fn measure_lufs(path: &Path) -> Result<f64, Box<dyn std::error::Error + Send + Sync>> {
     let safe_path = crate::agent::production_tools::safe_arg_path(path);
     let output = AsyncCommand::new("ffmpeg")
+        .stealth()
         .args(["-v", "error", "-i"])
         .arg(&safe_path)
         .args(["-filter_complex", "ebur128", "-f", "null", "-"])
@@ -196,6 +200,7 @@ pub async fn apply_spatial_pan(
     if keyframes.is_empty() {
         info!("[SPATIAL-PAN] No keyframes; passing through unchanged.");
         let status = AsyncCommand::new("ffmpeg")
+            .stealth()
             .args(["-y", "-i"])
             .arg(input_path)
             .args(["-c", "copy"])
@@ -229,6 +234,7 @@ pub async fn apply_spatial_pan(
     );
 
     let status = AsyncCommand::new("ffmpeg")
+        .stealth()
         .args(["-y", "-i"])
         .arg(input_path)
         .args(["-af", &af, "-c:a", "aac", "-b:a", "192k", "-c:v", "copy"])
@@ -251,6 +257,7 @@ pub async fn get_audio_tracks(
     let safe_path = crate::agent::production_tools::safe_arg_path(path);
 
     let output = tokio::process::Command::new("ffprobe")
+        .stealth()
         .args([
             "-v",
             "error",

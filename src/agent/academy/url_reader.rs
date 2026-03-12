@@ -60,7 +60,9 @@ impl UrlReader {
 
         // 1. Download metadata via yt-dlp (requires local install)
         use tokio::process::Command;
+        use crate::agent::process_utils::CommandExt;
         let output = Command::new("yt-dlp")
+            .stealth()
             .args(["--dump-json", "--", url])
             .output()
             .await?;

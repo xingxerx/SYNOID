@@ -1,3 +1,4 @@
+use crate::agent::process_utils::CommandExt;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::{info, warn};
@@ -46,8 +47,10 @@ impl Animator {
         // npx remotion render src/index.tsx <CompositionName> <Output> --props <Payload>
         let mut cmd = if cfg!(windows) {
             Command::new("cmd")
+                .stealth()
         } else {
             Command::new("sh")
+                .stealth()
         };
 
         let output = if cfg!(windows) {

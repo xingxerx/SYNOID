@@ -1,5 +1,6 @@
 use crate::agent::academy::StyleLibrary;
 use crate::agent::audio_tools::AudioAnalysis;
+use crate::agent::process_utils::CommandExt;
 use crate::agent::production_tools;
 use crate::agent::smart_editor;
 use crate::agent::transcription::TranscriptSegment;
@@ -355,6 +356,7 @@ impl MotorCortex {
         info!("Command: {:?}", args.join(" "));
 
         let status = std::process::Command::new(&args[0])
+            .stealth()
             .args(&args[1..])
             .status()
             .map_err(|e| format!("Failed to execute ffmpeg: {}", e))?;

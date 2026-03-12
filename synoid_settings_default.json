@@ -1,0 +1,29 @@
+{
+  "input_path": "D:\\SYNOID\\Video\\Outbound.mp4",
+  "output_path": "Video/output.mp4",
+  "intent": "Utilize the Research module to source and download the top 5 most engaging YouTube videos related to popular games as well as the best video editing videos. Analyze these downloaded videos specifically for their pacing and how they maintain viewer engagement without making random cuts. Feed this analysis directly into the Academy module to increase your Neuroplasticity and establish a new Style Library for this genre.\nOnce you have learned this style, apply these patterns to my raw footage. Do not make random cuts; completely preserve the core gameplay loop. Instead of content trimming, focus the Smart Editor's Semantic Understanding engine on identifying and beeping out all cuss words and slurs.\nBefore generating any captions, utilize Production Tools to apply studio-quality EQ, compression, and normalization to the voice tracks. Ensure the audio is fully enhanced first so that every single spoken word is picked up and transcribed into absolute, 100% accurate on-screen captions.\nFinally, utilize the Engagement Consolidator to structure the final video, prioritizing audio clarity and professional censoring over aggressive editing.\"",
+  "youtube_url": "",
+  "clip_start": "0.0",
+  "clip_duration": "10.0",
+  "compress_size": "25.0",
+  "scale_factor": "2.0",
+  "research_topic": "",
+  "style_name": "",
+  "is_autonomous_running": true,
+  "guard_mode": "all",
+  "guard_watch_path": "",
+  "active_editor_tab": "Media",
+  "active_command": "Learn",
+  "tree_state": {
+    "media_expanded": true,
+    "visual_expanded": true,
+    "ai_core_expanded": true,
+    "security_expanded": false,
+    "research_expanded": false,
+    "audio_expanded": true
+  },
+  "timeline_zoom": 0.5,
+  "track_audio": "",
+  "track_overlay": "",
+  "discovery_query": ""
+}

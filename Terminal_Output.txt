@@ -1,0 +1,194 @@
+PS D:\SYNOID> .\teach.ps1                                                                                               
+Starting Isolated SYNOID Instance on Port 3001...                                                                       
+Build Directory: target_3001                                                                                            
+Cargo Home: D:\SYNOID\target_3001\.cargo                                                                                
+Controlled restart window: every 2 minute(s) if code changed
+Building release binary...
+   Compiling synoid-core v0.1.1 (D:\SYNOID)
+    Finished `release` profile [optimized] target(s) in 36.71s
+Launching GUI on port 3001...
+2026-03-11T08:53:07.035648Z  INFO synoid_core: --- SYNOID AGENTIC KERNEL v0.1.1 ---
+2026-03-11T08:53:07.700099Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Groq': 30rpm, 100000 tokens/day, 1000 req/day
+2026-03-11T08:53:07.700213Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Groq Fast': 30rpm, 500000 tokens/day, 14400 req/day
+2026-03-11T08:53:07.700328Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Google AI Studio': 15rpm, 1000000 tokens/day, 1500 req/day
+2026-03-11T08:53:07.700459Z  INFO synoid_core::agent::llm_provider: [LLM] Multi-provider initialized: ["Groq", "Groq-Fast", "Google-Vision", "Ollama"]
+2026-03-11T08:53:07.701100Z  INFO synoid_core::agent::neuroplasticity: [NEUROPLASTICITY] 🧠 Restored: 14 XP, 1.0× speed (Baseline)
+2026-03-11T08:53:07.701293Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Groq': 30rpm, 100000 tokens/day, 1000 req/day
+2026-03-11T08:53:07.701361Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Groq Fast': 30rpm, 500000 tokens/day, 14400 req/day
+2026-03-11T08:53:07.701440Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Google AI Studio': 15rpm, 1000000 tokens/day, 1500 req/day
+2026-03-11T08:53:07.701513Z  INFO synoid_core::agent::llm_provider: [LLM] Multi-provider initialized: ["Groq", "Groq-Fast", "Google-Vision", "Ollama"]
+2026-03-11T08:53:07.701969Z  INFO synoid_core::agent::neuroplasticity: [NEUROPLASTICITY] 🧠 Restored: 14 XP, 1.0× speed (Baseline)
+2026-03-11T08:53:07.702134Z  INFO synoid_core::agent::editor_queue: [QUEUE] Video Editor worker started.
+2026-03-11T08:53:07.741008Z  INFO synoid_core::gpu_backend: [GPU] ✓ NVIDIA GPU detected: NVIDIA GeForce RTX 5080 (Driver 591.44)
+2026-03-11T08:53:07.741126Z  INFO synoid_core::gpu_backend: [GPU] FFmpeg NVENC hardware encoding enabled
+2026-03-11T08:53:07.741237Z  INFO synoid_core::agent::brain: [BRAIN] 🔗 GPU Connected: NVENC: NVIDIA GeForce RTX 5080 (Driver 591.44) | Neural CUDA config: batch=8, streams=1, preset=p4
+2026-03-11T08:53:07.741355Z  INFO synoid_core::agent::core: [CORE] 🔗 Neural-GPU bridge active: Brain 1.0× [Baseline] | GPU: NVENC: NVIDIA GeForce RTX 5080 (Driver 591.44) | Batch: 1
+2026-03-11T08:53:07.741439Z  INFO synoid_core: 🧠⚡ Neural-GPU bridge active: Brain 1.0× [Baseline] | GPU: NVENC: NVIDIA GeForce RTX 5080 (Driver 591.44) | Batch: 1
+2026-03-11T08:53:07.741542Z  INFO synoid_core: 🩺 Health Monitor started
+2026-03-11T08:53:07.741568Z  INFO synoid_core::agent::health: [HEALTH] Watchdog started (interval: 30s)
+2026-03-11T08:53:07.741667Z  INFO synoid_core: 🖥️ Launching GUI Command Center...
+2026-03-11T08:53:07.741683Z  INFO synoid_core: 🌐 Auto-launching Dashboard Server...
+2026-03-11T08:53:07.741691Z  INFO synoid_core: 🎓 Auto-learning from reference videos in Download folder...
+2026-03-11T08:53:07.742126Z  INFO synoid_core::agent::core: [CORE] 🎓 Learning editing style from downloaded reference videos...
+2026-03-11T08:53:07.742039Z  INFO eframe: Both the glow and wgpu renderers are available. Using wgpu.
+2026-03-11T08:53:07.742397Z  INFO synoid_core::server: 🚀 SYNOID Dashboard Server running on http://127.0.0.1:3001      
+2026-03-11T08:53:07.750973Z  INFO synoid_core::agent::hive_mind: [HIVE_MIND] Connected. Found 10 total neural nodes (cloud + local).
+2026-03-11T08:53:07.751071Z  INFO synoid_core::agent::hive_mind: [HIVE_MIND] Prime Reasoner: llama-3.3-70b-versatile (Groq)
+2026-03-11T08:53:07.751147Z  INFO synoid_core::agent::hive_mind: [HIVE_MIND] Fast Responder: llama-3.1-8b-instant (Groq)
+2026-03-11T08:53:07.751209Z  INFO synoid_core::agent::hive_mind: [HIVE_MIND] Vision Provider: Google AI Studio (Gemini)
+2026-03-11T08:53:07.751336Z  INFO synoid_core: 🐝 Hive Mind Active: Connected to Ollama Neural Network
+2026-03-11T08:53:07.758314Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] 🎓 Checking 10 video(s) (14 already memorized)
+2026-03-11T08:53:07.758562Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [1/10] ⚡ Already learned (cached): Beggin_  _Valorant Montage_.mp4
+2026-03-11T08:53:07.758687Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'gaming_montage'     
+2026-03-11T08:53:07.766373Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [2/10] ⚡ Already learned (cached): How to edit SO good your viewers get addicted to your videos.mp4
+2026-03-11T08:53:07.766486Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'general'
+2026-03-11T08:53:07.774407Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [3/10] ⚡ Already learned (cached): How to Edit a Fortnite Montage in 2025 _FOR FREE_.mp4
+2026-03-11T08:53:07.774526Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'gaming_montage'     
+2026-03-11T08:53:07.798515Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [4/10] ⚡ Already learned (cached): So You Want To See The World_ _Travel Film_.mp4
+2026-03-11T08:53:07.798637Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'cinematic_travel_video'
+2026-03-11T08:53:07.829784Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [5/10] ⚡ Already learned (cached): How to Edit a Documentary Film.mp4
+2026-03-11T08:53:07.829907Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'documentary'
+2026-03-11T08:53:07.843951Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [6/10] ⚡ Already learned (cached): How To Have _Flow_ On Your Montage_Edit_ _How To Make A Montage _1_ _UPDATED_.mp4
+2026-03-11T08:53:07.844187Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'gaming_montage'     
+2026-03-11T08:53:07.853295Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [7/10] ⚡ Already learned (cached): How To Make The _CLEANEST_ Fortnite Montage _How To Edit Like Clix_.mp4
+2026-03-11T08:53:07.853398Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'gaming_montage'     
+2026-03-11T08:53:07.859604Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [8/10] ⚡ Already learned (cached): Edit Like a Documentary Filmmaker_ Not a Videographer.mp4
+2026-03-11T08:53:07.859726Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'documentary'        
+2026-03-11T08:53:07.867602Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [9/10] ⚡ Already learned (cached): You Can Make a Netflix Style Doco About Literally Anything.mp4
+2026-03-11T08:53:07.867688Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'documentary'        
+2026-03-11T08:53:07.878177Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [10/10] ⚡ Already learned (cached): How to edit Vlogs LIKE A PRO_.mp4
+2026-03-11T08:53:07.878343Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'vlog'
+2026-03-11T08:53:07.895538Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] ✅ All 10 video(s) already memorized — nothing to relearn | ⚡ 1.0× speed | Baseline | 14 XP | 0 adaptations
+2026-03-11T08:53:07.895735Z  INFO synoid_core::agent::core: [CORE] ⚡ All 10 video style(s) already memorized — instant restore | ⚡ 1.0× speed | Baseline | 14 XP | 0 adaptations
+2026-03-11T08:53:14.148979Z  INFO synoid_core::agent::core: [CORE] Initializing Autonomous Learner...
+2026-03-11T08:53:14.149396Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🧠 Restored state: 3 topics processed, 5 repos known
+2026-03-11T08:53:14.446181Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Groq': 30rpm, 100000 tokens/day, 1000 req/day
+2026-03-11T08:53:14.446319Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Groq Fast': 30rpm, 500000 tokens/day, 14400 req/day
+2026-03-11T08:53:14.446393Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Google AI Studio': 15rpm, 1000000 tokens/day, 1500 req/day
+2026-03-11T08:53:14.446463Z  INFO synoid_core::agent::llm_provider: [LLM] Multi-provider initialized: ["Groq", "Groq-Fast", "Google-Vision", "Ollama"]
+2026-03-11T08:53:14.446555Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Groq': 30rpm, 100000 tokens/day, 1000 req/day
+2026-03-11T08:53:14.446636Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Groq Fast': 30rpm, 500000 tokens/day, 14400 req/day
+2026-03-11T08:53:14.446707Z  INFO synoid_core::agent::token_optimizer: [TOKEN_OPT] Registered provider 'Google AI Studio': 15rpm, 1000000 tokens/day, 1500 req/day
+2026-03-11T08:53:14.446775Z  INFO synoid_core::agent::llm_provider: [LLM] Multi-provider initialized: ["Groq", "Groq-Fast", "Google-Vision", "Ollama"]
+2026-03-11T08:53:14.446871Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🚀 Autonomous Learning Loop Started (Sentinel Active)
+2026-03-11T08:53:14.446984Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🏁 Starting Learning Cycle #1       
+2026-03-11T08:53:14.454477Z  INFO synoid_core::agent::defense::sentinel: [SENTINEL] System Heartbeat: Memory Used: 28000952320/33453285376 KB | CPU: 64.52193%
+2026-03-11T08:53:14.454604Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🔍 Scouting topic: 'documentary style editing'
+2026-03-11T08:53:14.454965Z  INFO synoid_core::agent::source_tools: [SOURCE] Searching YouTube: ytsearch12:documentary style editing
+2026-03-11T08:53:14.460145Z  WARN synoid_core::agent::source_tools: [SOURCE] Command 'yt-dlp' failed to execute directly: program not found
+2026-03-11T08:53:14.460981Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '/usr/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:53:14.461269Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '/usr/local/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:53:14.461518Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '~/.local/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:53:14.916462Z  INFO synoid_core::agent::source_tools: [SOURCE] ✅ Found valid Python with yt-dlp module: 'python'
+2026-03-11T08:53:14.916904Z  INFO synoid_core::agent::source_tools: [SOURCE] 🦕 Found Deno at: C:\Users\xing\AppData\Local\Microsoft\WinGet\Packages\DenoLand.Deno_Microsoft.Winget.Source_8wekyb3d8bbwe\deno.exe
+2026-03-11T08:53:31.002960Z  INFO synoid_core::agent::source_tools: [SOURCE] Found 11 results
+2026-03-11T08:53:31.003134Z  INFO synoid_core::agent::download_guard: [GUARD] ✅ URL passed safety check: https://www.youtube.com/watch?v=nZrPVUzYHKE
+2026-03-11T08:53:31.003218Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 📥 Acquiring candidate: How To Edit A Documentary Like Johnny Harris
+2026-03-11T08:53:31.003608Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] ⏭️ Skipping already-present referencce video: How To Edit A Documentary Like Johnny Harris
+2026-03-11T08:53:31.003715Z  INFO synoid_core::agent::download_guard: [GUARD] ✅ URL passed safety check: https://www.youtube.com/watch?v=CLnS22LHdkw
+2026-03-11T08:53:31.003835Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 📥 Acquiring candidate: Edit Like a Documentary Filmmaker, Not a Videographer
+2026-03-11T08:53:31.004182Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] ⏭️ Skipping already-present referencce video: Edit Like a Documentary Filmmaker, Not a Videographer
+2026-03-11T08:53:31.004261Z  INFO synoid_core::agent::download_guard: [GUARD] ✅ URL passed safety check: https://www.youtube.com/watch?v=LHFbZu8p0pg
+2026-03-11T08:53:31.004330Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 📥 Acquiring candidate: Top 5 BEST Effects for Documentary Style Editing
+2026-03-11T08:53:31.004772Z  INFO synoid_core::agent::source_tools: [SOURCE] Downloading from YouTube: https://www.youtube.com/watch?v=LHFbZu8p0pg (Auth: None)
+2026-03-11T08:53:31.010973Z  WARN synoid_core::agent::source_tools: [SOURCE] Command 'yt-dlp' failed to execute directly: program not found
+2026-03-11T08:53:31.011615Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '/usr/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:53:31.011987Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '/usr/local/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:53:31.012361Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '~/.local/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:53:31.475180Z  INFO synoid_core::agent::source_tools: [SOURCE] ✅ Found valid Python with yt-dlp module: 'python'
+2026-03-11T08:53:31.476399Z  INFO synoid_core::agent::source_tools: [SOURCE] 🦕 Found Deno at: C:\Users\xing\AppData\Local\Microsoft\WinGet\Packages\DenoLand.Deno_Microsoft.Winget.Source_8wekyb3d8bbwe\deno.exe
+2026-03-11T08:53:33.841966Z  INFO synoid_core::agent::source_tools: [SOURCE] 🦕 Found Deno at: C:\Users\xing\AppData\Local\Microsoft\WinGet\Packages\DenoLand.Deno_Microsoft.Winget.Source_8wekyb3d8bbwe\deno.exe
+2026-03-11T08:53:33.842101Z  INFO synoid_core::agent::source_tools: [SOURCE] Starting download to: D:\SYNOID\Download\Top 5 BEST Effects for Documentary Style Editing.mp4
+[youtube] Extracting URL: https://www.youtube.com/watch?v=LHFbZu8p0pg 
+[youtube] LHFbZu8p0pg: Downloading webpage 
+[youtube] LHFbZu8p0pg: Downloading ios player API JSON 
+[youtube] LHFbZu8p0pg: Downloading android player API JSON 
+[info] LHFbZu8p0pg: Downloading 1 format(s): 18 
+[download] Destination: D:\SYNOID\Download\Top 5 BEST Effects for Documentary Style Editing.mp4 
+[download] 100% of   12.64MiB in 00:00:02 at 5.19MiB/s
+2026-03-11T08:53:38.440198Z  INFO synoid_core::agent::download_guard: [GUARD] ✅ File passed safety check: "Top 5 BEST Effects for Documentary Style Editing.mp4" (13259158 bytes)
+2026-03-11T08:53:38.440359Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🎓 New video acquired: 'Top 5 BEST Effects for Documentary Style Editing'
+2026-03-11T08:53:38.452022Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] 🎓 Checking 10 video(s) (14 already memorized)
+2026-03-11T08:53:38.452203Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [1/10] 🔬 Analysing (new/changed): Top 5 BEST Effects for Documentary Style Editing.mp4
+2026-03-11T08:53:38.452277Z  INFO synoid_core::agent::smart_editor::scene_ops: [SMART] Detecting scenes in "D:\\SYNOID\\Download\\Top 5 BEST Effects for Documentary Style Editing.mp4" (threshold: 0.3)
+2026-03-11T08:53:38.581588Z  INFO synoid_core::agent::smart_editor::scene_ops: [SMART] Video duration: 318.74s
+2026-03-11T08:53:39.279929Z  INFO synoid_core::agent::smart_editor::scene_ops: [SMART] Detected 34 scenes
+2026-03-11T08:53:39.280049Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] Scene detection: 34 scenes, avg 9.37s
+2026-03-11T08:53:39.280124Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'documentary'        
+2026-03-11T08:53:39.291116Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] ✅ Learned 'documentary': avg_scene=9.37s, xp=0.65, speed=1.0×
+2026-03-11T08:53:39.291350Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [2/10] ⚡ Already learned (cached): Beggin_  _Valorant Montage_.mp4
+2026-03-11T08:53:39.291456Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'gaming_montage'     
+2026-03-11T08:53:39.311125Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [3/10] ⚡ Already learned (cached): How to edit SO good your viewers get addicted to your videos.mp4
+2026-03-11T08:53:39.311253Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'general'
+2026-03-11T08:53:39.366767Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [4/10] ⚡ Already learned (cached): How to Edit a Fortnite Montage in 2025 _FOR FREE_.mp4
+2026-03-11T08:53:39.366888Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'gaming_montage'
+2026-03-11T08:53:39.387708Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [5/10] ⚡ Already learned (cached): So You Want To See The World_ _Travel Film_.mp4
+2026-03-11T08:53:39.387813Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'cinematic_travel_video'
+2026-03-11T08:53:39.404496Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [6/10] ⚡ Already learned (cached): How to Edit a Documentary Film.mp4
+2026-03-11T08:53:39.404609Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'documentary'        
+2026-03-11T08:53:39.409334Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [7/10] ⚡ Already learned (cached): How To Have _Flow_ On Your Montage_Edit_ _How To Make A Montage _1_ _UPDATED_.mp4
+2026-03-11T08:53:39.409426Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'gaming_montage'     
+2026-03-11T08:53:39.414300Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [8/10] ⚡ Already learned (cached): How To Make The _CLEANEST_ Fortnite Montage _How To Edit Like Clix_.mp4
+2026-03-11T08:53:39.414410Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'gaming_montage'     
+2026-03-11T08:53:39.418399Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [9/10] ⚡ Already learned (cached): Edit Like a Documentary Filmmaker_ Not a Videographer.mp4
+2026-03-11T08:53:39.418502Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'documentary'        
+2026-03-11T08:53:39.424446Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [10/10] ⚡ Already learned (cached): You Can Make a Netflix Style Doco About Literally Anything.mp4
+2026-03-11T08:53:39.424557Z  INFO synoid_core::agent::learning: [KERNEL] 💾 Memorizing pattern for 'documentary'        
+2026-03-11T08:53:39.432200Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] 🏁 Session complete — 1 new, 10 total patterns | ⚡ 1.0× speed | Baseline | 15 XP | 0 adaptations
+2026-03-11T08:53:39.432314Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] Synthesised strategy: threshold=0.30, min_score=0.20, boring_thresh=40.0s, speech_boost=0.57, silence_pen=-0.38, continuity=0.65, max_gap=60.0s      
+2026-03-11T08:53:39.434536Z  INFO synoid_core::agent::smart_editor::types: [SMART] 💾 Saved tuned EditingStrategy to cortex_cache3001/editing_strategy.json
+2026-03-11T08:53:39.434623Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] 💾 EditingStrategy saved — scene_threshold=0.30, min_scene_score=0.20, speech_boost=0.57
+2026-03-11T08:53:39.434701Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🎨 EditingStrategy updated from 10 profile(s)
+2026-03-11T08:53:39.478321Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] 🗑️ Removed 'How To Edit A Doccumentary Like Johnny Harris.mp4' from learned cache
+2026-03-11T08:53:39.478488Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🗑️ Evicted older reference video: D::\SYNOID\Download\How To Edit A Documentary Like Johnny Harris.mp4
+2026-03-11T08:53:39.532077Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] 🗑️ Removed 'BALI _ A CINEMATIIC TRAVEL VIDEO.mp4' from learned cache
+2026-03-11T08:53:39.532250Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🗑️ Evicted older reference video: D::\SYNOID\Download\BALI _ A CINEMATIC TRAVEL VIDEO.mp4
+2026-03-11T08:53:39.550338Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] 🗑️ Removed '0 VIEWS on Your GGaming Videos_ 10 SIMPLE Techniques To Edit Like a Pro_.mp4' from learned cache
+2026-03-11T08:53:39.550442Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🗑️ Evicted older reference video: D::\SYNOID\Download\0 VIEWS on Your Gaming Videos_ 10 SIMPLE Techniques To Edit Like a Pro_.mp4
+2026-03-11T08:53:39.573573Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🗑️ Evicted older reference video: D::\SYNOID\Download\TIMELESS _ Call of Duty Montage.mp4
+2026-03-11T08:53:39.581542Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] 🗑️ Removed '4 Editing Secretss Small Channels Learn Too Late.mp4' from learned cache
+2026-03-11T08:53:39.581650Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🗑️ Evicted older reference video: D::\SYNOID\Download\4 Editing Secrets Small Channels Learn Too Late.mp4
+2026-03-11T08:53:39.589739Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] 🗑️ Removed 'How to edit Vlogss LIKE A PRO_.mp4' from learned cache
+2026-03-11T08:53:39.589882Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🗑️ Evicted older reference video: D::\SYNOID\Download\How to edit Vlogs LIKE A PRO_.mp4
+2026-03-11T08:53:39.592596Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] ✅ 'Top 5 BEST Effects for Documentary Style Editing' learned & memorized (Speed: 1.0× - Baseline)
+2026-03-11T08:53:39.592685Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 💤 Resting for 30s (Adaptive)       
+2026-03-11T08:54:09.593639Z  INFO synoid_core::agent::download_guard: [GUARD] ✅ URL passed safety check: https://www.youtube.com/watch?v=6CcdXcuO9D0
+2026-03-11T08:54:09.593777Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 📥 Acquiring candidate: How to Edit a Documentary Film
+2026-03-11T08:54:09.594151Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] ⏭️ Skipping already-present referencce video: How to Edit a Documentary Film
+2026-03-11T08:54:09.594278Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 📖 Studying Theory: https://en.wikipedia.org/wiki/Montage_(filmmaking)
+2026-03-11T08:54:09.760890Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] ✅ Cycle #1 Summary: Topic 'documentary style editing' processed. Next cycle in 30s.
+2026-03-11T08:54:39.762801Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🏁 Starting Learning Cycle #2
+2026-03-11T08:54:39.780033Z  INFO synoid_core::agent::defense::sentinel: [SENTINEL] System Heartbeat: Memory Used: 29307711488/33453285376 KB | CPU: 30.068802%
+2026-03-11T08:54:39.780177Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🔍 Scouting topic: 'cinematic travel video'
+2026-03-11T08:54:39.780253Z  INFO synoid_core::agent::source_tools: [SOURCE] Searching YouTube: ytsearch12:cinematic travel video
+2026-03-11T08:54:39.786905Z  WARN synoid_core::agent::source_tools: [SOURCE] Command 'yt-dlp' failed to execute directly: program not found
+2026-03-11T08:54:39.787411Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '/usr/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:54:39.787750Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '/usr/local/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:54:39.788039Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '~/.local/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:54:40.281676Z  INFO synoid_core::agent::source_tools: [SOURCE] ✅ Found valid Python with yt-dlp module: 'python'
+2026-03-11T08:54:40.282471Z  INFO synoid_core::agent::source_tools: [SOURCE] 🦕 Found Deno at: C:\Users\xing\AppData\Local\Microsoft\WinGet\Packages\DenoLand.Deno_Microsoft.Winget.Source_8wekyb3d8bbwe\deno.exe
+2026-03-11T08:54:57.172503Z  INFO synoid_core::agent::source_tools: [SOURCE] Found 4 results
+2026-03-11T08:54:57.172616Z  INFO synoid_core::agent::download_guard: [GUARD] ✅ URL passed safety check: https://www.youtube.com/watch?v=hN1M9PqMX_U
+2026-03-11T08:54:57.172689Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 📥 Acquiring candidate: Coast of Spain - Cinematic Travel Film [shot on vivo X300 Pro]
+2026-03-11T08:54:57.172963Z  INFO synoid_core::agent::source_tools: [SOURCE] Downloading from YouTube: https://www.youtube.com/watch?v=hN1M9PqMX_U (Auth: None)
+2026-03-11T08:54:57.177930Z  WARN synoid_core::agent::source_tools: [SOURCE] Command 'yt-dlp' failed to execute directly: program not found
+2026-03-11T08:54:57.178259Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '/usr/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:54:57.178525Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '/usr/local/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:54:57.178943Z  WARN synoid_core::agent::source_tools: [SOURCE] Command '~/.local/bin/yt-dlp' failed to execute directly: The system cannot find the path specified. (os error 3)
+2026-03-11T08:54:57.651705Z  INFO synoid_core::agent::source_tools: [SOURCE] ✅ Found valid Python with yt-dlp module: 'python'
+2026-03-11T08:54:57.652194Z  INFO synoid_core::agent::source_tools: [SOURCE] 🦕 Found Deno at: C:\Users\xing\AppData\Local\Microsoft\WinGet\Packages\DenoLand.Deno_Microsoft.Winget.Source_8wekyb3d8bbwe\deno.exe
+2026-03-11T08:55:00.276419Z  INFO synoid_core::agent::source_tools: [SOURCE] 🦕 Found Deno at: C:\Users\xing\AppData\Local\Microsoft\WinGet\Packages\DenoLand.Deno_Microsoft.Winget.Source_8wekyb3d8bbwe\deno.exe
+2026-03-11T08:55:00.276983Z  INFO synoid_core::agent::source_tools: [SOURCE] Starting download to: D:\SYNOID\Download\Coast of Spain _ Cinematic Travel Film _shot on vivo X300 Pro_.mp4
+[youtube] Extracting URL: https://www.youtube.com/watch?v=hN1M9PqMX_U 
+[youtube] hN1M9PqMX_U: Downloading webpage 
+[youtube] hN1M9PqMX_U: Downloading ios player API JSON 
+[youtube] hN1M9PqMX_U: Downloading android player API JSON 
+[info] hN1M9PqMX_U: Downloading 1 format(s): 18 
+[download] Destination: D:\SYNOID\Download\Coast of Spain _ Cinematic Travel Film _shot on vivo X300 Pro_.mp4 
+[download] 100% of   20.18MiB in 00:00:04 at 4.09MiB/s 
+2026-03-11T08:55:07.671001Z  INFO synoid_core::agent::download_guard: [GUARD] ✅ File passed safety check: "Coast of Spain _ Cinematic Travel Film _shot on vivo X300 Pro_.mp4" (21165292 bytes)
+2026-03-11T08:55:07.671234Z  INFO synoid_core::agent::autonomous_learner: [LEARNER] 🎓 New video acquired: 'Coast of Spain - Cinematic Travel Film [shot on vivo X300 Pro]'
+2026-03-11T08:55:07.674706Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] 🎓 Checking 10 video(s) (10 already memorized)
+2026-03-11T08:55:07.674882Z  INFO synoid_core::agent::video_style_learner: [STYLE_LEARNER] [1/10] 🔬 Analysing (new/changed): Coast of Spain _ Cinematic Travel Film _shot on vivo X300 Pro_.mp4
+2026-03-11T08:55:07.674975Z  INFO synoid_core::agent::smart_editor::scene_ops: [SMART] Detecting scenes in "D:\\SYNOID\\Download\\Coast of Spain _ Cinematic Travel Film _shot on vivo X300 Pro_.mp4" (threshold: 0.3)
+2026-03-11T08:55:07.868875Z  INFO synoid_core::agent::smart_editor::scene_ops: [SMART] Video duration: 325.08s

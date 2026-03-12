@@ -1,4 +1,5 @@
 use tokio::process::Command;
+use crate::agent::process_utils::CommandExt;
 use super::types::{Scene, EditIntent, EditingStrategy, EditDensity};
 use crate::agent::transcription::TranscriptSegment;
 use tracing::info;
@@ -129,6 +130,7 @@ pub async fn detect_scenes(
 
     // Get total duration first
     let duration_output = Command::new("ffprobe")
+        .stealth()
         .args([
             "-v",
             "error",
@@ -155,6 +157,7 @@ pub async fn detect_scenes(
     // Use FFmpeg to detect scene changes
     // Add 5-minute timeout for large files
     let child = Command::new("ffmpeg")
+        .stealth()
         .args([
             "-i",
             input.to_str().ok_or("Invalid input path")?,

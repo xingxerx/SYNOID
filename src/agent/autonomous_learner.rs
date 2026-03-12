@@ -7,7 +7,7 @@ use crate::agent::{academy::code_scanner::CodeScanner, source_tools};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,6 +28,18 @@ struct LearnerState {
 pub struct VideoRecord {
     path: String,
     score: f64,
+}
+
+fn is_trusted_video_url(url: &str) -> bool {
+    let normalized = url.to_ascii_lowercase();
+    normalized.starts_with("https://www.youtube.com/")
+        || normalized.starts_with("https://youtube.com/")
+        || normalized.starts_with("https://youtu.be/")
+}
+
+fn expected_download_path(download_dir: &Path, title: &str) -> PathBuf {
+    let filename = format!("{}.mp4", source_tools::sanitize_title_for_filename(title));
+    download_dir.join(filename)
 }
 
 impl LearnerState {
@@ -155,7 +167,7 @@ impl AutonomousLearner {
                 info!("[LEARNER] 🔍 Scouting topic: '{}'", topic);
 
                 // 1. Search for candidates
-                let search_result = source_tools::search_youtube(topic, 5) // Increased limit
+                let search_result = source_tools::search_youtube(topic, 12)
                     .await
                     .map_err(|e| e.to_string());
 
@@ -169,6 +181,15 @@ impl AutonomousLearner {
                             // Check if already processed
                             if let Some(url) = &source.original_url {
                                 if state.processed_urls.contains(url) {
+                                    continue;
+                                }
+
+                                if !is_trusted_video_url(url) {
+                                    warn!(
+                                        "[LEARNER] ⏭️ Skipping untrusted acquisition source: {}",
+                                        url
+                                    );
+                                    state.processed_urls.insert(url.clone());
                                     continue;
                                 }
                             }
@@ -194,6 +215,19 @@ impl AutonomousLearner {
                                     crate::agent::video_style_learner::get_download_dir();
                                 let download_dir = download_dir_buf.as_path();
                                 let _ = std::fs::create_dir_all(download_dir);
+
+                                let existing_path =
+                                    expected_download_path(download_dir, &source.title);
+                                if existing_path.exists() {
+                                    info!(
+                                        "[LEARNER] ⏭️ Skipping already-present reference video: {}",
+                                        source.title
+                                    );
+                                    if let Some(url) = &source.original_url {
+                                        state.processed_urls.insert(url.clone());
+                                    }
+                                    continue;
+                                }
 
                                 let download_result = source_tools::download_youtube(
                                     source.original_url.as_deref().unwrap_or(""),
@@ -259,38 +293,70 @@ impl AutonomousLearner {
                                         let new_path_str =
                                             downloaded.local_path.to_string_lossy().to_string();
 
-                                        if result.profiles.len()
+                                        let mut all_videos: Vec<PathBuf> =
+                                            std::fs::read_dir(download_dir)
+                                                .map(|rd| {
+                                                    rd.filter_map(|entry| entry.ok())
+                                                        .map(|entry| entry.path())
+                                                        .filter(|path| {
+                                                            path.extension()
+                                                                .and_then(|ext| ext.to_str())
+                                                                .map(|ext| {
+                                                                    ext.eq_ignore_ascii_case("mp4")
+                                                                })
+                                                                .unwrap_or(false)
+                                                        })
+                                                        .collect()
+                                                })
+                                                .unwrap_or_default();
+
+                                        if all_videos.len()
                                             > crate::agent::video_style_learner::MAX_VIDEOS
                                         {
-                                            if let Some(lowest) = result
-                                                .profiles
-                                                .iter()
-                                                .filter(|p| p.path != new_path_str)
-                                                .min_by(|a, b| {
-                                                    a.outcome_xp
-                                                        .partial_cmp(&b.outcome_xp)
-                                                        .unwrap_or(std::cmp::Ordering::Equal)
-                                                })
-                                            {
-                                                let lowest_path =
-                                                    std::path::Path::new(&lowest.path);
-                                                let lowest_filename = lowest_path
+                                            let mut overflow = all_videos.len().saturating_sub(
+                                                crate::agent::video_style_learner::MAX_VIDEOS,
+                                            );
+                                            all_videos.sort_by(|a, b| {
+                                                std::fs::metadata(a)
+                                                    .and_then(|meta| meta.modified())
+                                                    .ok()
+                                                    .cmp(
+                                                        &std::fs::metadata(b)
+                                                            .and_then(|meta| meta.modified())
+                                                            .ok(),
+                                                    )
+                                                    .then_with(|| a.cmp(b))
+                                            });
+
+                                            for stale_path in all_videos {
+                                                if overflow == 0 {
+                                                    break;
+                                                }
+
+                                                let stale_path_str =
+                                                    stale_path.to_string_lossy().to_string();
+                                                if stale_path_str == new_path_str {
+                                                    continue;
+                                                }
+
+                                                let stale_filename = stale_path
                                                     .file_name()
-                                                    .and_then(|n| n.to_str())
+                                                    .and_then(|name| name.to_str())
                                                     .unwrap_or("");
 
-                                                let _ = std::fs::remove_file(lowest_path);
-                                                crate::agent::video_style_learner::remove_from_cache(
-                                                    lowest_filename,
-                                                );
-                                                state
-                                                    .downloaded_videos
-                                                    .retain(|v| v.path != lowest.path);
-
-                                                info!(
-                                                    "[LEARNER] 🗑️ Evicted lowest-quality video (xp={:.2}): {}",
-                                                    lowest.outcome_xp, lowest.path
-                                                );
+                                                if std::fs::remove_file(&stale_path).is_ok() {
+                                                    crate::agent::video_style_learner::remove_from_cache(
+                                                        stale_filename,
+                                                    );
+                                                    state.downloaded_videos.retain(|video| {
+                                                        video.path != stale_path_str
+                                                    });
+                                                    overflow -= 1;
+                                                    info!(
+                                                        "[LEARNER] 🗑️ Evicted older reference video: {}",
+                                                        stale_path_str
+                                                    );
+                                                }
                                             }
                                         }
 
@@ -559,5 +625,31 @@ impl AutonomousLearner {
                 .neuroplasticity
                 .record_success_with_quality(quality); // Double boost
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trusted_sources_are_limited_to_youtube() {
+        assert!(is_trusted_video_url(
+            "https://www.youtube.com/watch?v=abc123"
+        ));
+        assert!(is_trusted_video_url("https://youtu.be/abc123"));
+        assert!(!is_trusted_video_url("https://example.com/video.mp4"));
+    }
+
+    #[test]
+    fn expected_download_path_matches_download_naming() {
+        let path = expected_download_path(
+            Path::new(r"D:\SYNOID\Download"),
+            "So You Want To See The World? (Travel Film)",
+        );
+        assert_eq!(
+            path,
+            PathBuf::from(r"D:\SYNOID\Download\So You Want To See The World_ _Travel Film_.mp4")
+        );
     }
 }

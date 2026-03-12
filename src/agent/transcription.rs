@@ -1,6 +1,7 @@
 // SYNOID Sovereign Ear
 // Native Rust implementation of Whisper for local, private transcription.
 
+use crate::agent::process_utils::CommandExt;
 use crate::gpu_backend::get_gpu_context;
 use anyhow::{Context, Result};
 use hf_hub::api::sync::Api;
@@ -379,6 +380,7 @@ impl ScriptEditor {
         );
 
         let status = Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-f", "concat", "-safe", "0", "-i"])
             .arg(&concat_file)
             .args(["-c", "copy"])

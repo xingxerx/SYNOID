@@ -5,6 +5,7 @@
 // FFmpeg's concat demuxer (`-f concat`).  Because we use `-c copy`,
 // the resulting file has zero quality loss and near-zero CPU cost.
 
+use crate::agent::process_utils::CommandExt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
@@ -48,6 +49,7 @@ impl VideoStitcher {
         );
 
         let status = Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-f", "concat", "-safe", "0", "-i"])
             .arg(&manifest_path)
             .args(["-c", "copy"])

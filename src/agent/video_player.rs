@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
+use crate::agent::process_utils::CommandExt;
 use std::sync::mpsc::{sync_channel, Receiver, TryRecvError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -25,6 +26,7 @@ impl VideoPlayer {
         let fps = 30.0;
 
         let mut child = Command::new("ffmpeg")
+            .stealth()
             .arg("-ss")
             .arg(format!("{:.3}", timestamp))
             .arg("-i")
@@ -82,6 +84,7 @@ impl VideoPlayer {
 
         // Also spawn a detatched audio player
         let _audio_process = Command::new("ffplay")
+            .stealth()
             .arg("-nodisp")
             .arg("-autoexit")
             .arg("-ss")
@@ -109,9 +112,10 @@ impl VideoPlayer {
         }
         self.playing = false;
         // Kill ffplay instances just in case
-        let _ = Command::new("pkill").arg("ffplay").spawn();
+        let _ = Command::new("pkill").stealth().arg("ffplay").spawn();
         #[cfg(target_os = "windows")]
         let _ = Command::new("taskkill")
+            .stealth()
             .arg("/F")
             .arg("/IM")
             .arg("ffplay.exe")

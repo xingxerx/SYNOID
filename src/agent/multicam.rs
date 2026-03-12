@@ -11,6 +11,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
+use crate::agent::process_utils::CommandExt;
 use tracing::info;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -227,6 +228,7 @@ impl MulticamEngine {
             let duration = end - start;
 
             let status = Command::new("ffmpeg")
+                .stealth()
                 .args(["-y", "-ss", &actual_start.to_string(), "-i"])
                 .arg(&track.path)
                 .args([
@@ -258,6 +260,7 @@ impl MulticamEngine {
         std::fs::write(&list_path, &concat_txt).context("Writing concat list")?;
 
         let status = Command::new("ffmpeg")
+            .stealth()
             .args(["-y", "-f", "concat", "-safe", "0", "-i"])
             .arg(&list_path)
             .args(["-c", "copy"])
@@ -286,6 +289,7 @@ impl MulticamEngine {
     /// Use FFmpeg's `astats` filter to extract per-frame RMS energy.
     async fn extract_energy_profile(path: &Path) -> Result<Vec<EnergyFrame>> {
         let output = Command::new("ffmpeg")
+            .stealth()
             .args(["-v", "error", "-i"])
             .arg(path)
             .args([

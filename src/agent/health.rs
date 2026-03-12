@@ -4,6 +4,7 @@
 // Provides continuous self-monitoring, crash recovery, and uptime guarantees.
 // The HealthMonitor runs as a background task and periodically checks system health.
 
+use crate::agent::process_utils::CommandExt;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -193,6 +194,7 @@ pub fn check_dependencies() -> Vec<String> {
 
     for (dep, flag) in required {
         let mut found = std::process::Command::new(dep)
+            .stealth()
             .arg(flag)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -203,6 +205,7 @@ pub fn check_dependencies() -> Vec<String> {
         // Special fallbacks for common developer environments
         if !found && dep == "python" {
             found = std::process::Command::new("python3")
+                .stealth()
                 .arg(flag)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -221,6 +224,7 @@ pub fn check_dependencies() -> Vec<String> {
 
     for (dep, flag) in optional {
         let mut found = std::process::Command::new(dep)
+            .stealth()
             .arg(flag)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -232,6 +236,7 @@ pub fn check_dependencies() -> Vec<String> {
             // Check if available as a python module
             for py_cmd in ["python3", "python", "py"] {
                 if std::process::Command::new(py_cmd)
+                    .stealth()
                     .args(["-m", "yt_dlp", "--version"])
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
