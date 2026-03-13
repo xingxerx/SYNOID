@@ -48,7 +48,7 @@ pub struct ProviderConfig {
     pub groq_fast_model: String,
     /// Google AI Studio API key (from GOOGLE_AI_KEY env var)
     pub google_ai_key: Option<String>,
-    /// Google vision model (default: gemini-2.0-flash)
+    /// Google vision model (default: gemini-1.5-flash for best free tier quota)
     pub google_vision_model: String,
     /// Ollama API URL (fallback)
     pub ollama_url: String,
@@ -66,7 +66,7 @@ impl Default for ProviderConfig {
                 .unwrap_or_else(|_| "llama-3.1-8b-instant".to_string()),
             google_ai_key: std::env::var("GOOGLE_AI_KEY").ok(),
             google_vision_model: std::env::var("GOOGLE_VISION_MODEL")
-                .unwrap_or_else(|_| "gemini-2.0-flash".to_string()),
+                .unwrap_or_else(|_| "gemini-1.5-flash".to_string()),
             ollama_url: std::env::var("SYNOID_API_URL")
                 .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
             ollama_model: "llama3:latest".to_string(),

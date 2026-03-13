@@ -234,7 +234,8 @@ pub fn create_default_optimizer() -> TokenOptimizer {
     );
 
     // Google AI Studio Free Tier:
-    // - Gemini 2.0 Flash: 15 req/min, 1M tokens/day, 1500 req/day
+    // - Gemini 1.5 Flash: 15 req/min, 250K tokens/min, 1500 req/day
+    // Note: gemini-2.5-flash has much lower limits (5-10 RPM, 20-250 RPD)
     optimizer.register_provider(
         "google_vision",
         ProviderBudget::new("Google AI Studio", 1_000_000, 15, 1_500),

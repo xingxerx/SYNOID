@@ -1,4 +1,51 @@
-Utilize the Research module to source and download the top 5 most engaging YouTube videos related to popular games as well as the best video editing videos. Analyze these downloaded videos specifically for their pacing and how they maintain viewer engagement without making random cuts. Feed this analysis directly into the Academy module to increase your Neuroplasticity and establish a new Style Library for this genre.
-Once you have learned this style, apply these patterns to my raw footage. Do not make random cuts; completely preserve the core gameplay loop. Instead of content trimming, focus the Smart Editor's Semantic Understanding engine on identifying and beeping out all cuss words and slurs.
-Before generating any captions, utilize Production Tools to apply studio-quality EQ, compression, and normalization to the voice tracks. Ensure the audio is fully enhanced first so that every single spoken word is picked up and transcribed into absolute, 100% accurate on-screen captions.
-Finally, utilize the Engagement Consolidator to structure the final video, prioritizing audio clarity and professional censoring over aggressive editing."
+# SYNOID Video Editing Instructions
+
+## Learning Phase
+First, analyze the example videos in `D:\SYNOID\Download` to understand proper gaming video editing patterns:
+- Study pacing and engagement techniques
+- Observe how cuts are used (or avoided) during gameplay
+- Note audio quality standards and subtitle placement
+- Learn the style and flow that maintains viewer retention
+
+## Core Editing Tasks
+
+### 1. Audio Enhancement (Priority #1)
+Apply studio-quality audio processing to all voice tracks:
+- EQ for clarity and presence
+- Compression for consistent volume levels
+- Noise reduction to eliminate background interference
+- Normalization to broadcast standards (-16 LUFS)
+
+**Critical**: Complete all audio enhancement BEFORE subtitle generation. Clean audio = accurate transcription.
+
+### 2. Profanity Censoring (Priority #2)
+Identify and beep out ALL curse words and slurs including but not limited to:
+- fuck, fucking, fucked, motherfucker
+- shit, shitty, bullshit
+- bitch, ass, asshole
+- [add any other specific terms to censor]
+
+Use a clean, standard 1kHz beep tone. VERIFY every instance is caught - double-check the final output.
+
+### 3. Subtitle Generation (Priority #3)
+After audio is fully enhanced and profanity is beeped:
+- Generate accurate, word-for-word captions
+- Ensure readable timing (2-3 seconds per caption)
+- Use high-contrast, easy-to-read styling
+- Sync perfectly with enhanced audio
+
+### 4. Preserve Gameplay Integrity
+- DO NOT make random cuts or trim gameplay footage
+- Maintain the complete core gameplay loop
+- Only cut during natural breaks (loading screens, menus, deaths)
+- Keep the raw, authentic gaming experience intact
+
+## Final Quality Check
+Before output, verify:
+- [ ] All curse words are properly beeped
+- [ ] Audio is clear, balanced, and professional
+- [ ] Subtitles are accurate and readable
+- [ ] Gameplay flow is preserved
+- [ ] No random or jarring cuts
+
+Focus on audio clarity and professional censoring over aggressive editing.

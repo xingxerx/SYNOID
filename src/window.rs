@@ -1694,60 +1694,64 @@ impl SynoidApp {
             .frame(egui::Frame::none().fill(color_bg_darkest).inner_margin(egui::Margin::symmetric(0.0, 16.0)))
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
-                    let nav_items = [
-                        ("📁", "Media"),
-                        ("▶️", "Video"),
-                        ("🖼️", "Photo"),
-                        ("🎵", "Audio"),
-                        ("T", "Text"),
-                        ("💬", "Subtitles"),
-                        ("✨", "AI Magic"),
-                    ];
+                    egui::ScrollArea::vertical()
+                        .id_salt("editor_nav_scroll")
+                        .show(ui, |ui| {
+                            let nav_items = [
+                                ("📁", "Media"),
+                                ("▶️", "Video"),
+                                ("🖼️", "Photo"),
+                                ("🎵", "Audio"),
+                                ("T", "Text"),
+                                ("💬", "Subtitles"),
+                                ("✨", "AI Magic"),
+                            ];
 
-                    for (icon, label) in nav_items {
-                        let is_active = _state.active_editor_tab == label;
-                        let text_color = if is_active { color_gold } else { color_text_dim };
-                        let bg_color = if is_active { egui::Color32::from_rgb(30, 26, 17) } else { egui::Color32::TRANSPARENT };
+                            for (icon, label) in nav_items {
+                                let is_active = _state.active_editor_tab == label;
+                                let text_color = if is_active { color_gold } else { color_text_dim };
+                                let bg_color = if is_active { egui::Color32::from_rgb(30, 26, 17) } else { egui::Color32::TRANSPARENT };
 
-                        let btn_text = if label == "Text" && _state.is_transcribing { format!("⌛\nTranscribing...") } else { format!("{}\n{}", icon, label) };
-                        let btn = ui.add_sized(
-                            [60.0, 56.0],
-                            egui::Button::new(egui::RichText::new(btn_text).size(11.0).color(text_color))
-                            .fill(bg_color)
-                            .rounding(egui::Rounding::same(8.0))
-                        );
+                                let btn_text = if label == "Text" && _state.is_transcribing { format!("⌛\nTranscribing...") } else { format!("{}\n{}", icon, label) };
+                                let btn = ui.add_sized(
+                                    [60.0, 56.0],
+                                    egui::Button::new(egui::RichText::new(btn_text).size(11.0).color(text_color))
+                                    .fill(bg_color)
+                                    .rounding(egui::Rounding::same(8.0))
+                                );
 
-                        // Wiring functional bits based on clicks
-                        if btn.clicked() {
-                            _state.active_editor_tab = label.to_string();
-                            save_settings(&self.core.instance_id, _state, self.active_command, &self.tree_state);
-                            match label {
-                                "Text" | "Subtitles" => { 
-                                    let input_path = _state.input_path.clone();
-                                    if !input_path.is_empty() && !_state.is_transcribing {
-                                        _state.is_transcribing = true;
-                                        let ui_ptr = self.ui_state.clone();
-                                        tokio::spawn(async move {
-                                            tracing::info!("[GUI] Triggering transcription for {}", input_path);
-                                            if let Ok(engine) = crate::agent::transcription::TranscriptionEngine::new(None).await {
-                                                if let Ok(segments) = engine.transcribe(std::path::Path::new(&input_path)).await {
-                                                    let srt_content = crate::agent::transcription::generate_srt(&segments);
-                                                    let out_srt = std::path::Path::new(&input_path).with_extension("srt");
-                                                    let _ = tokio::fs::write(&out_srt, srt_content).await;
-                                                    tracing::info!("[GUI] Transcription complete! Saved to {:?}", out_srt);
-                                                }
+                                // Wiring functional bits based on clicks
+                                if btn.clicked() {
+                                    _state.active_editor_tab = label.to_string();
+                                    save_settings(&self.core.instance_id, _state, self.active_command, &self.tree_state);
+                                    match label {
+                                        "Text" | "Subtitles" => { 
+                                            let input_path = _state.input_path.clone();
+                                            if !input_path.is_empty() && !_state.is_transcribing {
+                                                _state.is_transcribing = true;
+                                                let ui_ptr = self.ui_state.clone();
+                                                tokio::spawn(async move {
+                                                    tracing::info!("[GUI] Triggering transcription for {}", input_path);
+                                                    if let Ok(engine) = crate::agent::transcription::TranscriptionEngine::new(None).await {
+                                                        if let Ok(segments) = engine.transcribe(std::path::Path::new(&input_path)).await {
+                                                            let srt_content = crate::agent::transcription::generate_srt(&segments);
+                                                            let out_srt = std::path::Path::new(&input_path).with_extension("srt");
+                                                            let _ = tokio::fs::write(&out_srt, srt_content).await;
+                                                            tracing::info!("[GUI] Transcription complete! Saved to {:?}", out_srt);
+                                                        }
+                                                    }
+                                                    if let Ok(mut s) = ui_ptr.lock() {
+                                                        s.is_transcribing = false;
+                                                    }
+                                                });
                                             }
-                                            if let Ok(mut s) = ui_ptr.lock() {
-                                                s.is_transcribing = false;
-                                            }
-                                        });
+                                        }
+                                        _ => {}
                                     }
                                 }
-                                _ => {}
+                                ui.add_space(8.0);
                             }
-                        }
-                        ui.add_space(8.0);
-                    }
+                        });
                 });
             });
 
@@ -1762,266 +1766,270 @@ impl SynoidApp {
                     .inner_margin(egui::Margin::same(16.0))
             )
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                     ui.label(egui::RichText::new(&_state.active_editor_tab).color(color_text_light).strong());
-                     ui.add_space(20.0);
-                     ui.label(egui::RichText::new("Cloud").color(color_text_dim));
-                });
-                ui.add_space(16.0);
-
-                if _state.active_editor_tab == "Media" {
-                    // Current Selection
-                    if !_state.input_path.is_empty() {
-                        ui.group(|ui| {
-                            ui.label(egui::RichText::new("Active Asset").color(color_gold).small());
-                            ui.label(egui::RichText::new(std::path::Path::new(&_state.input_path).file_name().unwrap_or_default().to_string_lossy()).size(12.0).strong());
-                            if ui.button("🗑 Remove").clicked() {
-                                _state.input_path = String::new();
-                            }
-                        });
-                        ui.add_space(12.0);
-                    }
-
-                    // Big Upload Button
-                    if ui.add_sized(
-                        [ui.available_width(), 48.0],
-                        egui::Button::new(egui::RichText::new("☁  Upload Asset").color(color_gold).strong())
-                            .fill(egui::Color32::from_rgb(30, 26, 17))
-                            .stroke(egui::Stroke::new(1.0, color_gold))
-                            .rounding(egui::Rounding::same(8.0))
-                    ).clicked() {
-                        tracing::info!("[GUI] Upload clicked, opening file dialog...");
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Video", &["mp4", "mkv", "avi", "mov"])
-                            .set_directory(get_default_videos_path())
-                            .pick_file() {
-                            let path_str = path.to_string_lossy().to_string();
-                            tracing::info!("[GUI] Selected file: {}", path_str);
-                            _state.input_path = path_str;
-                        } else {
-                            tracing::warn!("[GUI] No file selected or dialog cancelled.");
-                        }
-                    }
-
-                    ui.add_space(20.0);
-
-                    // Asset Grid Placholder View
-                    ui.columns(2, |cols| {
-                         for i in 0..6 {
-                             let col = if i % 2 == 0 { &mut cols[0] } else { &mut cols[1] };
-                             let rect = col.available_rect_before_wrap();
-                             let padded = rect.shrink(4.0);
-
-                             let item_rect = col.allocate_exact_size(egui::vec2(padded.width(), 80.0), egui::Sense::hover()).0;
-                             col.painter().rect_filled(item_rect, 6.0, egui::Color32::from_rgb(40, 40, 40));
-
-                             col.painter().text(
-                                 item_rect.min + egui::vec2(8.0, 60.0),
-                                 egui::Align2::LEFT_TOP,
-                                 &format!("00:1{}", i),
-                                 egui::FontId::proportional(10.0),
-                                 egui::Color32::WHITE,
-                             );
-                             col.add_space(8.0);
-                         }
-                    });
-                } else if _state.active_editor_tab == "Video" || _state.active_editor_tab == "Photo" {
-                    ui.vertical(|ui| {
-                        ui.add_space(10.0);
-                        ui.label(egui::RichText::new(format!("🖼️ Add {}", _state.active_editor_tab)).color(color_gold).strong());
-                        ui.label(egui::RichText::new("Select an overlay track.").color(color_text_dim).small());
-                        ui.add_space(15.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("editor_asset_scroll")
+                    .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.text_edit_singleline(&mut _state.track_overlay);
-                            if ui.button("📂").clicked() {
-                                if let Some(path) = rfd::FileDialog::new().pick_file() {
-                                    _state.track_overlay = path.to_string_lossy().to_string();
-                                }
-                            }
+                             ui.label(egui::RichText::new(&_state.active_editor_tab).color(color_text_light).strong());
+                             ui.add_space(20.0);
+                             ui.label(egui::RichText::new("Cloud").color(color_text_dim));
                         });
-                    });
-                } else if _state.active_editor_tab == "Audio" {
-                    ui.vertical(|ui| {
-                        ui.add_space(10.0);
-                        ui.label(egui::RichText::new("🎵 Add Audio").color(color_gold).strong());
-                        ui.label(egui::RichText::new("Select background music or SFX.").color(color_text_dim).small());
-                        ui.add_space(15.0);
-                        ui.horizontal(|ui| {
-                            ui.text_edit_singleline(&mut _state.track_audio);
-                            if ui.button("📂").clicked() {
-                                if let Some(path) = rfd::FileDialog::new().pick_file() {
-                                    _state.track_audio = path.to_string_lossy().to_string();
-                                }
-                            }
-                        });
-                    });
-                } else if _state.active_editor_tab == "AI Magic" {
-                    ui.vertical(|ui| {
-                        ui.add_space(10.0);
-                        ui.label(egui::RichText::new("✨ AI Director").color(color_gold).strong());
-                        ui.label(egui::RichText::new("Describe how you want to edit the active asset.").color(color_text_dim).small());
+                        ui.add_space(16.0);
 
-                        ui.add_space(15.0);
-                        ui.label("Your Prompt:");
-                        ui.add(egui::TextEdit::multiline(&mut _state.intent).desired_rows(4).desired_width(ui.available_width()));
-
-                        ui.add_space(10.0);
-
-                        // Open React Editor shortcut
-                        if ui.add_sized(
-                            [ui.available_width(), 36.0],
-                            egui::Button::new(egui::RichText::new("🌐 Open Full Web Editor").color(color_gold))
-                                .fill(egui::Color32::from_rgb(30, 26, 17))
-                                .stroke(egui::Stroke::new(1.0, color_gold))
-                                .rounding(egui::Rounding::same(8.0))
-                        ).clicked() {
-                            let _ = open::that("http://127.0.0.1:3000/editor");
-                        }
-
-                        ui.add_space(10.0);
-
-                        let disabled = _state.input_path.is_empty() || _state.intent.trim().is_empty() || _state.ai_edit_running;
-
-                        let btn_label = if _state.ai_edit_running { "⏳ Running…" } else { "🪄 Execute AI Magic" };
-                        let btn = egui::Button::new(egui::RichText::new(btn_label).strong().color(egui::Color32::BLACK))
-                            .fill(if disabled { egui::Color32::from_rgb(100, 100, 100) } else { color_gold })
-                            .rounding(egui::Rounding::same(8.0));
-
-                        if ui.add_sized([ui.available_width(), 40.0], btn).clicked() && !disabled {
-                            let core = self.core.clone();
-                            let input = _state.input_path.clone();
-                            let output = if !_state.output_path.is_empty() {
-                                Some(std::path::PathBuf::from(&_state.output_path))
-                            } else {
-                                Some(std::path::PathBuf::from("Video/magic_edit.mp4"))
-                            };
-                            let intent = _state.intent.clone();
-                            let ui_ptr = self.ui_state.clone();
-                            let session_id = _state.editor_session_id.clone();
-
-                            // History for undo tracking
-                            if _state.intent_history.last() != Some(&intent) {
-                                _state.intent_history.push(intent.clone());
-                                _state.intent_history_index = _state.intent_history.len() - 1;
-                            }
-                            _state.ai_edit_running = true;
-
-                            tokio::spawn(async move {
-                                tracing::info!("[GUI] Executing AI Magic Edit...");
-
-                                // If there's an active editor session, use the session API
-                                if let Some(sid) = session_id {
-                                    let payload = serde_json::json!({
-                                        "intent": intent,
-                                        "assetId": null
-                                    });
-                                    match reqwest::Client::new()
-                                        .post(format!("http://127.0.0.1:3000/api/editor/sessions/{}/ai/auto-edit", sid))
-                                        .json(&payload)
-                                        .send().await
-                                    {
-                                        Ok(_) => tracing::info!("[GUI] AI auto-edit job started via session API"),
-                                        Err(e) => tracing::warn!("[GUI] Session API failed, falling back: {}", e),
+                        if _state.active_editor_tab == "Media" {
+                            // Current Selection
+                            if !_state.input_path.is_empty() {
+                                ui.group(|ui| {
+                                    ui.label(egui::RichText::new("Active Asset").color(color_gold).small());
+                                    ui.add(egui::Label::new(egui::RichText::new(std::path::Path::new(&_state.input_path).file_name().unwrap_or_default().to_string_lossy()).size(12.0).strong()).selectable(true));
+                                    if ui.button("🗑 Remove").clicked() {
+                                        _state.input_path = String::new();
                                     }
+                                });
+                                ui.add_space(12.0);
+                            }
+
+                            // Big Upload Button
+                            if ui.add_sized(
+                                [ui.available_width(), 48.0],
+                                egui::Button::new(egui::RichText::new("☁  Upload Asset").color(color_gold).strong())
+                                    .fill(egui::Color32::from_rgb(30, 26, 17))
+                                    .stroke(egui::Stroke::new(1.0, color_gold))
+                                    .rounding(egui::Rounding::same(8.0))
+                            ).clicked() {
+                                tracing::info!("[GUI] Upload clicked, opening file dialog...");
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .add_filter("Video", &["mp4", "mkv", "avi", "mov"])
+                                    .set_directory(get_default_videos_path())
+                                    .pick_file() {
+                                    let path_str = path.to_string_lossy().to_string();
+                                    tracing::info!("[GUI] Selected file: {}", path_str);
+                                    _state.input_path = path_str;
                                 } else {
-                                    // Fallback: direct smart_edit
-                                    let _input_path = std::path::PathBuf::from(&input);
-                                    let output_path = output.unwrap_or_else(|| std::path::PathBuf::from("Video/magic_edit.mp4"));
-                                    let _ = core.process_youtube_intent(&input, &intent, Some(output_path), None, false, 0).await;
+                                    tracing::warn!("[GUI] No file selected or dialog cancelled.");
+                                }
+                            }
+
+                            ui.add_space(20.0);
+
+                            // Asset Grid Placholder View
+                            ui.columns(2, |cols| {
+                                 for i in 0..12 { // Increased count to test scrolling
+                                     let col = if i % 2 == 0 { &mut cols[0] } else { &mut cols[1] };
+                                     let rect = col.available_rect_before_wrap();
+                                     let padded = rect.shrink(4.0);
+
+                                     let item_rect = col.allocate_exact_size(egui::vec2(padded.width(), 80.0), egui::Sense::hover()).0;
+                                     col.painter().rect_filled(item_rect, 6.0, egui::Color32::from_rgb(40, 40, 40));
+
+                                     col.painter().text(
+                                         item_rect.min + egui::vec2(8.0, 60.0),
+                                         egui::Align2::LEFT_TOP,
+                                         &format!("00:1{}", i),
+                                         egui::FontId::proportional(10.0),
+                                         egui::Color32::WHITE,
+                                     );
+                                     col.add_space(8.0);
+                                 }
+                            });
+                        } else if _state.active_editor_tab == "Video" || _state.active_editor_tab == "Photo" {
+                            ui.vertical(|ui| {
+                                ui.add_space(10.0);
+                                ui.label(egui::RichText::new(format!("🖼️ Add {}", _state.active_editor_tab)).color(color_gold).strong());
+                                ui.label(egui::RichText::new("Select an overlay track.").color(color_text_dim).small());
+                                ui.add_space(15.0);
+                                ui.horizontal(|ui| {
+                                    ui.text_edit_singleline(&mut _state.track_overlay);
+                                    if ui.button("📂").clicked() {
+                                        if let Some(path) = rfd::FileDialog::new().pick_file() {
+                                            _state.track_overlay = path.to_string_lossy().to_string();
+                                        }
+                                    }
+                                });
+                            });
+                        } else if _state.active_editor_tab == "Audio" {
+                            ui.vertical(|ui| {
+                                ui.add_space(10.0);
+                                ui.label(egui::RichText::new("🎵 Add Audio").color(color_gold).strong());
+                                ui.label(egui::RichText::new("Select background music or SFX.").color(color_text_dim).small());
+                                ui.add_space(15.0);
+                                ui.horizontal(|ui| {
+                                    ui.text_edit_singleline(&mut _state.track_audio);
+                                    if ui.button("📂").clicked() {
+                                        if let Some(path) = rfd::FileDialog::new().pick_file() {
+                                            _state.track_audio = path.to_string_lossy().to_string();
+                                        }
+                                    }
+                                });
+                            });
+                        } else if _state.active_editor_tab == "AI Magic" {
+                            ui.vertical(|ui| {
+                                ui.add_space(10.0);
+                                ui.label(egui::RichText::new("✨ AI Director").color(color_gold).strong());
+                                ui.label(egui::RichText::new("Describe how you want to edit the active asset.").color(color_text_dim).small());
+
+                                ui.add_space(15.0);
+                                ui.label("Your Prompt:");
+                                ui.add(egui::TextEdit::multiline(&mut _state.intent).desired_rows(4).desired_width(ui.available_width()));
+
+                                ui.add_space(10.0);
+
+                                // Open React Editor shortcut
+                                if ui.add_sized(
+                                    [ui.available_width(), 36.0],
+                                    egui::Button::new(egui::RichText::new("🌐 Open Full Web Editor").color(color_gold))
+                                        .fill(egui::Color32::from_rgb(30, 26, 17))
+                                        .stroke(egui::Stroke::new(1.0, color_gold))
+                                        .rounding(egui::Rounding::same(8.0))
+                                ).clicked() {
+                                    let _ = open::that("http://127.0.0.1:3000/editor");
                                 }
 
-                                if let Ok(mut s) = ui_ptr.lock() {
-                                    s.ai_edit_running = false;
-                                    s.editor_api_status = "Edit complete!".to_string();
+                                ui.add_space(10.0);
+
+                                let disabled = _state.input_path.is_empty() || _state.intent.trim().is_empty() || _state.ai_edit_running;
+
+                                let btn_label = if _state.ai_edit_running { "⏳ Running…" } else { "🪄 Execute AI Magic" };
+                                let btn = egui::Button::new(egui::RichText::new(btn_label).strong().color(egui::Color32::BLACK))
+                                    .fill(if disabled { egui::Color32::from_rgb(100, 100, 100) } else { color_gold })
+                                    .rounding(egui::Rounding::same(8.0));
+
+                                if ui.add_sized([ui.available_width(), 40.0], btn).clicked() && !disabled {
+                                    let core = self.core.clone();
+                                    let input = _state.input_path.clone();
+                                    let output = if !_state.output_path.is_empty() {
+                                        Some(std::path::PathBuf::from(&_state.output_path))
+                                    } else {
+                                        Some(std::path::PathBuf::from("Video/magic_edit.mp4"))
+                                    };
+                                    let intent = _state.intent.clone();
+                                    let ui_ptr = self.ui_state.clone();
+                                    let session_id = _state.editor_session_id.clone();
+
+                                    // History for undo tracking
+                                    if _state.intent_history.last() != Some(&intent) {
+                                        _state.intent_history.push(intent.clone());
+                                        _state.intent_history_index = _state.intent_history.len() - 1;
+                                    }
+                                    _state.ai_edit_running = true;
+
+                                    tokio::spawn(async move {
+                                        tracing::info!("[GUI] Executing AI Magic Edit...");
+
+                                        // If there's an active editor session, use the session API
+                                        if let Some(sid) = session_id {
+                                            let payload = serde_json::json!({
+                                                "intent": intent,
+                                                "assetId": null
+                                            });
+                                            match reqwest::Client::new()
+                                                .post(format!("http://127.0.0.1:3000/api/editor/sessions/{}/ai/auto-edit", sid))
+                                                .json(&payload)
+                                                .send().await
+                                            {
+                                                Ok(_) => tracing::info!("[GUI] AI auto-edit job started via session API"),
+                                                Err(e) => tracing::warn!("[GUI] Session API failed, falling back: {}", e),
+                                            }
+                                        } else {
+                                            // Fallback: direct smart_edit
+                                            let _input_path = std::path::PathBuf::from(&input);
+                                            let output_path = output.unwrap_or_else(|| std::path::PathBuf::from("Video/magic_edit.mp4"));
+                                            let _ = core.process_youtube_intent(&input, &intent, Some(output_path), None, false, 0).await;
+                                        }
+
+                                        if let Ok(mut s) = ui_ptr.lock() {
+                                            s.ai_edit_running = false;
+                                            s.editor_api_status = "Edit complete!".to_string();
+                                        }
+                                    });
+                                }
+
+                                if disabled && !_state.ai_edit_running {
+                                    ui.add_space(5.0);
+                                    ui.label(egui::RichText::new("⚠️ Please select an asset and enter a prompt.").color(COLOR_ACCENT_RED).small());
                                 }
                             });
-                        }
+                        } else if _state.active_editor_tab == "Subtitles" {
+                            ui.vertical(|ui| {
+                                ui.add_space(10.0);
+                                ui.label(egui::RichText::new("💬 Generate Subtitles").color(color_gold).strong());
+                                ui.label(egui::RichText::new("Transcribe audio to create a matching SRT file.").color(color_text_dim).small());
+                                ui.add_space(15.0);
 
-                        if disabled && !_state.ai_edit_running {
-                            ui.add_space(5.0);
-                            ui.label(egui::RichText::new("⚠️ Please select an asset and enter a prompt.").color(COLOR_ACCENT_RED).small());
-                        }
-                    });
-                } else if _state.active_editor_tab == "Subtitles" {
-                    ui.vertical(|ui| {
-                        ui.add_space(10.0);
-                        ui.label(egui::RichText::new("💬 Generate Subtitles").color(color_gold).strong());
-                        ui.label(egui::RichText::new("Transcribe audio to create a matching SRT file.").color(color_text_dim).small());
-                        ui.add_space(15.0);
-
-                        if _state.input_path.is_empty() {
-                            ui.label(egui::RichText::new("⚠️ Please select a media asset first.").color(COLOR_ACCENT_RED).small());
-                        } else {
-                            if _state.is_transcribing {
-                                ui.horizontal(|ui| {
-                                    ui.spinner();
-                                    ui.label("Transcribing in background...");
-                                });
-                            } else {
-                                let srt_path = std::path::Path::new(&_state.input_path).with_extension("srt");
-                                if srt_path.exists() {
-                                    ui.label(egui::RichText::new("✅ Subtitles ready!").color(COLOR_ACCENT_GREEN));
-                                    ui.add_space(5.0);
-                                    if let Ok(content) = std::fs::read_to_string(&srt_path) {
-                                        ui.group(|ui| {
-                                            egui::ScrollArea::vertical().max_height(100.0).show(ui, |ui| {
-                                                ui.label(egui::RichText::new(content.lines().take(15).collect::<Vec<_>>().join("\n")).monospace().small());
-                                                if content.lines().count() > 15 {
-                                                    ui.label("...");
-                                                }
-                                            });
-                                        });
-                                    }
-                                    ui.add_space(10.0);
-                                    if ui.button("Regenerate Subtitles").clicked() {
-                                        _state.is_transcribing = true;
-                                        let input = _state.input_path.clone();
-                                        let ui_ptr = self.ui_state.clone();
-                                        tokio::spawn(async move {
-                                            if let Ok(engine) = crate::agent::transcription::TranscriptionEngine::new(None).await {
-                                                if let Ok(segments) = engine.transcribe(std::path::Path::new(&input)).await {
-                                                    let srt = crate::agent::transcription::generate_srt(&segments);
-                                                    let _ = tokio::fs::write(&srt_path, srt).await;
-                                                }
-                                            }
-                                            if let Ok(mut s) = ui_ptr.lock() {
-                                                s.is_transcribing = false;
-                                            }
-                                        });
-                                    }
+                                if _state.input_path.is_empty() {
+                                    ui.label(egui::RichText::new("⚠️ Please select a media asset first.").color(COLOR_ACCENT_RED).small());
                                 } else {
-                                    if ui.add_sized([ui.available_width(), 40.0],
-                                        egui::Button::new(egui::RichText::new("🎙 Transcribe Media").strong().color(egui::Color32::BLACK))
-                                            .fill(color_gold)
-                                            .rounding(egui::Rounding::same(8.0))
-                                    ).clicked() {
-                                        _state.is_transcribing = true;
-                                        let input = _state.input_path.clone();
-                                        let ui_ptr = self.ui_state.clone();
-                                        tokio::spawn(async move {
-                                            if let Ok(engine) = crate::agent::transcription::TranscriptionEngine::new(None).await {
-                                                if let Ok(segments) = engine.transcribe(std::path::Path::new(&input)).await {
-                                                    let srt = crate::agent::transcription::generate_srt(&segments);
-                                                    let out_srt = std::path::Path::new(&input).with_extension("srt");
-                                                    let _ = tokio::fs::write(&out_srt, srt).await;
-                                                }
-                                            }
-                                            if let Ok(mut s) = ui_ptr.lock() {
-                                                s.is_transcribing = false;
-                                            }
+                                    if _state.is_transcribing {
+                                        ui.horizontal(|ui| {
+                                            ui.spinner();
+                                            ui.label("Transcribing in background...");
                                         });
+                                    } else {
+                                        let srt_path = std::path::Path::new(&_state.input_path).with_extension("srt");
+                                        if srt_path.exists() {
+                                            ui.label(egui::RichText::new("✅ Subtitles ready!").color(COLOR_ACCENT_GREEN));
+                                            ui.add_space(5.0);
+                                            if let Ok(content) = std::fs::read_to_string(&srt_path) {
+                                                ui.group(|ui| {
+                                                    egui::ScrollArea::vertical().max_height(100.0).show(ui, |ui| {
+                                                        ui.add(egui::Label::new(egui::RichText::new(content.lines().take(15).collect::<Vec<_>>().join("\n")).monospace().small()).selectable(true));
+                                                        if content.lines().count() > 15 {
+                                                            ui.label("...");
+                                                        }
+                                                    });
+                                                });
+                                            }
+                                            ui.add_space(10.0);
+                                            if ui.button("Regenerate Subtitles").clicked() {
+                                                _state.is_transcribing = true;
+                                                let input = _state.input_path.clone();
+                                                let ui_ptr = self.ui_state.clone();
+                                                tokio::spawn(async move {
+                                                    if let Ok(engine) = crate::agent::transcription::TranscriptionEngine::new(None).await {
+                                                        if let Ok(segments) = engine.transcribe(std::path::Path::new(&input)).await {
+                                                            let srt = crate::agent::transcription::generate_srt(&segments);
+                                                            let _ = tokio::fs::write(&srt_path, srt).await;
+                                                        }
+                                                    }
+                                                    if let Ok(mut s) = ui_ptr.lock() {
+                                                        s.is_transcribing = false;
+                                                    }
+                                                });
+                                            }
+                                        } else {
+                                            if ui.add_sized([ui.available_width(), 40.0],
+                                                egui::Button::new(egui::RichText::new("🎙 Transcribe Media").strong().color(egui::Color32::BLACK))
+                                                    .fill(color_gold)
+                                                    .rounding(egui::Rounding::same(8.0))
+                                            ).clicked() {
+                                                _state.is_transcribing = true;
+                                                let input = _state.input_path.clone();
+                                                let ui_ptr = self.ui_state.clone();
+                                                tokio::spawn(async move {
+                                                    if let Ok(engine) = crate::agent::transcription::TranscriptionEngine::new(None).await {
+                                                        if let Ok(segments) = engine.transcribe(std::path::Path::new(&input)).await {
+                                                            let srt = crate::agent::transcription::generate_srt(&segments);
+                                                            let out_srt = std::path::Path::new(&input).with_extension("srt");
+                                                            let _ = tokio::fs::write(&out_srt, srt).await;
+                                                        }
+                                                    }
+                                                    if let Ok(mut s) = ui_ptr.lock() {
+                                                        s.is_transcribing = false;
+                                                    }
+                                                });
+                                            }
+                                        }
                                     }
                                 }
-                            }
+                            });
+                        } else {
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(40.0);
+                                ui.label(egui::RichText::new(format!("{} tools not implemented yet.", _state.active_editor_tab)).color(color_text_dim));
+                                ui.label(egui::RichText::new("Placeholder for cloud assets").size(10.0).color(color_text_dim));
+                            });
                         }
                     });
-                } else {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(40.0);
-                        ui.label(egui::RichText::new(format!("{} tools not implemented yet.", _state.active_editor_tab)).color(color_text_dim));
-                        ui.label(egui::RichText::new("Placeholder for cloud assets").size(10.0).color(color_text_dim));
-                    });
-                }
             });
 
         // 4. Bottom Timeline
@@ -2031,7 +2039,6 @@ impl SynoidApp {
             .height_range(100.0..=600.0)
             .frame(egui::Frame::none().fill(color_panel_bg).inner_margin(egui::Margin::same(16.0)))
             .show(ctx, |ui| {
-                 // Toolbar strip
                  ui.horizontal(|ui| {
                      // Left tools
                      if ui.add(egui::Button::new(egui::RichText::new("⎌").size(16.0).color(color_text_dim)).fill(egui::Color32::TRANSPARENT)).clicked() {
@@ -2046,6 +2053,10 @@ impl SynoidApp {
                              _state.intent = _state.intent_history[_state.intent_history_index].clone();
                          }
                      }
+                     ui.add_space(10.0);
+                     ui.separator();
+                     ui.add_space(10.0);
+
                      if ui.add(egui::Button::new(egui::RichText::new("✂").size(16.0).color(color_text_dim)).fill(egui::Color32::TRANSPARENT)).clicked() {
                          let core = self.core.clone();
                          let input = std::path::PathBuf::from(&_state.input_path);
@@ -2106,15 +2117,15 @@ impl SynoidApp {
                          let pos_text = format_time(_state.video_position);
                          let dur_text = format_time(_state.video_duration);
                          ui.label(egui::RichText::new(format!("{} / {}", pos_text, dur_text)).color(color_text_light));
-                    });
+                     });
 
-                    // Right tools
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label("🔍 +");
-                        ui.add(egui::Slider::new(&mut _state.timeline_zoom, 0.1..=2.0).show_value(false));
-                        ui.label("-");
-                    });
-                });
+                     // Right tools
+                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                         ui.label("🔍 +");
+                         ui.add(egui::Slider::new(&mut _state.timeline_zoom, 0.1..=2.0).show_value(false));
+                         ui.label("-");
+                     });
+                 });
 
                 ui.add_space(12.0);
 
@@ -2392,135 +2403,139 @@ impl eframe::App for SynoidApp {
                         .inner_margin(egui::Margin::same(12.0)),
                 )
                 .show(ctx, |ui| {
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new("SYNOID")
-                                .size(20.0)
-                                .color(COLOR_ACCENT_ORANGE)
-                                .strong(),
-                        );
-                    });
-                    ui.add_space(4.0);
-                    ui.label(
-                        egui::RichText::new("Command Center")
-                            .size(11.0)
-                            .color(COLOR_TEXT_SECONDARY),
-                    );
-
-                    ui.add_space(8.0);
-                    // Hive Mind Status Display
-                    let hive_status = {
-                        let state = self.ui_state.lock().unwrap();
-                        state.hive_mind_status.clone()
-                    };
-
-                    if !hive_status.is_empty() {
-                        ui.group(|ui| {
+                ui.add_space(8.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("command_tree_scroll")
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
                             ui.label(
-                                egui::RichText::new("🐝 Hive Mind")
+                                egui::RichText::new("SYNOID")
+                                    .size(20.0)
                                     .color(COLOR_ACCENT_ORANGE)
                                     .strong(),
                             );
-                            ui.label(egui::RichText::new(hive_status).size(10.0));
                         });
-                    }
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new("Command Center")
+                                .size(11.0)
+                                .color(COLOR_TEXT_SECONDARY),
+                        );
 
-                    ui.add_space(16.0);
-                    ui.separator();
-                    ui.add_space(12.0);
+                        ui.add_space(8.0);
+                        // Hive Mind Status Display
+                        let hive_status = {
+                            let state = self.ui_state.lock().unwrap();
+                            state.hive_mind_status.clone()
+                        };
 
-                    // Clone expanded states for mutable borrow
-                    let mut media_exp = self.tree_state.media_expanded;
-                    let visual_exp = self.tree_state.visual_expanded;
-                    let mut ai_exp = self.tree_state.ai_core_expanded;
-                    let mut security_exp = self.tree_state.security_expanded;
-                    let mut research_exp = self.tree_state.research_expanded;
-                    let mut audio_exp = self.tree_state.audio_expanded;
+                        if !hive_status.is_empty() {
+                            ui.group(|ui| {
+                                ui.label(
+                                    egui::RichText::new("🐝 Hive Mind")
+                                        .color(COLOR_ACCENT_ORANGE)
+                                        .strong(),
+                                );
+                                ui.add(egui::Label::new(egui::RichText::new(hive_status).size(10.0)).selectable(true));
+                            });
+                        }
 
-                    let mut new_cmd: Option<ActiveCommand> = None;
+                        ui.add_space(16.0);
+                        ui.separator();
+                        ui.add_space(12.0);
 
-                    // Media
-                    if let Some(cmd) = self.render_tree_category(
-                        ui,
-                        "Media",
-                        "📹",
-                        COLOR_ACCENT_ORANGE,
-                        &mut media_exp,
-                        vec![
-                            ("✂️", "Clip", ActiveCommand::Clip),
-                            ("📦", "Compress", ActiveCommand::Compress),
-                            ("🎬", "Editor", ActiveCommand::Editor),
-                            ("🔍", "Global Discovery", ActiveCommand::Discovery),
-                        ],
-                    ) {
-                        new_cmd = Some(cmd);
-                    }
+                        // Clone expanded states for mutable borrow
+                        let mut media_exp = self.tree_state.media_expanded;
+                        let visual_exp = self.tree_state.visual_expanded;
+                        let mut ai_exp = self.tree_state.ai_core_expanded;
+                        let mut security_exp = self.tree_state.security_expanded;
+                        let mut research_exp = self.tree_state.research_expanded;
+                        let mut audio_exp = self.tree_state.audio_expanded;
 
-                    // AI Core
-                    if let Some(cmd) = self.render_tree_category(
-                        ui,
-                        "AI Core",
-                        "🧠",
-                        COLOR_ACCENT_BLUE,
-                        &mut ai_exp,
-                        vec![
-                            ("💬", "Brain", ActiveCommand::Brain),
-                            ("🤖", "Embody", ActiveCommand::Embody),
-                            ("🎓", "Learn", ActiveCommand::Learn),
-                            ("💡", "Suggest", ActiveCommand::Suggest),
-                        ],
-                    ) {
-                        new_cmd = Some(cmd);
-                    }
+                        let mut new_cmd: Option<ActiveCommand> = None;
 
-                    // Security
-                    if let Some(cmd) = self.render_tree_category(
-                        ui,
-                        "Security",
-                        "🛡️",
-                        COLOR_ACCENT_RED,
-                        &mut security_exp,
-                        vec![("👁️", "Defense", ActiveCommand::Guard)],
-                    ) {
-                        new_cmd = Some(cmd);
-                    }
+                        // Media
+                        if let Some(cmd) = self.render_tree_category(
+                            ui,
+                            "Media",
+                            "📹",
+                            COLOR_ACCENT_ORANGE,
+                            &mut media_exp,
+                            vec![
+                                ("✂️", "Clip", ActiveCommand::Clip),
+                                ("📦", "Compress", ActiveCommand::Compress),
+                                ("🎬", "Editor", ActiveCommand::Editor),
+                                ("🔍", "Global Discovery", ActiveCommand::Discovery),
+                            ],
+                        ) {
+                            new_cmd = Some(cmd);
+                        }
 
-                    if let Some(cmd) = self.render_tree_category(
-                        ui,
-                        "Research",
-                        "🔍",
-                        COLOR_TEXT_PRIMARY,
-                        &mut research_exp,
-                        vec![("📚", "Research", ActiveCommand::Research)],
-                    ) {
-                        new_cmd = Some(cmd);
-                    }
+                        // AI Core
+                        if let Some(cmd) = self.render_tree_category(
+                            ui,
+                            "AI Core",
+                            "🧠",
+                            COLOR_ACCENT_BLUE,
+                            &mut ai_exp,
+                            vec![
+                                ("💬", "Brain", ActiveCommand::Brain),
+                                ("🤖", "Embody", ActiveCommand::Embody),
+                                ("🎓", "Learn", ActiveCommand::Learn),
+                                ("💡", "Suggest", ActiveCommand::Suggest),
+                            ],
+                        ) {
+                            new_cmd = Some(cmd);
+                        }
 
-                    // Audio
-                    if let Some(cmd) = self.render_tree_category(
-                        ui,
-                        "Audio",
-                        "🔊",
-                        COLOR_ACCENT_ORANGE,
-                        &mut audio_exp,
-                        vec![("🎚️", "Mixer", ActiveCommand::AudioMixer)],
-                    ) {
-                        new_cmd = Some(cmd);
-                    }
+                        // Security
+                        if let Some(cmd) = self.render_tree_category(
+                            ui,
+                            "Security",
+                            "🛡️",
+                            COLOR_ACCENT_RED,
+                            &mut security_exp,
+                            vec![("👁️", "Defense", ActiveCommand::Guard)],
+                        ) {
+                            new_cmd = Some(cmd);
+                        }
 
-                    // Update tree state
-                    self.tree_state.media_expanded = media_exp;
-                    self.tree_state.visual_expanded = visual_exp;
-                    self.tree_state.ai_core_expanded = ai_exp;
-                    self.tree_state.security_expanded = security_exp;
-                    self.tree_state.research_expanded = research_exp;
-                    self.tree_state.audio_expanded = audio_exp;
+                        if let Some(cmd) = self.render_tree_category(
+                            ui,
+                            "Research",
+                            "🔍",
+                            COLOR_TEXT_PRIMARY,
+                            &mut research_exp,
+                            vec![("📚", "Research", ActiveCommand::Research)],
+                        ) {
+                            new_cmd = Some(cmd);
+                        }
 
-                    // Apply command selection
-                    if let Some(cmd) = new_cmd {
-                        self.active_command = cmd;
-                    }
+                        // Audio
+                        if let Some(cmd) = self.render_tree_category(
+                            ui,
+                            "Audio",
+                            "🔊",
+                            COLOR_ACCENT_ORANGE,
+                            &mut audio_exp,
+                            vec![("🎚️", "Mixer", ActiveCommand::AudioMixer)],
+                        ) {
+                            new_cmd = Some(cmd);
+                        }
+
+                        // Update tree state
+                        self.tree_state.media_expanded = media_exp;
+                        self.tree_state.visual_expanded = visual_exp;
+                        self.tree_state.ai_core_expanded = ai_exp;
+                        self.tree_state.security_expanded = security_exp;
+                        self.tree_state.research_expanded = research_exp;
+                        self.tree_state.audio_expanded = audio_exp;
+
+                        // Apply command selection
+                        if let Some(cmd) = new_cmd {
+                            self.active_command = cmd;
+                        }
+                    });
                 });
         }
 
@@ -2563,57 +2578,62 @@ impl eframe::App for SynoidApp {
                         .inner_margin(egui::Margin::same(20.0)),
                 )
                 .show(ctx, |ui| {
-                    // Command Panel (top) - draw background first
-                    let panel_rect = egui::Rect::from_min_size(
-                        ui.cursor().min,
-                        egui::vec2(ui.available_width(), 400.0),
-                    );
-                    ui.painter()
-                        .rect_filled(panel_rect, 8.0, egui::Color32::from_rgb(38, 38, 44));
+                egui::ScrollArea::vertical()
+                    .id_salt("central_panel_scroll")
+                    .show(ui, |ui| {
+                        // Command Panel (top) - draw background first
+                        let panel_rect = egui::Rect::from_min_size(
+                            ui.cursor().min,
+                            egui::vec2(ui.available_width(), 400.0),
+                        );
+                        ui.painter()
+                            .rect_filled(panel_rect, 8.0, egui::Color32::from_rgb(38, 38, 44));
 
-                    ui.allocate_new_ui(
-                        egui::UiBuilder::new().max_rect(panel_rect.shrink(20.0)),
-                        |ui| {
-                            let mut state = self.ui_state.lock().unwrap();
-                            self.render_command_panel(ui, &mut state);
-                        },
-                    );
+                        ui.allocate_new_ui(
+                            egui::UiBuilder::new().max_rect(panel_rect.shrink(20.0)),
+                            |ui| {
+                                let mut state = self.ui_state.lock().unwrap();
+                                self.render_command_panel(ui, &mut state);
+                            },
+                        );
 
-                    ui.add_space(420.0); // Skip past the panel area
+                        ui.add_space(420.0); // Skip past the panel area
 
-                    // Logs Panel (bottom)
-                    ui.heading(
-                        egui::RichText::new("📜 Activity Log")
-                            .size(16.0)
-                            .color(COLOR_TEXT_SECONDARY),
-                    );
-                    ui.add_space(8.0);
+                        // Logs Panel (bottom)
+                        ui.heading(
+                            egui::RichText::new("📜 Activity Log")
+                                .size(16.0)
+                                .color(COLOR_TEXT_SECONDARY),
+                        );
+                        ui.add_space(8.0);
 
-                    let logs = self.core.get_logs();
-                    let logs_rect = egui::Rect::from_min_size(
-                        ui.cursor().min,
-                        egui::vec2(ui.available_width(), 200.0),
-                    );
-                    ui.painter().rect_filled(logs_rect, 6.0, COLOR_BG_DARK);
+                        let logs = self.core.get_logs();
+                        let logs_rect = egui::Rect::from_min_size(
+                            ui.cursor().min,
+                            egui::vec2(ui.available_width(), 200.0),
+                        );
+                        ui.painter().rect_filled(logs_rect, 6.0, COLOR_BG_DARK);
 
-                    ui.allocate_new_ui(
-                        egui::UiBuilder::new().max_rect(logs_rect.shrink(12.0)),
-                        |ui| {
-                            egui::ScrollArea::vertical()
-                                .max_height(180.0)
-                                .stick_to_bottom(true)
-                                .show(ui, |ui| {
-                                    for log in &logs {
-                                        ui.label(
-                                            egui::RichText::new(log)
-                                                .monospace()
-                                                .size(11.0)
-                                                .color(COLOR_TEXT_SECONDARY),
-                                        );
-                                    }
-                                });
-                        },
-                    );
+                        ui.allocate_new_ui(
+                            egui::UiBuilder::new().max_rect(logs_rect.shrink(12.0)),
+                            |ui| {
+                                egui::ScrollArea::vertical()
+                                    .max_height(f32::INFINITY)
+                                    .id_salt("log_scroll")
+                                    .stick_to_bottom(true)
+                                    .show(ui, |ui| {
+                                        for log in &logs {
+                                            ui.add(egui::Label::new(
+                                                egui::RichText::new(log)
+                                                    .monospace()
+                                                    .size(11.0)
+                                                    .color(COLOR_TEXT_SECONDARY),
+                                            ).selectable(true));
+                                        }
+                                    });
+                            },
+                        );
+                    });
                 });
 
             // Right Sidebar - Preview
@@ -2626,8 +2646,12 @@ impl eframe::App for SynoidApp {
                         .inner_margin(egui::Margin::same(12.0)),
                 )
                 .show(ctx, |ui| {
-                    let mut state = self.ui_state.lock().unwrap();
-                    self.render_preview_panel(ui, &mut state);
+                egui::ScrollArea::vertical()
+                    .id_salt("preview_panel_scroll")
+                    .show(ui, |ui| {
+                        let mut state = self.ui_state.lock().unwrap();
+                        self.render_preview_panel(ui, &mut state);
+                    });
                 });
         }
 

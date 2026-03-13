@@ -1,4 +1,3 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 // SYNOID Main Entry Point
 // Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 
