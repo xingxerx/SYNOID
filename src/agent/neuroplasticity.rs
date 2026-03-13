@@ -38,7 +38,7 @@ impl Neuroplasticity {
         if path.exists() {
             if let Ok(data) = fs::read_to_string(&path) {
                 if let Ok(state) = serde_json::from_str::<Neuroplasticity>(&data) {
-                    info!(
+                    tracing::debug!(
                         "[NEUROPLASTICITY] 🧠 Restored: {} XP, {:.1}× speed ({})",
                         state.experience_points,
                         state.speed_multiplier,

@@ -61,11 +61,24 @@ impl UrlReader {
         // 1. Download metadata via yt-dlp (requires local install)
         use tokio::process::Command;
         use crate::agent::process_utils::CommandExt;
-        let output = Command::new("yt-dlp")
-            .stealth()
-            .args(["--dump-json", "--", url])
-            .output()
-            .await?;
+        let python_cmd = crate::agent::source_tools::get_python_command().await;
+        let browser = crate::agent::source_tools::detect_browser();
+        let mut cmd = Command::new(&python_cmd);
+        cmd.stealth();
+        if !python_cmd.ends_with("yt-dlp") {
+            cmd.args(["-m", "yt_dlp"]);
+        }
+        cmd.args(["--extractor-args", "youtube:player_client=ios,android"]);
+        if let Some(ref b) = browser {
+            cmd.args(["--cookies-from-browser", b.as_str()]);
+        }
+        cmd.args(["--dump-json", "--no-warnings", "--", url]);
+        let output = tokio::time::timeout(
+            tokio::time::Duration::from_secs(120),
+            cmd.stdin(std::process::Stdio::null()).output(),
+        )
+        .await
+        .map_err(|_| "yt-dlp metadata fetch timed out after 120s")??;
         if !output.status.success() {
             return Err("Failed to fetch video metadata".into());
         }

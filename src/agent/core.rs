@@ -277,23 +277,38 @@ pub struct AgentCore {
 
 impl AgentCore {
     pub fn new(api_url: &str, instance_id: &str) -> Self {
+        // Build brain first so both the core and the queue share the same instance.
+        let brain = Arc::new(AsyncMutex::new(Brain::new(api_url, "llama3:latest")));
+        // Build logs buffer first so the queue can push progress into the GUI log.
+        let logs: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![
+            "[SYSTEM] SYNOID Core initialized.".to_string()
+        ]));
+        let logs_for_queue = logs.clone();
+        let log_fn: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(move |msg: &str| {
+            if let Ok(mut l) = logs_for_queue.lock() {
+                l.push(msg.to_string());
+                if l.len() > 500 {
+                    l.remove(0);
+                }
+            }
+        });
+        let editor_queue = Arc::new(VideoEditorQueue::new_with_log(
+            brain.clone(),
+            instance_id,
+            log_fn,
+        ));
         Self {
             api_url: api_url.to_string(),
             instance_id: instance_id.to_string(),
             status: Arc::new(Mutex::new("⚡ System Ready".to_string())),
-            logs: Arc::new(Mutex::new(vec![
-                "[SYSTEM] SYNOID Core initialized.".to_string()
-            ])),
+            logs,
             sentinel_active: Arc::new(AtomicBool::new(false)),
-            brain: Arc::new(AsyncMutex::new(Brain::new(api_url, "llama3:latest"))),
+            brain,
             cortex: Arc::new(AsyncMutex::new(MotorCortex::new(api_url))),
             discovery: Arc::new(GlobalDiscovery::new()),
             pipeline: Arc::new(AsyncMutex::new(None)),
             autonomous_learner: Arc::new(Mutex::new(None)), // Lazy init
-            editor_queue: Arc::new(VideoEditorQueue::new(
-                Arc::new(AsyncMutex::new(Brain::new(api_url, "llama3:latest"))),
-                instance_id,
-            )),
+            editor_queue,
             video_editing_agent: Arc::new(Mutex::new(None)), // Lazy init
             hci: Arc::new(HciTracker::new()),
         }
@@ -960,6 +975,7 @@ impl AgentCore {
 
         // Extract 1 frame at the given timestamp as a JPG
         let output = tokio::process::Command::new("ffmpeg")
+            .stealth()
             .arg("-ss")
             .arg(time_secs.to_string())
             .arg("-i")

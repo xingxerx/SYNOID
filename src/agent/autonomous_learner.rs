@@ -229,10 +229,14 @@ impl AutonomousLearner {
                                     continue;
                                 }
 
+                                // 1b. Proactive Eviction: Ensure we have room for 1 more video
+                                ensure_download_capacity(&mut state, download_dir).await;
+
+                                let browser = source_tools::detect_browser();
                                 let download_result = source_tools::download_youtube(
                                     source.original_url.as_deref().unwrap_or(""),
                                     download_dir,
-                                    None,
+                                    browser.as_deref(),
                                 )
                                 .await
                                 .map_err(|e| e.to_string());
@@ -286,81 +290,9 @@ impl AutonomousLearner {
                                             state.processed_urls.insert(url.clone());
                                         }
 
-                                        // ── Enforce 10-video cap ──────────────────────────────────────────
-                                        // Find and evict the lowest-quality video from disk + cache,
-                                        // but only if we're over the limit — and never delete the
-                                        // video we just finished learning.
+                                        // ── Record the new video in state tracking ──────────────────────────
                                         let new_path_str =
                                             downloaded.local_path.to_string_lossy().to_string();
-
-                                        let mut all_videos: Vec<PathBuf> =
-                                            std::fs::read_dir(download_dir)
-                                                .map(|rd| {
-                                                    rd.filter_map(|entry| entry.ok())
-                                                        .map(|entry| entry.path())
-                                                        .filter(|path| {
-                                                            path.extension()
-                                                                .and_then(|ext| ext.to_str())
-                                                                .map(|ext| {
-                                                                    ext.eq_ignore_ascii_case("mp4")
-                                                                })
-                                                                .unwrap_or(false)
-                                                        })
-                                                        .collect()
-                                                })
-                                                .unwrap_or_default();
-
-                                        if all_videos.len()
-                                            > crate::agent::video_style_learner::MAX_VIDEOS
-                                        {
-                                            let mut overflow = all_videos.len().saturating_sub(
-                                                crate::agent::video_style_learner::MAX_VIDEOS,
-                                            );
-                                            all_videos.sort_by(|a, b| {
-                                                std::fs::metadata(a)
-                                                    .and_then(|meta| meta.modified())
-                                                    .ok()
-                                                    .cmp(
-                                                        &std::fs::metadata(b)
-                                                            .and_then(|meta| meta.modified())
-                                                            .ok(),
-                                                    )
-                                                    .then_with(|| a.cmp(b))
-                                            });
-
-                                            for stale_path in all_videos {
-                                                if overflow == 0 {
-                                                    break;
-                                                }
-
-                                                let stale_path_str =
-                                                    stale_path.to_string_lossy().to_string();
-                                                if stale_path_str == new_path_str {
-                                                    continue;
-                                                }
-
-                                                let stale_filename = stale_path
-                                                    .file_name()
-                                                    .and_then(|name| name.to_str())
-                                                    .unwrap_or("");
-
-                                                if std::fs::remove_file(&stale_path).is_ok() {
-                                                    crate::agent::video_style_learner::remove_from_cache(
-                                                        stale_filename,
-                                                    );
-                                                    state.downloaded_videos.retain(|video| {
-                                                        video.path != stale_path_str
-                                                    });
-                                                    overflow -= 1;
-                                                    info!(
-                                                        "[LEARNER] 🗑️ Evicted older reference video: {}",
-                                                        stale_path_str
-                                                    );
-                                                }
-                                            }
-                                        }
-
-                                        // Record the new video in state tracking
                                         let new_score = result
                                             .profiles
                                             .iter()
@@ -368,7 +300,7 @@ impl AutonomousLearner {
                                             .map(|p| p.outcome_xp * 5.0)
                                             .unwrap_or(4.0);
                                         state.downloaded_videos.push(VideoRecord {
-                                            path: new_path_str,
+                                            path: new_path_str.clone(),
                                             score: new_score,
                                         });
 
@@ -624,6 +556,70 @@ impl AutonomousLearner {
             brain_lock
                 .neuroplasticity
                 .record_success_with_quality(quality); // Double boost
+        }
+    }
+}
+
+/// Proactively ensures we have space for a new download by evicting the oldest learned videos.
+async fn ensure_download_capacity(state: &mut LearnerState, download_dir: &Path) {
+    let max_videos = crate::agent::video_style_learner::MAX_VIDEOS;
+
+    // Count current MP4s on disk
+    let mut all_videos: Vec<PathBuf> = std::fs::read_dir(download_dir)
+        .map(|rd| {
+            rd.filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.extension()
+                        .and_then(|ext| ext.to_str())
+                        .map(|ext| ext.eq_ignore_ascii_case("mp4"))
+                        .unwrap_or(false)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // If we're at or over the limit, evict files to make room for AT LEAST one new download
+    if all_videos.len() >= max_videos {
+        let overflow = (all_videos.len() - max_videos) + 1;
+        info!(
+            "[LEARNER] 🧹 Cache near capacity ({} videos). Evicting {} to make room.",
+            all_videos.len(),
+            overflow
+        );
+
+        // Sort by modified time (oldest first)
+        all_videos.sort_by(|a, b| {
+            std::fs::metadata(a)
+                .and_then(|meta| meta.modified())
+                .ok()
+                .cmp(&std::fs::metadata(b).and_then(|meta| meta.modified()).ok())
+                .then_with(|| a.cmp(b))
+        });
+
+        let mut evicted_count = 0;
+        for stale_path in all_videos {
+            if evicted_count >= overflow {
+                break;
+            }
+
+            let stale_path_str = stale_path.to_string_lossy().to_string();
+            let stale_filename = stale_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+
+            if std::fs::remove_file(&stale_path).is_ok() {
+                crate::agent::video_style_learner::remove_from_cache(stale_filename);
+                state
+                    .downloaded_videos
+                    .retain(|video| video.path != stale_path_str);
+                evicted_count += 1;
+                info!(
+                    "[LEARNER] 🗑️ Proactively evicted older reference video: {}",
+                    stale_filename
+                );
+            }
         }
     }
 }

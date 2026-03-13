@@ -15,6 +15,7 @@ pub use transition_ops::*;
 // It analyzes scenes, scores them against user intent, and generates trimmed output.
 
 use std::sync::Arc;
+use crate::agent::process_utils::CommandExt;
 use crate::agent::production_tools;
 use crate::agent::transcription::{TranscriptSegment, TranscriptionEngine};
 use crate::agent::gpt_oss_bridge::SynoidAgent;
@@ -60,31 +61,8 @@ pub async fn smart_edit(
     log("[SMART] 🧠 Starting AI-powered edit...");
 
     // 1. Analyze Intent
-    let mut intent = EditIntent::from_llm(intent_text).await;
+    let intent = EditIntent::from_llm(intent_text).await;
 
-    // NEW: Intercept specific complex viral intent for research/download phase
-    if intent_text.contains("Utilize the Research module to source and download") {
-        log("[SMART] 🔍 Complex Viral Intent detected. Initiating Instant Neural Pre-Edit Research Phase...");
-        log("[SMART] 🌐 Scanning YouTube network patterns directly via GPU Acceleration...");
-
-        // Simulating the 5 video downloads and analysis INSTANTLY without actual network/FFmpeg bottlenecks
-        log("[SMART] ⚡ Instant Download & Neural Processing Complete! Analyzed 5 reference videos in parallel using CUDA streams.");
-        log("[SMART] 🧠 Modulating Neuroplasticity and establishing new Style Library parameters.");
-
-        let mut neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
-        neuro.record_success();
-        neuro.record_success();
-        neuro.record_success(); // Boost plasticity
-
-        log("[SMART] 🎓 Style Learned. Completely preserving the core gameplay loop, beeping out slurs, and applying studio-quality EQ.");
-        // Override intent to completely preserve gameplay loop but censor profanity
-        intent.density = EditDensity::Full;
-        intent.remove_boring = false;
-        intent.remove_silence = false;
-        intent.ruthless = false;
-        intent.censor_profanity = true;
-        intent.profanity_replacement = None;
-    }
 
     // Ensure input path is absolute or exists
 
@@ -174,7 +152,8 @@ pub async fn smart_edit(
         false
     };
 
-    // Transcribe
+    // Transcribe — always attempt, even if audio enhancement failed.
+    // Fall back to extracting audio directly from the raw input if needed.
     log("[SMART] 📝 Transcribing audio for semantic understanding...");
     let transcript = if let Some(t) = pre_scanned_transcript {
         log(&format!(
@@ -182,49 +161,55 @@ pub async fn smart_edit(
             t.len()
         ));
         Some(t)
-    } else if use_enhanced_audio {
+    } else {
         let whisper_audio_path = work_dir.join(format!("synoid_{}_audio_whisper.wav", job_prefix));
 
-        // Extract 16kHz mono specifically for Whisper from the enhanced audio
+        // Prefer the enhanced WAV; fall back to extracting directly from raw input.
+        let audio_source = if use_enhanced_audio {
+            enhanced_audio_path.clone()
+        } else {
+            log("[SMART] ⚠️ Audio enhancement unavailable — extracting audio from raw footage for transcription...");
+            input.to_path_buf()
+        };
+
         log("[SMART] 🎧 Extracting 16kHz mono audio for Whisper...");
         let audio_for_whisper =
-            match production_tools::extract_audio_wav(&enhanced_audio_path, &whisper_audio_path)
-                .await
-            {
+            match production_tools::extract_audio_wav(&audio_source, &whisper_audio_path).await {
                 Ok(p) => p,
                 Err(e) => {
                     warn!(
-                        "[SMART] Failed to downsample to 16kHz mono: {}. Using enhanced instead.",
+                        "[SMART] Failed to extract 16kHz mono audio: {}. Attempting transcription from source directly.",
                         e
                     );
-                    enhanced_audio_path.clone()
+                    audio_source.clone()
                 }
             };
 
-        let engine = TranscriptionEngine::new(None)
-            .await
-            .map_err(|e| e.to_string())?;
-        let res = engine.transcribe(&audio_for_whisper).await;
-
-        if audio_for_whisper == whisper_audio_path {
-            let _ = fs::remove_file(&whisper_audio_path);
-        }
-
-        match res {
-            Ok(t) => {
-                log(&format!(
-                    "[SMART] Transcription complete: {} segments",
-                    t.len()
-                ));
-                Some(t)
-            }
+        match TranscriptionEngine::new(None).await {
             Err(e) => {
-                warn!("[SMART] Transcription failed: {}", e);
+                warn!("[SMART] Transcription engine init failed: {}", e);
                 None
             }
+            Ok(engine) => {
+                let res = engine.transcribe(&audio_for_whisper).await;
+                if audio_for_whisper == whisper_audio_path {
+                    let _ = fs::remove_file(&whisper_audio_path);
+                }
+                match res {
+                    Ok(t) => {
+                        log(&format!(
+                            "[SMART] Transcription complete: {} segments",
+                            t.len()
+                        ));
+                        Some(t)
+                    }
+                    Err(e) => {
+                        warn!("[SMART] Transcription failed: {}", e);
+                        None
+                    }
+                }
+            }
         }
-    } else {
-        None
     };
 
     log(&format!(
@@ -313,73 +298,70 @@ pub async fn smart_edit(
         scenes = refine_scenes_with_transcript(scenes, t);
     }
 
-    // 2.8 Semantic Vision Scan (Parallelized)
+    // 2.8 Semantic Vision Scan (rate-limited, sampled)
+    // Cap at 40 frames to stay within Gemini free-tier (1500 req/day, 15 RPM).
+    // Sample evenly across all eligible scenes so the whole video is represented.
+    const MAX_VISION_FRAMES: usize = 40;
     log("[SMART] 👁️ Performing sampled vision scan on scenes...");
-    
-    let agent = Arc::new(SynoidAgent::new("", "gemini-2.0-flash"));
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(6)); // Concurrency limit
-    let mut vision_tasks = Vec::new();
 
-    let scenes_to_scan: Vec<(usize, f64, f64)> = scenes.iter().enumerate()
-        .filter(|(_, s)| s.duration >= 2.0 && s.score >= 0.0)
+    let agent = Arc::new(SynoidAgent::new("", "gemini-2.0-flash"));
+
+    let all_eligible: Vec<(usize, f64, f64)> = scenes.iter().enumerate()
+        .filter(|(_, s)| s.duration >= 2.0)
         .map(|(i, s)| (i, s.start_time, s.end_time))
         .collect();
-    
+
+    // Even stride sampling: pick at most MAX_VISION_FRAMES spread across the whole list
+    let stride = (all_eligible.len() / MAX_VISION_FRAMES).max(1);
+    let scenes_to_scan: Vec<(usize, f64, f64)> = all_eligible
+        .into_iter()
+        .enumerate()
+        .filter(|(idx, _)| idx % stride == 0)
+        .map(|(_, v)| v)
+        .take(MAX_VISION_FRAMES)
+        .collect();
+
     let total_to_scan = scenes_to_scan.len();
-    log(&format!("[SMART] Parallel Vision Scan: {}/{} scenes meet criteria", total_to_scan, scenes.len()));
+    log(&format!(
+        "[SMART] Vision Scan: sampling {}/{} scenes (stride {})",
+        total_to_scan, scenes.len(), stride
+    ));
 
-    for (i, start_time, end_time) in scenes_to_scan {
-        let agent = agent.clone();
-        let semaphore = semaphore.clone();
-        let input_path = input.to_path_buf();
-        let frame_path = format!("temp_frame_{}_{}.jpg", start_time.to_bits(), end_time.to_bits());
+    // Sequential with a small inter-call delay to stay under 15 RPM
+    for (completed, (i, start_time, end_time)) in scenes_to_scan.into_iter().enumerate() {
         let mid_time = start_time + (end_time - start_time) / 2.0;
+        let frame_path = format!("temp_frame_{}_{}.jpg", start_time.to_bits(), end_time.to_bits());
+        let input_path = input.to_path_buf();
 
-        vision_tasks.push(tokio::spawn(async move {
-            let _permit = semaphore.acquire().await.unwrap();
-            
-            let status = tokio::process::Command::new("ffmpeg")
-                .args([
-                    "-y",
-                    "-ss",
-                    &mid_time.to_string(),
-                    "-i",
-                    input_path.to_str().unwrap_or_default(),
-                    "-frames:v",
-                    "1",
-                    "-q:v",
-                    "2",
-                    &frame_path,
-                ])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .await;
+        let extract_status = tokio::process::Command::new("ffmpeg")
+            .stealth()
+            .args(["-y", "-ss", &mid_time.to_string(), "-i",
+                   input_path.to_str().unwrap_or_default(),
+                   "-frames:v", "1", "-q:v", "2", &frame_path])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await;
 
-            let mut tags = Vec::new();
-            if let Ok(st) = status {
-                if st.success() {
-                    if let Ok(desc) = crate::agent::vision_tools::describe_frame_multi_provider(&agent, &PathBuf::from(&frame_path), mid_time).await {
-                        tags = desc.tags;
+        if let Ok(st) = extract_status {
+            if st.success() {
+                if let Ok(desc) = crate::agent::vision_tools::describe_frame_multi_provider(
+                    &agent, &PathBuf::from(&frame_path), mid_time,
+                ).await {
+                    if !desc.tags.is_empty() {
+                        scenes[i].vision_tags = desc.tags;
                     }
                 }
             }
-            let _ = tokio::fs::remove_file(&frame_path).await;
-            (i, tags)
-        }));
-    }
+        }
+        let _ = tokio::fs::remove_file(&frame_path).await;
 
-    // Collect results and apply them
-    let mut completed = 0;
-    for task in vision_tasks {
-        if let Ok((i, tags)) = task.await {
-            completed += 1;
-            if !tags.is_empty() {
-                scenes[i].vision_tags = tags;
-            }
-            if completed % 10 == 0 || completed == total_to_scan {
-                info!("[SMART] Vision progress: {}/{} scenes analyzed", completed, total_to_scan);
-            }
+        if (completed + 1) % 10 == 0 || completed + 1 == total_to_scan {
+            log(&format!("[SMART] Vision progress: {}/{} frames analyzed", completed + 1, total_to_scan));
+        }
+        // ~4s gap between calls keeps us safely under 15 RPM (= 1 req/4s)
+        if completed + 1 < total_to_scan {
+            tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
         }
     }
 
@@ -674,6 +656,7 @@ pub async fn smart_edit(
 
         let handle = tokio::spawn(async move {
             let mut cmd = tokio::process::Command::new("ffmpeg");
+            cmd.stealth();
             cmd.arg("-y")
                 .arg("-hide_banner")
                 .arg("-loglevel")
@@ -773,6 +756,7 @@ pub async fn smart_edit(
         let mut seg_durations: Vec<f64> = Vec::with_capacity(n);
         for seg in &segment_files {
             let probe = Command::new("ffprobe")
+                .stealth()
                 .args([
                     "-v",
                     "error",
@@ -842,6 +826,7 @@ pub async fn smart_edit(
         }
 
         let mut cmd = Command::new("ffmpeg");
+        cmd.stealth();
         cmd.arg("-y")
             .arg("-hide_banner")
             .arg("-loglevel")
@@ -897,6 +882,7 @@ pub async fn smart_edit(
             }
 
             Command::new("ffmpeg")
+                .stealth()
                 .arg("-y")
                 .arg("-hide_banner")
                 .arg("-loglevel")
@@ -931,6 +917,7 @@ pub async fn smart_edit(
         log("[SMART] 🔗 Using simple concat (single segment or too many for crossfade).");
 
         Command::new("ffmpeg")
+            .stealth()
             .arg("-y")
             .arg("-hide_banner")
             .arg("-loglevel")
@@ -1079,6 +1066,7 @@ async fn fallback_extract_and_concat(
 
         let handle = tokio::spawn(async move {
             let mut cmd = tokio::process::Command::new("ffmpeg");
+            cmd.stealth();
             cmd.arg("-y")
                 .arg("-hide_banner")
                 .arg("-loglevel")
@@ -1167,6 +1155,7 @@ async fn fallback_extract_and_concat(
     }
 
     let status = Command::new("ffmpeg")
+        .stealth()
         .arg("-y")
         .arg("-hide_banner")
         .arg("-loglevel")

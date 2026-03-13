@@ -3,6 +3,7 @@ use tracing::{info, warn};
 use std::path::Path;
 use std::fs;
 use tokio::process::Command;
+use crate::agent::process_utils::CommandExt;
 // SYNOID Smart Editor Refactoring
 
 pub async fn insert_cut_markers(
@@ -21,6 +22,7 @@ pub async fn insert_cut_markers(
 
     // Probe the resolution of the output file so our marker frame matches
     let probe = Command::new("ffprobe")
+        .stealth()
         .args([
             "-v",
             "error",
@@ -48,6 +50,7 @@ pub async fn insert_cut_markers(
         "drawtext=text='[CUT]':fontsize=48:fontcolor=white@0.85:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=black:shadowx=2:shadowy=2"
     );
     let marker_status = Command::new("ffmpeg")
+        .stealth()
         .args([
             "-y",
             "-hide_banner",
@@ -138,6 +141,7 @@ pub async fn insert_cut_markers(
 
     let marked_path = work_dir.join("output_marked.mp4");
     let mark_status = Command::new("ffmpeg")
+        .stealth()
         .args([
             "-y",
             "-hide_banner",

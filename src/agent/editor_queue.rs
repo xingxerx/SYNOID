@@ -47,7 +47,18 @@ pub struct VideoEditorQueue {
 }
 
 impl VideoEditorQueue {
+    /// Convenience constructor — no GUI log wiring.
     pub fn new(brain: Arc<Mutex<Brain>>, instance_id: &str) -> Self {
+        Self::new_with_log(brain, instance_id, Arc::new(|_| {}))
+    }
+
+    /// Full constructor that accepts a log callback so the queue worker can
+    /// push progress messages into the GUI's visible log pane.
+    pub fn new_with_log(
+        brain: Arc<Mutex<Brain>>,
+        instance_id: &str,
+        log_fn: Arc<dyn Fn(&str) + Send + Sync>,
+    ) -> Self {
         let jobs = Arc::new(Mutex::new(Vec::<EditJob>::new()));
         let (tx, mut rx) = mpsc::unbounded_channel::<Uuid>();
 
@@ -73,13 +84,20 @@ impl VideoEditorQueue {
                 if let Some(mut job) = job_opt {
                     info!("[QUEUE] Processing Job {}: {:?}", job_id, job.input);
 
+                    let log_fn_job = log_fn.clone();
+                    let progress_cb: Option<Box<dyn Fn(&str) + Send + Sync>> =
+                        Some(Box::new(move |msg: &str| {
+                            info!("{}", msg);
+                            log_fn_job(msg);
+                        }));
+
                     let result: Result<String, Box<dyn std::error::Error + Send + Sync>> =
                         smart_editor::smart_edit(
                             &job.input,
                             &job.intent,
                             &job.output,
                             job.funny_mode,
-                            None,
+                            progress_cb,
                             job.pre_scanned_scenes.take(),
                             job.pre_scanned_transcript.take(),
                             job.learned_pattern.take(),

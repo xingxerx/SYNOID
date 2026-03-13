@@ -91,14 +91,22 @@ pub struct SourceInfo {
 /// Prioritizes a command that has yt-dlp installed, but falls back to a valid python
 /// interpreter if none have yt-dlp, so we don't get "No such file or directory".
 pub async fn get_python_command() -> String {
-    // 1. Check standalone 'yt-dlp' binary first
-    let standalone_candidates = [
-        "yt-dlp",
-        "/usr/bin/yt-dlp",
-        "/usr/local/bin/yt-dlp",
-        "~/.local/bin/yt-dlp",
-    ];
-    for &bin in &standalone_candidates {
+    // 1. Check standalone 'yt-dlp' binary first.
+    // On Windows the pip-installed "yt-dlp" is a Python launcher wrapper; spawning it
+    // with CREATE_NO_WINDOW still lets it internally call python.exe without that flag,
+    // which opens a visible console. Skip the standalone check on Windows and fall through
+    // to the python -m yt_dlp path so we can apply stealth directly to python.exe.
+    let standalone_candidates: &[&str] = if cfg!(windows) {
+        &[]
+    } else {
+        &[
+            "yt-dlp",
+            "/usr/bin/yt-dlp",
+            "/usr/local/bin/yt-dlp",
+            "~/.local/bin/yt-dlp",
+        ]
+    };
+    for &bin in standalone_candidates {
         // Toki's Command on Windows might fail to execute python scripts with shebangs if running in some mixed WSL setups.
         // First try it natively.
         match Command::new(bin).stealth().arg("--version").output().await {
@@ -280,12 +288,10 @@ fn build_ytdlp_info_args(
         args.push(format!("deno:{}", deno));
     }
 
-    // Use iOS/Android client emulation to bypass bot detection (no cookies needed,
-    // avoids DPAPI decryption failures that occur when using --cookies-from-browser)
-    args.push("--extractor-args".to_string());
-    args.push("youtube:player_client=ios,android".to_string());
-
-    // If a specific browser cookie override is requested, honour it
+    // If a specific browser cookie override is requested, honour it.
+    // When cookies are present we use the standard web client — mobile client
+    // emulation (ios/android) conflicts with web cookies and causes bot errors.
+    // When no cookies are available, fall back to mobile client emulation.
     if let Some(browser) = auth_browser {
         if browser.starts_with('-') {
             return Err("Browser name cannot start with '-'".into());
@@ -380,14 +386,15 @@ pub async fn download_youtube(
 
     // First, get video info without downloading
     let info_output = tokio::time::timeout(
-        tokio::time::Duration::from_secs(30),
+        tokio::time::Duration::from_secs(120),
         Command::new(&python)
+            .stealth()
             .args(&args)
             .stdin(std::process::Stdio::null())
             .output(),
     )
     .await
-    .map_err(|_| format!("yt-dlp info command timed out"))??;
+    .map_err(|_| format!("yt-dlp info command timed out after 120s"))??;
     if !info_output.status.success() {
         return Err(format!(
             "yt-dlp info failed with command '{}': {}",
@@ -442,7 +449,51 @@ pub async fn download_youtube(
     })
 }
 
-/// Search YouTube for videos matching a query
+/// Detect the first available browser for --cookies-from-browser on this machine.
+/// Returns e.g. "chrome", "edge", "firefox", or None if nothing found.
+pub fn detect_browser() -> Option<String> {
+    // Check env override first
+    if let Ok(b) = std::env::var("SYNOID_BROWSER") {
+        return Some(b);
+    }
+
+    #[cfg(windows)]
+    {
+        let localappdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let appdata = std::env::var("APPDATA").unwrap_or_default();
+        let candidates = [
+            (format!("{}\\Google\\Chrome\\User Data", localappdata), "chrome"),
+            (format!("{}\\Microsoft\\Edge\\User Data", localappdata), "edge"),
+            (format!("{}\\Mozilla\\Firefox\\Profiles", appdata), "firefox"),
+            (format!("{}\\BraveSoftware\\Brave-Browser\\User Data", localappdata), "brave"),
+        ];
+        for (path, name) in &candidates {
+            if std::path::Path::new(path).exists() {
+                tracing::info!("[SOURCE] 🍪 Auto-detected browser for cookies: {}", name);
+                return Some(name.to_string());
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let candidates = [
+            (format!("{}/.config/google-chrome", home), "chrome"),
+            (format!("{}/.config/chromium", home), "chromium"),
+            (format!("{}/.mozilla/firefox", home), "firefox"),
+        ];
+        for (path, name) in &candidates {
+            if std::path::Path::new(path).exists() {
+                tracing::info!("[SOURCE] 🍪 Auto-detected browser for cookies: {}", name);
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Search YouTube for videos matching a query.
+/// Pass `auth_browser` (e.g. "chrome") to use --cookies-from-browser for bot bypass.
 pub async fn search_youtube(
     query: &str,
     limit: usize,
@@ -451,6 +502,7 @@ pub async fn search_youtube(
     info!("[SOURCE] Searching YouTube: {}", search_query);
 
     let python = get_python_command().await;
+    let auth_browser = detect_browser();
 
     let mut args = Vec::new();
     if !python.ends_with("yt-dlp") {
@@ -468,24 +520,34 @@ pub async fn search_youtube(
     args.push("--extractor-args".to_string());
     args.push("youtube:player_client=ios,android".to_string());
 
+    // Pass browser cookies when available — needed on accounts flagged as bots
+    if let Some(ref browser) = auth_browser {
+        args.push("--cookies-from-browser".to_string());
+        args.push(browser.clone());
+    }
+
     args.extend_from_slice(&[
         "--no-warnings".to_string(),
+        // flat-playlist: only reads the search index — no per-video page requests,
+        // dramatically less likely to trigger bot detection
+        "--flat-playlist".to_string(),
         "--print".to_string(),
-        "%(title)s|%(id)s|%(duration)s|%(webpage_url)s".to_string(),
+        "%(title)s|%(id)s|%(duration)s".to_string(),
         "--no-download".to_string(),
         "--".to_string(),
     ]);
     args.push(search_query);
 
     let output = tokio::time::timeout(
-        tokio::time::Duration::from_secs(30),
+        tokio::time::Duration::from_secs(120),
         Command::new(&python)
+            .stealth()
             .args(&args)
             .stdin(std::process::Stdio::null())
             .output(),
     )
     .await
-    .map_err(|_| format!("Search command timed out"))??;
+    .map_err(|_| format!("Search command timed out after 120s"))??;
 
     if !output.status.success() {
         return Err(format!(
@@ -501,20 +563,25 @@ pub async fn search_youtube(
 
     for line in stdout.lines() {
         let parts: Vec<&str> = line.split('|').collect();
-        if parts.len() >= 4 {
+        if parts.len() >= 3 {
             let title = parts[0].to_string();
-            let _id = parts[1]; // Unused for now
+            let id = parts[1].trim();
             let duration: f64 = parts[2].parse().unwrap_or(0.0);
-            let url = parts[3].to_string();
+
+            // Skip entries with no usable ID
+            if id.is_empty() || id == "NA" {
+                continue;
+            }
+            let url = format!("https://www.youtube.com/watch?v={}", id);
 
             // Filter out obviously bad results (e.g. 0 duration)
             if duration > 0.0 {
                 results.push(SourceInfo {
                     title,
                     duration,
-                    width: 0, // Search doesn't give dimensions easily without more API calls
+                    width: 0,
                     height: 0,
-                    local_path: PathBuf::new(), // Not downloaded yet
+                    local_path: PathBuf::new(),
                     original_url: Some(url),
                     format: "online".to_string(),
                 });

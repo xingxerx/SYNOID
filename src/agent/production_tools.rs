@@ -57,6 +57,7 @@ pub async fn trim_video(
     let safe_output = safe_arg_path(output);
 
     let status = Command::new("ffmpeg")
+        .stealth()
         .arg("-y")
         .arg("-ss")
         .arg(&start_time.to_string())
@@ -106,6 +107,7 @@ pub async fn apply_anamorphic_mask(
     let safe_output = safe_arg_path(output);
 
     let status = Command::new("ffmpeg")
+        .stealth()
         .arg("-y")
         .arg("-i")
         .arg(&safe_input)
@@ -156,6 +158,7 @@ pub async fn compress_video(
     let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
 
     let mut cmd = Command::new("ffmpeg");
+    cmd.stealth();
     cmd.arg("-y").arg("-i").arg(&safe_input);
 
     cmd.arg("-c:v").arg(gpu_ctx.ffmpeg_encoder());
@@ -262,6 +265,7 @@ pub async fn combine_av(
     // -shortest (Finish when the shortest stream ends)
 
     let status = Command::new("ffmpeg")
+        .stealth()
         .arg("-y")
         .arg("-i")
         .arg(&safe_video)
@@ -629,6 +633,7 @@ pub async fn apply_audio_censor(
     let safe_output = safe_arg_path(output_audio);
 
     let mut cmd = Command::new("ffmpeg");
+    cmd.stealth();
     cmd.arg("-y").arg("-i").arg(&safe_input);
 
     let mut filter_complex = String::new();

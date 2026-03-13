@@ -47,11 +47,10 @@ impl Animator {
         // npx remotion render src/index.tsx <CompositionName> <Output> --props <Payload>
         let mut cmd = if cfg!(windows) {
             Command::new("cmd")
-                .stealth()
         } else {
             Command::new("sh")
-                .stealth()
         };
+        cmd.stealth();
 
         let output = if cfg!(windows) {
             cmd.arg("/C").arg(format!(

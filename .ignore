@@ -1,0 +1,8 @@
+# Runtime files written by the app — ignored by cargo watch so they don't
+# trigger spurious rebuilds while the GUI is running.
+cortex_cache*/
+Download/
+synoid_settings_*.json
+synoid_intent_*.txt
+autonomous_worker.log
+autonomous_worker.pid

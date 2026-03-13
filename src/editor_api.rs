@@ -17,6 +17,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio::{fs as tfs, process::Command};
+use crate::agent::process_utils::CommandExt;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -384,6 +385,7 @@ async fn transcribe_asset(
     // Extract audio to WAV for Whisper
     let wav_path = file_path.with_extension("_transcribe.wav");
     let extract_ok = Command::new("ffmpeg")
+        .stealth()
         .args(["-y", "-i"])
         .arg(&file_path)
         .args(["-ar", "16000", "-ac", "1", "-f", "wav"])
@@ -709,7 +711,7 @@ async fn start_render(
                 "aac".to_string(),
                 output_clone.to_string_lossy().to_string(),
             ]);
-            let _ = Command::new("ffmpeg").args(&args).status().await;
+            let _ = Command::new("ffmpeg").stealth().args(&args).status().await;
         }
 
         let mut store = store_clone.lock().unwrap();
@@ -807,6 +809,7 @@ async fn find_asset_path(s: &EditorState, session_id: &str, asset_id: &str) -> O
 
 async fn probe_video_meta(path: &PathBuf) -> (f64, u32, u32, f64) {
     let output = Command::new("ffprobe")
+        .stealth()
         .args([
             "-v",
             "error",
@@ -849,6 +852,7 @@ fn parse_fps_ratio(s: &str) -> f64 {
 
 async fn extract_thumbnail(input: &PathBuf, output: &PathBuf, time: f64) {
     let _ = Command::new("ffmpeg")
+        .stealth()
         .args(["-y", "-ss", &time.to_string(), "-i"])
         .arg(input)
         .args(["-vframes", "1", "-q:v", "3", "-vf", "scale=320:-1"])
