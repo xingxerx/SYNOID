@@ -46,10 +46,10 @@ impl SuperEngine {
 
         match intent {
             // MoE Dispatcher: Complex creative requests
-            Intent::Orchestrate { goal, input_path } => {
+            Intent::Orchestrate(goal, input_path) => {
                 self.orchestrate(&goal, input_path.as_deref()).await
             }
-            Intent::Unknown { request } => {
+            Intent::Unknown(request) => {
                 // Fallback: GPT-OSS Reasoning for truly unknown requests
                 info!("[SUPER_ENGINE] Unknown request. Consulting GPT-OSS...");
                 if let Some(gpt) = &self.gpt_brain {
@@ -157,7 +157,7 @@ impl SuperEngine {
 
     async fn execute_intent(&mut self, intent: Intent) -> Result<String, String> {
         match intent {
-            Intent::DownloadYoutube { url } => {
+            Intent::DownloadYoutube(url) => {
                 use crate::agent::source_tools;
                 let output_dir = Path::new("D:\\SYNOID\\Download");
                 if !output_dir.exists() {
@@ -170,14 +170,14 @@ impl SuperEngine {
                 }
             }
 
-            Intent::Research { topic } => {
+            Intent::Research(topic) => {
                 use crate::agent::source_tools;
                 match source_tools::search_youtube(&topic, 3).await {
                     Ok(results) => Ok(format!("Found {} videos about '{}'", results.len(), topic)),
                     Err(e) => Err(e.to_string()),
                 }
             }
-            Intent::ScanVideo { path } => {
+            Intent::ScanVideo(path) => {
                 use crate::agent::vision_tools;
                 let p = Path::new(&path);
                 match vision_tools::scan_visual(p).await {
@@ -185,17 +185,17 @@ impl SuperEngine {
                     Err(e) => Err(e.to_string()),
                 }
             }
-            Intent::LearnStyle { input, name } => Ok(format!(
+            Intent::LearnStyle(input, name) => Ok(format!(
                 "Learning style '{}' from {} (SuperEngine implementation pending)",
                 name, input
             )),
-            Intent::CreateEdit { input, instruction } => Ok(format!(
+            Intent::CreateEdit(input, instruction) => Ok(format!(
                 "Embodied Edit Initiated: '{}' on {}",
                 instruction, input
             )),
-            Intent::DiscoverFile { query } => Ok(format!("DISCOVERY_MODE:{}", query)),
-            Intent::Orchestrate { .. } => unreachable!("Handled in process_command"),
-            Intent::Unknown { .. } => unreachable!("Handled in process_command"),
+            Intent::DiscoverFile(query) => Ok(format!("DISCOVERY_MODE:{}", query)),
+            Intent::Orchestrate(_, _) => unreachable!("Handled in process_command"),
+            Intent::Unknown(_) => unreachable!("Handled in process_command"),
         }
     }
 }

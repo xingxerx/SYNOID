@@ -16,22 +16,13 @@ use tracing::{info, warn};
 /// Which provider to route a request to.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LlmProvider {
-    /// Groq Cloud (OpenAI-compatible, fast inference)
-    Groq,
-    /// Groq Cloud with a smaller/faster model
-    GroqFast,
-    /// Google AI Studio (Gemini, vision-capable)
-    GoogleVision,
-    /// Local Ollama server (fallback)
+    /// Local Ollama server (primary)
     Ollama,
 }
 
 impl std::fmt::Display for LlmProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Groq => write!(f, "Groq"),
-            Self::GroqFast => write!(f, "Groq-Fast"),
-            Self::GoogleVision => write!(f, "Google-Vision"),
             Self::Ollama => write!(f, "Ollama"),
         }
     }
@@ -59,14 +50,11 @@ pub struct ProviderConfig {
 impl Default for ProviderConfig {
     fn default() -> Self {
         Self {
-            groq_api_key: std::env::var("GROQ_API_KEY").ok(),
-            groq_reasoning_model: std::env::var("GROQ_REASONING_MODEL")
-                .unwrap_or_else(|_| "llama-3.3-70b-versatile".to_string()),
-            groq_fast_model: std::env::var("GROQ_FAST_MODEL")
-                .unwrap_or_else(|_| "llama-3.1-8b-instant".to_string()),
-            google_ai_key: std::env::var("GOOGLE_AI_KEY").ok(),
-            google_vision_model: std::env::var("GOOGLE_VISION_MODEL")
-                .unwrap_or_else(|_| "gemini-1.5-flash".to_string()),
+            groq_api_key: None,
+            groq_reasoning_model: "llama-3.3-70b-versatile".to_string(),
+            groq_fast_model: "llama-3.1-8b-instant".to_string(),
+            google_ai_key: None,
+            google_vision_model: "gemini-1.5-flash".to_string(),
             ollama_url: std::env::var("SYNOID_API_URL")
                 .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
             ollama_model: "llama3:latest".to_string(),
@@ -77,20 +65,12 @@ impl Default for ProviderConfig {
 impl ProviderConfig {
     /// Check which cloud providers are configured with API keys.
     pub fn available_providers(&self) -> Vec<LlmProvider> {
-        let mut providers = Vec::new();
-        if self.groq_api_key.is_some() {
-            providers.push(LlmProvider::Groq);
-            providers.push(LlmProvider::GroqFast);
-        }
-        if self.google_ai_key.is_some() {
-            providers.push(LlmProvider::GoogleVision);
-        }
-        providers.push(LlmProvider::Ollama); // Always available as fallback
-        providers
+        vec![LlmProvider::Ollama]
     }
 }
 
 /// Multi-provider LLM client with automatic routing and token optimization.
+#[derive(Debug)]
 pub struct MultiProviderLlm {
     client: reqwest::Client,
     pub config: ProviderConfig,
@@ -115,116 +95,27 @@ impl MultiProviderLlm {
         }
     }
 
-    /// Send a reasoning request (text-only) to the best available provider.
-    /// Priority: Groq → Ollama
+    /// Send a reasoning request (text-only) to the local Ollama provider.
     pub async fn reason(&self, request: &str) -> Result<String, String> {
-        let est_tokens = estimate_tokens(request) + 500;
-
-        if self.config.groq_api_key.is_some() && self.optimizer.can_use("groq", est_tokens) {
-            match self
-                .call_groq(request, &self.config.groq_reasoning_model)
-                .await
-            {
-                Ok((response, tokens)) => {
-                    self.optimizer.record("groq", tokens);
-                    return Ok(response);
-                }
-                Err(e) => {
-                    warn!("[LLM] Groq reasoning failed: {}, falling back", e);
-                }
-            }
-        }
-
         self.call_ollama(request).await
     }
 
-    /// Send a fast/simple request (JSON parsing, classification).
-    /// Priority: Groq Fast → Groq → Ollama
+    /// Send a fast/simple request (JSON parsing, classification) to the local Ollama provider.
     pub async fn fast_request(&self, request: &str) -> Result<String, String> {
-        let est_tokens = estimate_tokens(request) + 300;
-
-        if self.config.groq_api_key.is_some() && self.optimizer.can_use("groq_fast", est_tokens) {
-            match self.call_groq(request, &self.config.groq_fast_model).await {
-                Ok((response, tokens)) => {
-                    self.optimizer.record("groq_fast", tokens);
-                    return Ok(response);
-                }
-                Err(e) => {
-                    warn!("[LLM] Groq fast failed: {}, falling back", e);
-                }
-            }
-        }
-
-        self.reason(request).await
+        self.call_ollama(request).await
     }
 
-    /// Send a vision request (frame analysis) to Google AI Studio.
-    /// Priority: Google AI Studio → Ollama VLM
+    /// Send a vision request (frame analysis) to Ollama VLM.
     pub async fn vision_request(&self, prompt: &str, image_b64: &str) -> Result<String, String> {
-        let est_tokens = estimate_tokens(prompt) + 1000;
-
-        if self.config.google_ai_key.is_some()
-            && self.optimizer.can_use("google_vision", est_tokens)
-        {
-            match self.call_google_vision(prompt, image_b64).await {
-                Ok((response, tokens)) => {
-                    self.optimizer.record("google_vision", tokens);
-                    return Ok(response);
-                }
-                Err(e) => {
-                    warn!(
-                        "[LLM] Google Vision failed: {}, falling back to Ollama VLM",
-                        e
-                    );
-                }
-            }
-        }
-
         self.call_ollama_vision(prompt, image_b64).await
     }
 
-    /// Audio Transcription (Whisper API via Groq)
+    /// Audio Transcription (Local fallback stub as Groq is disabled)
     pub async fn audio_transcription(
         &self,
-        audio_path: &std::path::Path,
+        _audio_path: &std::path::Path,
     ) -> Result<String, String> {
-        let api_key = self
-            .config
-            .groq_api_key
-            .as_ref()
-            .ok_or("GROQ_API_KEY not set")?;
-
-        if !self.optimizer.can_use("groq", 1000) {
-            return Err("Groq rate limits exceeded".into());
-        }
-
-        let file_bytes = std::fs::read(audio_path).map_err(|e| e.to_string())?;
-        let file_part = reqwest::multipart::Part::bytes(file_bytes)
-            .file_name("audio.wav")
-            .mime_str("audio/wav")
-            .map_err(|e| e.to_string())?;
-
-        let form = reqwest::multipart::Form::new()
-            .text("model", "whisper-large-v3-turbo")
-            .text("response_format", "verbose_json")
-            .part("file", file_part);
-
-        let response = self
-            .client
-            .post("https://api.groq.com/openai/v1/audio/transcriptions")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .multipart(form)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if response.status().is_success() {
-            let json_text = response.text().await.map_err(|e| e.to_string())?;
-            self.optimizer.record("groq", 1000);
-            Ok(json_text)
-        } else {
-            Err(format!("Groq Whisper API error: {}", response.status()))
-        }
+        Err("Local Audio Transcription not yet implemented (Groq disabled)".into())
     }
 
     /// Get token usage status for all providers.
@@ -419,7 +310,7 @@ impl MultiProviderLlm {
             .client
             .post(format!("{}/api/generate", base))
             .json(&body)
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(90))
             .send()
             .await
         {

@@ -647,7 +647,7 @@ impl AgentCore {
                 let brain = self.brain.lock().await;
                 // Only try to recall if intent looks like a style or has substance
                 if intent.len() > 3 {
-                    let recalled = brain.learning_kernel.recall_pattern(intent);
+                    let recalled = brain.learning_kernel.lock().await.recall_pattern(intent);
                     // Check if recalled pattern is just default (success_rating 3) or learned (rating > 3 or specific tag)
                     if recalled.intent_tag != "general" || recalled.success_rating > 3 {
                         self.log(&format!(
@@ -846,7 +846,7 @@ impl AgentCore {
         {
             let brain = self.brain.lock().await;
             if intent.len() > 3 {
-                let recalled = brain.learning_kernel.recall_pattern(intent);
+                let recalled = brain.learning_kernel.lock().await.recall_pattern(intent);
                 if recalled.intent_tag != "general" || recalled.success_rating > 3 {
                     self.log(&format!(
                         "[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
@@ -949,10 +949,10 @@ impl AgentCore {
 
                 // Override the outcome_xp in the specific pattern
                 let mut brain = self.brain.lock().await;
-                let mut pattern = brain.learning_kernel.recall_pattern(&job.intent);
+                let mut pattern = brain.learning_kernel.lock().await.recall_pattern(&job.intent);
                 pattern.success_rating = stars as u32;
                 pattern.outcome_xp = quality;
-                brain.learning_kernel.memorize(&job.intent, pattern);
+                brain.learning_kernel.lock().await.memorize(&job.intent, pattern);
 
                 // Additional XP reward for user satisfaction
                 if stars >= 4 {
@@ -1090,7 +1090,7 @@ impl AgentCore {
         if let Some(ref intent_str) = intent {
             let brain = self.brain.lock().await;
             if intent_str.len() > 3 {
-                let recalled = brain.learning_kernel.recall_pattern(intent_str);
+                let recalled = brain.learning_kernel.lock().await.recall_pattern(intent_str);
                 if recalled.intent_tag != "general" || recalled.success_rating > 3 {
                     self.log(&format!(
                         "[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",

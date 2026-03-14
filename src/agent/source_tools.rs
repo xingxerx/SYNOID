@@ -298,6 +298,10 @@ fn build_ytdlp_info_args(
         }
         args.push("--cookies-from-browser".to_string());
         args.push(browser.to_string());
+    } else {
+        // Use iOS/Android client emulation to bypass bot detection when cookies aren't used
+        args.push("--extractor-args".to_string());
+        args.push("youtube:player_client=ios,android".to_string());
     }
 
     args.extend_from_slice(&[
@@ -339,9 +343,18 @@ fn build_ytdlp_download_args(
         args.push(format!("deno:{}", deno));
     }
 
-    // Use iOS/Android client emulation to bypass bot detection
-    args.push("--extractor-args".to_string());
-    args.push("youtube:player_client=ios,android".to_string());
+    // If a specific browser cookie override is requested, honour it
+    if let Some(browser) = auth_browser {
+        if browser.starts_with('-') {
+            return Err("Browser name cannot start with '-'".into());
+        }
+        args.push("--cookies-from-browser".to_string());
+        args.push(browser.to_string());
+    } else {
+        // Use iOS/Android client emulation to bypass bot detection when cookies aren't used
+        args.push("--extractor-args".to_string());
+        args.push("youtube:player_client=ios,android".to_string());
+    }
 
     args.extend_from_slice(&[
         "--no-warnings".to_string(),
@@ -350,15 +363,6 @@ fn build_ytdlp_download_args(
         "-o".to_string(),
         safe_arg_path(output_path).to_string_lossy().to_string(),
     ]);
-
-    // If a specific browser cookie override is requested, honour it
-    if let Some(browser) = auth_browser {
-        if browser.starts_with('-') {
-            return Err("Browser name cannot start with '-'".into());
-        }
-        args.push("--cookies-from-browser".to_string());
-        args.push(browser.to_string());
-    }
 
     args.push("--".to_string());
     args.push(url.to_string());
@@ -516,14 +520,15 @@ pub async fn search_youtube(
         args.push(format!("deno:{}", deno));
     }
 
-    // Use iOS/Android client emulation to bypass bot detection (avoids DPAPI issues)
-    args.push("--extractor-args".to_string());
-    args.push("youtube:player_client=ios,android".to_string());
-
-    // Pass browser cookies when available — needed on accounts flagged as bots
+    // Pass browser cookies when available — needed on accounts flagged as bots.
+    // When no cookies are available, fall back to mobile client emulation.
     if let Some(ref browser) = auth_browser {
         args.push("--cookies-from-browser".to_string());
         args.push(browser.clone());
+    } else {
+        // Use iOS/Android client emulation to bypass bot detection (avoids DPAPI issues)
+        args.push("--extractor-args".to_string());
+        args.push("youtube:player_client=ios,android".to_string());
     }
 
     args.extend_from_slice(&[

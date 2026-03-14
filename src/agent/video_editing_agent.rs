@@ -34,10 +34,8 @@ impl VideoEditingAgent {
         // For now, let's assume the learner is already running.
 
         // 2. Retrieve the best pattern for this topic
-        let pattern = {
-            let brain_lock = self.brain.lock().await;
-            brain_lock.learning_kernel.recall_pattern(topic)
-        };
+        let kernel = self.brain.lock().await.learning_kernel.clone();
+        let pattern = kernel.lock().await.recall_pattern(topic);
 
         info!(
             "[VEA] 🧠 Recalled pattern: '{}' (S: {:.2}s, T: {:.2}x)",
@@ -57,10 +55,8 @@ impl VideoEditingAgent {
         info!("[VEA] 🎨 Performing Intelligent Edit: '{}'", instruction);
 
         // 1. Recall best pattern based on instruction
-        let pattern = {
-            let brain_lock = self.brain.lock().await;
-            brain_lock.learning_kernel.recall_pattern(instruction)
-        };
+        let kernel = self.brain.lock().await.learning_kernel.clone();
+        let pattern = kernel.lock().await.recall_pattern(instruction);
 
         // 2. Perform Smart Edit with the pattern
         let result = smart_editor::smart_edit(

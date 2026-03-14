@@ -111,6 +111,7 @@ impl ProviderBudget {
 }
 
 /// The central token optimizer that manages all provider budgets.
+#[derive(Debug)]
 pub struct TokenOptimizer {
     budgets: Arc<Mutex<HashMap<String, ProviderBudget>>>,
 }
@@ -222,23 +223,10 @@ impl Default for TokenOptimizer {
 pub fn create_default_optimizer() -> TokenOptimizer {
     let optimizer = TokenOptimizer::new();
 
-    // Groq Free Tier:
-    // - Llama 3.3 70B: 1,000 req/day, 30 req/min, ~100k tokens/day
-    // - Llama 3.1 8B: 14,400 req/day, 30 req/min
-    optimizer.register_provider("groq", ProviderBudget::new("Groq", 100_000, 30, 1_000));
-
-    // Groq fast model (higher request limit for small models)
+    // Local Ollama (Unrestricted)
     optimizer.register_provider(
-        "groq_fast",
-        ProviderBudget::new("Groq Fast", 500_000, 30, 14_400),
-    );
-
-    // Google AI Studio Free Tier:
-    // - Gemini 1.5 Flash: 15 req/min, 250K tokens/min, 1500 req/day
-    // Note: gemini-2.5-flash has much lower limits (5-10 RPM, 20-250 RPD)
-    optimizer.register_provider(
-        "google_vision",
-        ProviderBudget::new("Google AI Studio", 1_000_000, 15, 1_500),
+        "ollama",
+        ProviderBudget::new("Ollama (Local)", 0, 1000, 0),
     );
 
     optimizer

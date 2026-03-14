@@ -9,6 +9,7 @@ use crate::agent::token_optimizer::create_default_optimizer;
 use std::sync::Arc;
 use tracing::info;
 
+#[derive(Debug, Clone)]
 pub struct SynoidAgent {
     pub provider: Arc<MultiProviderLlm>,
     pub model: String,

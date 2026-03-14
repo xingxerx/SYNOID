@@ -12,7 +12,7 @@ use tower::ServiceExt;
 async fn test_api_status_authenticated_access() {
     std::env::set_var("SYNOID_API_KEY", "test_key");
 
-    let core = Arc::new(AgentCore::new("http://localhost:11434/v1"));
+    let core = Arc::new(AgentCore::new("http://localhost:11434/v1", "test_instance"));
     let state = Arc::new(KernelState::new(core));
     let app = server::create_router(state);
 
@@ -34,7 +34,7 @@ async fn test_api_status_authenticated_access() {
 async fn test_api_status_unauthorized_access() {
     std::env::set_var("SYNOID_API_KEY", "test_key");
 
-    let core = Arc::new(AgentCore::new("http://localhost:11434/v1"));
+    let core = Arc::new(AgentCore::new("http://localhost:11434/v1", "test_instance"));
     let state = Arc::new(KernelState::new(core));
     let app = server::create_router(state);
 
@@ -55,7 +55,7 @@ async fn test_api_status_unauthorized_access() {
 async fn test_api_stream_query_param_auth() {
     std::env::set_var("SYNOID_API_KEY", "test_key");
 
-    let core = Arc::new(AgentCore::new("http://localhost:11434/v1"));
+    let core = Arc::new(AgentCore::new("http://localhost:11434/v1", "test_instance"));
     let state = Arc::new(KernelState::new(core));
     let app = server::create_router(state);
 

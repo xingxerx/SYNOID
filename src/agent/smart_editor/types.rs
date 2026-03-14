@@ -257,15 +257,7 @@ User Request: "{}"
             custom_keywords: vec![],
             target_duration: Self::parse_duration_range(&lower),
             censor_profanity: true, // Always-on: safety-first, never let slurs through
-            profanity_replacement: if lower.contains("boing") {
-                Some("boing.wav".to_string())
-            } else if lower.contains("beep") || lower.contains("viral clip") {
-                Some("beep.wav".to_string())
-            } else if lower.contains("funny sound") || lower.contains("sound effect") {
-                Some("boing.wav".to_string())
-            } else {
-                Some("beep.wav".to_string()) // Default to beep for slurs
-            },
+            profanity_replacement: None, // Use built-in 1kHz sine wave (broadcast standard)
         }
     }
 

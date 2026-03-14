@@ -145,6 +145,7 @@ Identify and beep out ALL curse words and slurs including but not limited to:
 - fuck, fucking, fucked, motherfucker
 - shit, shitty, bullshit
 - bitch, ass, asshole
+- nigga, nigger, negro
 - [and any other specific terms to censor]
 
 Use a clean, standard 1kHz beep tone. VERIFY every instance is caught - double-check the final output.

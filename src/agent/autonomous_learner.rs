@@ -366,6 +366,8 @@ impl AutonomousLearner {
                             };
                             brain_lock
                                 .learning_kernel
+                                .lock()
+                                .await
                                 .memorize(&format!("algo_{}", concept.file_type), pattern);
                             brain_lock.neuroplasticity.record_success();
                             info!("[LEARNER] 🧠 Integrated concept into neuroplasticity network.");
@@ -414,6 +416,8 @@ impl AutonomousLearner {
                                     };
                                     brain_lock
                                         .learning_kernel
+                                        .lock()
+                                        .await
                                         .memorize(&format!("theory_{}", title), mem_pattern);
                                     brain_lock.neuroplasticity.record_success();
                                     info!("[LEARNER] 🎓 Absorbed theory on '{}'", title);
@@ -453,7 +457,7 @@ impl AutonomousLearner {
                                     kept_ratio: 0.5,
                                     outcome_xp: 0.7,
                                 };
-                                brain_lock.learning_kernel.memorize(&tag, pattern);
+                                brain_lock.learning_kernel.lock().await.memorize(&tag, pattern);
                                 brain_lock.neuroplasticity.record_success();
                             }
                         }
@@ -544,7 +548,10 @@ impl AutonomousLearner {
             outcome_xp: quality,
         };
 
-        brain_lock.learning_kernel.memorize(intent, pattern);
+        {
+            let mut kernel = brain_lock.learning_kernel.lock().await;
+            kernel.memorize(intent, pattern);
+        }
         info!(
             "[LEARNER] 🧠 Knowledge base updated with feedback from '{}' (Quality XP: {:.2})",
             intent, quality

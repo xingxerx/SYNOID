@@ -17,6 +17,7 @@ pub mod hive_mind;
 pub mod io_shield;
 pub mod learning;
 pub mod llm_provider;
+pub mod moe;
 pub mod motor_cortex;
 pub mod multi_agent;
 pub mod neuroplasticity;

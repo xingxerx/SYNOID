@@ -481,10 +481,7 @@ impl SynoidApp {
                 // Create/reuse session then open React editor in browser
                 let _core = self.core.clone();
                 let ui_ptr = self.ui_state.clone();
-                let session_id = {
-                    let s = self.ui_state.lock().unwrap();
-                    s.editor_session_id.clone()
-                };
+                let session_id = state.editor_session_id.clone();
                 if session_id.is_none() {
                     tokio::spawn(async move {
                         match reqwest::Client::new()

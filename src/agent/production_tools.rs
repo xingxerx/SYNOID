@@ -159,7 +159,14 @@ pub async fn compress_video(
 
     let mut cmd = Command::new("ffmpeg");
     cmd.stealth();
-    cmd.arg("-y").arg("-i").arg(&safe_input);
+    cmd.arg("-y");
+
+    // Enable hardware decode acceleration if available
+    if let Some(hwaccel) = gpu_ctx.ffmpeg_hwaccel() {
+        cmd.arg("-hwaccel").arg(hwaccel);
+    }
+
+    cmd.arg("-i").arg(&safe_input);
 
     cmd.arg("-c:v").arg(gpu_ctx.ffmpeg_encoder());
     for flag in gpu_ctx.neuroplastic_ffmpeg_flags(neuro.current_speed()) {
@@ -614,17 +621,18 @@ pub async fn apply_audio_censor(
         // Nothing to censor — just copy input to output
         let safe_input = safe_arg_path(input_audio);
         let safe_output = safe_arg_path(output_audio);
-        let st = Command::new("ffmpeg")
+        let output = Command::new("ffmpeg")
             .stealth()
             .args(["-y", "-i"])
             .arg(&safe_input)
             .arg("-c:a")
             .arg("pcm_s16le")
             .arg(&safe_output)
-            .status()
+            .output()
             .await?;
-        if !st.success() {
-            return Err("Audio copy failed".into());
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Audio copy failed: {}", stderr).into());
         }
         return Ok(());
     }
@@ -725,10 +733,12 @@ pub async fn apply_audio_censor(
     cmd.arg("-c:a").arg("pcm_s16le");
     cmd.arg(&safe_output);
 
-    let status = cmd.status().await?;
+    info!("[PROD] FFmpeg audio censor filter: {}", filter_complex);
+    let output = cmd.output().await?;
 
-    if !status.success() {
-        return Err("Audio censorship failed".into());
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Audio censorship failed: {}", stderr).into());
     }
 
     Ok(())

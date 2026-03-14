@@ -302,6 +302,8 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
             let genre = VideoGenre::from_filename(filename);
             brain
                 .learning_kernel
+                .lock()
+                .await
                 .memorize(genre.intent_tag(), cached_profile.to_pattern());
             all_profiles.push(cached_profile.clone());
             continue;
@@ -320,7 +322,7 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
 
         let xp = profile.outcome_xp;
         let tag = genre.intent_tag();
-        brain.learning_kernel.memorize(tag, profile.to_pattern());
+        brain.learning_kernel.lock().await.memorize(tag, profile.to_pattern());
         brain.neuroplasticity.record_success_with_quality(xp);
 
         info!(

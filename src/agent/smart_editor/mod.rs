@@ -663,6 +663,13 @@ pub async fn smart_edit(
                 .arg("error")
                 .arg("-nostdin");
 
+            let gpu_ctx = crate::gpu_backend::get_gpu_context().await;
+
+            // Enable hardware decode acceleration if available
+            if let Some(hwaccel) = gpu_ctx.ffmpeg_hwaccel() {
+                cmd.arg("-hwaccel").arg(hwaccel);
+            }
+
             // Accurate input-seeking (-ss and -t before -i) prevents frame doubling and lag
             cmd.arg("-ss").arg(&scene_start.to_string());
             cmd.arg("-t").arg(&scene_duration.to_string());
@@ -685,7 +692,6 @@ pub async fn smart_edit(
                 cmd.arg("-map").arg("0:a:0"); // Original audio
             }
 
-            let gpu_ctx = crate::gpu_backend::get_gpu_context().await;
             let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
             cmd.arg("-c:v").arg(gpu_ctx.ffmpeg_encoder());
             for flag in gpu_ctx.neuroplastic_ffmpeg_flags(neuro.current_speed()) {
@@ -833,6 +839,13 @@ pub async fn smart_edit(
             .arg("error")
             .arg("-nostdin");
 
+        let gpu_ctx = crate::gpu_backend::get_gpu_context().await;
+
+        // Enable hardware decode acceleration for all inputs if available
+        if let Some(hwaccel) = gpu_ctx.ffmpeg_hwaccel() {
+            cmd.arg("-hwaccel").arg(hwaccel);
+        }
+
         // Add all segment files as inputs
         for seg in &segment_files {
             cmd.arg("-i").arg(production_tools::safe_arg_path(seg));
@@ -841,7 +854,7 @@ pub async fn smart_edit(
         cmd.arg("-filter_complex").arg(&filter);
         cmd.arg("-map").arg("[outv]");
         cmd.arg("-map").arg("[outa]");
-        let gpu_ctx = crate::gpu_backend::get_gpu_context().await;
+
         let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
         cmd.arg("-c:v").arg(gpu_ctx.ffmpeg_encoder());
         for flag in gpu_ctx.neuroplastic_ffmpeg_flags(neuro.current_speed()) {

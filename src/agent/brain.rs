@@ -8,42 +8,26 @@ use crate::agent::body::Body;
 use crate::agent::consciousness::Consciousness;
 use crate::agent::gpt_oss_bridge::SynoidAgent;
 use crate::agent::hive_mind::HiveMind;
+use crate::agent::motor_cortex::MotorCortex;
+use crate::agent::moe::MoeRouter;
 use crate::gpu_backend::GpuContext;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::info;
 
 /// Intents that the Brain can classify
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)]
 pub enum Intent {
-    DownloadYoutube {
-        url: String,
-    },
-    ScanVideo {
-        path: String,
-    },
-    LearnStyle {
-        input: String,
-        name: String,
-    },
-    CreateEdit {
-        input: String,
-        instruction: String,
-    },
-    Research {
-        topic: String,
-    },
-    DiscoverFile {
-        query: String,
-    },
+    DownloadYoutube(String),
+    ScanVideo(String),
+    LearnStyle(String, String),
+    CreateEdit(String, String),
+    Research(String),
+    DiscoverFile(String),
 
     /// Complex creative request requiring MoE orchestration
-    Orchestrate {
-        goal: String,
-        input_path: Option<String>,
-    },
-    Unknown {
-        request: String,
-    },
+    Orchestrate(String, Option<String>),
+    Unknown(String),
 }
 
 use crate::agent::learning::LearningKernel;
@@ -59,7 +43,9 @@ pub struct Brain {
     agent: SynoidAgent,
     api_url: String,
     pub hive_mind: HiveMind,
-    pub learning_kernel: LearningKernel,
+    pub motor_cortex: Arc<Mutex<MotorCortex>>,
+    pub moe_router: Arc<MoeRouter>,
+    pub learning_kernel: Arc<Mutex<LearningKernel>>,
     pub neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity,
     /// GPU/CUDA backend reference (late-bound after async detection).
     /// Note: Uses 'static lifetime because GpuContext is a global singleton (OnceLock).
@@ -71,17 +57,25 @@ pub struct Brain {
 
 impl Brain {
     pub fn new(api_url: &str, model: &str) -> Self {
-        let hive_mind = HiveMind::new(api_url);
+        let hive_mind = HiveMind::new(api_url); // Still used for initial model selection
         let actual_model = if model.is_empty() {
             hive_mind.get_reasoning_model()
         } else {
             model.to_string()
         };
+        let agent = SynoidAgent::new(api_url, &actual_model); // Renamed to `agent` for clarity
+
+        let motor_cortex = Arc::new(Mutex::new(MotorCortex::new(api_url)));
+        let moe_router = Arc::new(MoeRouter::new(agent.clone()));
+        let learning_kernel = Arc::new(Mutex::new(LearningKernel::new()));
+
         Self {
-            agent: SynoidAgent::new(api_url, &actual_model),
+            agent,
             api_url: api_url.to_string(),
             hive_mind,
-            learning_kernel: LearningKernel::new(),
+            motor_cortex, // Added
+            moe_router,   // Added
+            learning_kernel, // Changed
             neuroplasticity: crate::agent::neuroplasticity::Neuroplasticity::new(),
             gpu: None,
             _consciousness: Consciousness::new(),
@@ -135,27 +129,25 @@ impl Brain {
             if let Some(start) = request.find("http") {
                 let rest = &request[start..];
                 let end = rest.find(' ').unwrap_or(rest.len());
-                return Intent::DownloadYoutube {
-                    url: rest[0..end].to_string(),
-                };
+                return Intent::DownloadYoutube(rest[0..end].to_string());
             }
         }
 
         // 2. Visual Scan Heuristics
         if req_lower.len() < 100 && (req_lower.contains("scan") || req_lower.contains("analyze")) {
-            return Intent::ScanVideo {
-                path: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
-            };
+            return Intent::ScanVideo(
+                Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
+            );
         }
 
         // 3. Learning Heuristics
         if req_lower.contains("learn") {
             let name = Self::extract_quoted_value(request, "style")
                 .unwrap_or_else(|| "new_style".to_string());
-            return Intent::LearnStyle {
-                input: Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
+            return Intent::LearnStyle(
+                Self::extract_path(request).unwrap_or_else(|| "input.mp4".to_string()),
                 name,
-            };
+            );
         }
 
         // 4. Research Heuristics
@@ -165,7 +157,7 @@ impl Brain {
         {
             let topic = request.to_string();
             if !topic.is_empty() {
-                return Intent::Research { topic };
+                return Intent::Research(topic);
             }
         }
 
@@ -186,7 +178,7 @@ impl Brain {
                     .trim()
                     .to_string();
                 if !query.is_empty() {
-                    return Intent::DiscoverFile { query };
+                    return Intent::DiscoverFile(query);
                 }
             }
         }
@@ -219,15 +211,11 @@ impl Brain {
         let has_noun = creative_nouns.iter().any(|n| req_lower.contains(n));
 
         if has_verb && has_noun {
-            return Intent::Orchestrate {
-                goal: request.to_string(),
-                input_path: Self::extract_path(request),
-            };
+            let path = Self::extract_path(&request);
+            return Intent::Orchestrate(request.to_string(), path);
         }
 
-        Intent::Unknown {
-            request: request.to_string(),
-        }
+        Intent::Unknown(request.to_string())
     }
 
     /// Extract a file path from a request string.
@@ -310,7 +298,7 @@ impl Brain {
         info!("[BRAIN] Acceleration: {}", self.acceleration_status());
 
         match intent {
-            Intent::DownloadYoutube { url } => {
+            Intent::DownloadYoutube(url) => {
                 info!("[BRAIN] ⚡ Fast-path activated: YouTube Download");
                 // Activate Source Tools ONLY
                 use crate::agent::source_tools;
@@ -324,7 +312,7 @@ impl Brain {
                     Err(e) => Err(format!("Download failed: {}", e)),
                 }
             }
-            Intent::ScanVideo { path } => {
+            Intent::ScanVideo(path) => {
                 info!("[BRAIN] ⚡ Fast-path activated: Visual Scan");
                 // Activate Vision Tools ONLY
                 use crate::agent::vision_tools;
@@ -337,7 +325,7 @@ impl Brain {
                     Err(e) => Err(format!("Scan failed: {}", e)),
                 }
             }
-            Intent::LearnStyle { input, name } => {
+            Intent::LearnStyle(input, name) => {
                 info!("[BRAIN] 🧠 Learning style '{}' from video...", name);
                 use crate::agent::vision_tools;
                 let path = std::path::Path::new(&input);
@@ -378,9 +366,7 @@ impl Brain {
                             outcome_xp: 1.0,
                         };
 
-                        // Removed extra closing brace
-
-                        self.learning_kernel.memorize(&name, pattern);
+                        self.learning_kernel.lock().await.memorize(&name, pattern); // Changed to use Arc<Mutex<AutonomousLearner>>
                         self.neuroplasticity.record_success();
                         Ok(format!(
                             "Learned new style '{}' with average scene duration of {:.2}s",
@@ -390,7 +376,7 @@ impl Brain {
                     Err(e) => Err(format!("Failed to analyze video for learning: {}", e)),
                 }
             }
-            Intent::Research { topic } => {
+            Intent::Research(topic) => {
                 info!("[BRAIN] ⚡ Fast-path activated: Research Agent");
                 use crate::agent::source_tools;
                 match source_tools::search_youtube(&topic, 5).await {
@@ -410,45 +396,23 @@ impl Brain {
                     Err(e) => Err(format!("Research failed: {}", e)),
                 }
             }
-            Intent::DiscoverFile { query } => {
-                info!("[BRAIN] ⚡ Fast-path activated: Global File Discovery");
-                Ok(format!("DISCOVERY_MODE:{}", query))
-            }
-
-            Intent::Orchestrate { goal, .. } => {
-                info!("[BRAIN] 🎼 Orchestrating creative goal: {}", goal);
-                // Use the LLM to reason about the orchestration
-                match self.agent.reason(&goal).await {
-                    Ok(resp) => Ok(format!("Orchestration Plan: {}", resp)),
+            Intent::Orchestrate(request, _input_path) => {
+                info!("[BRAIN] Orchestrating complex task via MoE: {}", request);
+                let role = self.moe_router.route(&request).await;
+                match self.moe_router.execute(role, &request).await {
+                    Ok(resp) => Ok(resp),
                     Err(e) => Err(format!("Orchestration failed: {}", e)),
                 }
             }
-            Intent::CreateEdit { input, instruction } => {
-                // Similar to Orchestrate but simpler
-                info!("[BRAIN] 🎬 Planning edit for {}: {}", input, instruction);
-                match self.agent.reason(&instruction).await {
-                    Ok(resp) => Ok(format!("Edit Plan: {}", resp)),
-                    Err(e) => Err(format!("Planning failed: {}", e)),
+            Intent::Unknown(request) => {
+                info!("[BRAIN] Analyzing unknown intent via MoE: {}", request);
+                let role = self.moe_router.route(&request).await;
+                match self.moe_router.execute(role, &request).await {
+                    Ok(resp) => Ok(resp),
+                    Err(e) => Err(format!("Analysis failed: {}", e)),
                 }
             }
-            Intent::Unknown { request } => {
-                info!("[BRAIN] 🧠 Complex request detected. Waking up Cortex (GPT-OSS)...");
-
-                // Check if model changed (neuroplasticity might upgrade us)
-                let current_best = self.hive_mind.get_reasoning_model();
-                if self.agent.model != current_best {
-                    info!(
-                        "[BRAIN] 🔄 Upgrading Cortex to better model: {} -> {}",
-                        self.agent.model, current_best
-                    );
-                    self.agent = SynoidAgent::new(&self.api_url, &current_best);
-                }
-
-                match self.agent.reason(&request).await {
-                    Ok(resp) => Ok(format!("Cortex reasoned: {}", resp)),
-                    Err(e) => Err(format!("Cortex failed: {}", e)),
-                }
-            }
+            _ => Err("Unhandled intent or unhandled variant".to_string()),
         }
     }
 }
@@ -462,7 +426,7 @@ mod tests {
         let brain = Brain::new("http://localhost", "mock-model");
         let intent = brain.fast_classify("Download this video https://youtube.com/watch?v=123");
         match intent {
-            Intent::DownloadYoutube { url } => assert!(url.contains("youtube.com")),
+            Intent::DownloadYoutube(url) => assert!(url.contains("youtube.com")),
             _ => panic!("Failed to classify youtube download"),
         }
     }
@@ -472,7 +436,7 @@ mod tests {
         let brain = Brain::new("http://localhost", "mock-model");
         let intent = brain.fast_classify("scan this file");
         match intent {
-            Intent::ScanVideo { .. } => assert!(true),
+            Intent::ScanVideo(_) => assert!(true),
             _ => panic!("Failed to classify video scan"),
         }
     }
