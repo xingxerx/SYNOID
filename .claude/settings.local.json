@@ -13,7 +13,11 @@
       "Bash(npm audit fix)",
       "Bash(npm outdated)",
       "Bash(npm view yauzl versions --json)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(ollama list)",
+      "Bash(curl http://localhost:11434/api/tags)",
+      "Bash(curl -s http://localhost:11434/api/tags)",
+      "Bash(curl -s http://localhost:11434/api/generate -d \"{\"\"model\"\":\"\"llama3.2:latest\"\",\"\"prompt\"\":\"\"Say hello\"\",\"\"stream\"\":false}\")"
     ],
     "deny": [],
     "ask": []

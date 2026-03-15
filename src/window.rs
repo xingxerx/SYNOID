@@ -10,24 +10,18 @@ use std::sync::{Arc, Mutex};
 
 use crate::agent::core_systems::core::AgentCore;
 
-// --- Color Palette (CRT Terminal / Cyberpunk) ---
-const COLOR_BG_DARK: egui::Color32 = egui::Color32::from_rgb(5, 5, 5);         // #050505 Deep Black
-const COLOR_PANEL_BG: egui::Color32 = egui::Color32::from_rgb(8, 8, 8);         // #080808
-const COLOR_SIDEBAR_BG: egui::Color32 = egui::Color32::from_rgb(6, 6, 6);       // #060606
-const COLOR_CRT_GREEN: egui::Color32 = egui::Color32::from_rgb(0, 255, 65);     // #00FF41 Matrix Green
-const COLOR_CRT_GREEN_DIM: egui::Color32 = egui::Color32::from_rgb(0, 59, 0);   // #003B00
-const COLOR_CRT_AMBER: egui::Color32 = egui::Color32::from_rgb(255, 176, 0);    // #FFB000 Amber
-const COLOR_CRT_TEAL: egui::Color32 = egui::Color32::from_rgb(0, 128, 128);     // #008080 Teal
-const COLOR_CRT_ORANGE: egui::Color32 = egui::Color32::from_rgb(255, 140, 0);   // #FF8C00 Warning
-// Semantic aliases used throughout the codebase
-const COLOR_ACCENT_ORANGE: egui::Color32 = COLOR_CRT_GREEN;   // primary = matrix green
-const COLOR_ACCENT_BLUE: egui::Color32 = COLOR_CRT_TEAL;
-const COLOR_ACCENT_GREEN: egui::Color32 = COLOR_CRT_GREEN;
-const COLOR_ACCENT_PURPLE: egui::Color32 = COLOR_CRT_AMBER;
-const COLOR_ACCENT_RED: egui::Color32 = COLOR_CRT_ORANGE;
-const COLOR_TEXT_PRIMARY: egui::Color32 = COLOR_CRT_GREEN;
-const COLOR_TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(0, 140, 44); // dimmed green
-const COLOR_TREE_ITEM: egui::Color32 = egui::Color32::from_rgb(0, 200, 55);      // bright green for nav
+// --- Color Palette (Premium Dark) ---
+const COLOR_BG_DARK: egui::Color32 = egui::Color32::from_rgb(22, 22, 26);
+const COLOR_PANEL_BG: egui::Color32 = egui::Color32::from_rgb(30, 30, 34);
+const COLOR_SIDEBAR_BG: egui::Color32 = egui::Color32::from_rgb(26, 26, 30);
+const COLOR_ACCENT_ORANGE: egui::Color32 = egui::Color32::from_rgb(255, 120, 50);
+const COLOR_ACCENT_BLUE: egui::Color32 = egui::Color32::from_rgb(80, 160, 255);
+const COLOR_ACCENT_GREEN: egui::Color32 = egui::Color32::from_rgb(80, 200, 120);
+const COLOR_ACCENT_PURPLE: egui::Color32 = egui::Color32::from_rgb(180, 100, 255);
+const COLOR_ACCENT_RED: egui::Color32 = egui::Color32::from_rgb(255, 80, 80);
+const COLOR_TEXT_PRIMARY: egui::Color32 = egui::Color32::from_rgb(220, 220, 220);
+const COLOR_TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(140, 140, 150);
+const COLOR_TREE_ITEM: egui::Color32 = egui::Color32::from_rgb(100, 180, 255);
 
 // --- WSL Helpers ---
 fn is_wsl() -> bool {
@@ -155,6 +149,11 @@ pub struct UiState {
     pub is_scanning: bool,
     pub discovery_query: String,
     pub recent_jobs: Vec<crate::agent::editor_queue::EditJob>,
+    // Editor feature toggles
+    pub enable_subtitles: bool,
+    pub enable_censoring: bool,
+    pub enable_audio_enhancement: bool,
+    pub enable_silence_removal: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -180,6 +179,10 @@ struct PersistedSettings {
     track_audio: String,
     track_overlay: String,
     discovery_query: String,
+    enable_subtitles: bool,
+    enable_censoring: bool,
+    enable_audio_enhancement: bool,
+    enable_silence_removal: bool,
 }
 
 impl Default for PersistedSettings {
@@ -212,6 +215,10 @@ impl Default for PersistedSettings {
             track_audio: String::new(),
             track_overlay: String::new(),
             discovery_query: String::new(),
+            enable_subtitles: true,
+            enable_censoring: false,
+            enable_audio_enhancement: true,
+            enable_silence_removal: false,
         }
     }
 }
@@ -258,6 +265,10 @@ fn save_settings(
         track_audio: state.track_audio.clone(),
         track_overlay: state.track_overlay.clone(),
         discovery_query: state.discovery_query.clone(),
+        enable_subtitles: state.enable_subtitles,
+        enable_censoring: state.enable_censoring,
+        enable_audio_enhancement: state.enable_audio_enhancement,
+        enable_silence_removal: state.enable_silence_removal,
     };
     if let Ok(json) = serde_json::to_string_pretty(&settings) {
         let _ = std::fs::write(filename, json);
@@ -311,6 +322,10 @@ impl SynoidApp {
         ui_state.ai_edit_running = false;
         ui_state.is_autonomous_running = settings.is_autonomous_running;
         ui_state.discovery_query = settings.discovery_query.clone();
+        ui_state.enable_subtitles = settings.enable_subtitles;
+        ui_state.enable_censoring = settings.enable_censoring;
+        ui_state.enable_audio_enhancement = settings.enable_audio_enhancement;
+        ui_state.enable_silence_removal = settings.enable_silence_removal;
 
         let tree_state = settings.tree_state.clone();
         let active_command = settings.active_command;
@@ -359,22 +374,22 @@ impl SynoidApp {
         visuals.window_fill = COLOR_BG_DARK;
         visuals.panel_fill = COLOR_PANEL_BG;
         visuals.extreme_bg_color = COLOR_BG_DARK;
-        visuals.faint_bg_color = egui::Color32::from_rgb(0, 20, 5);
+        visuals.faint_bg_color = egui::Color32::from_rgb(35, 35, 40);
         visuals.widgets.noninteractive.bg_fill = COLOR_PANEL_BG;
-        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
-        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN_DIM);
+        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, COLOR_TEXT_PRIMARY);
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, COLOR_TEXT_SECONDARY);
         visuals.widgets.inactive.bg_fill = COLOR_BG_DARK;
-        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
-        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN_DIM);
-        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(0, 40, 10);
-        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
-        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
-        visuals.widgets.active.bg_fill = COLOR_CRT_GREEN_DIM;
-        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
-        visuals.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(0, 255, 65, 50);
-        visuals.selection.stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
-        visuals.window_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
-        visuals.override_text_color = Some(COLOR_CRT_GREEN);
+        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, COLOR_TEXT_PRIMARY);
+        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, COLOR_TEXT_SECONDARY);
+        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(45, 45, 55);
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, COLOR_ACCENT_BLUE);
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, COLOR_ACCENT_BLUE);
+        visuals.widgets.active.bg_fill = egui::Color32::from_rgb(50, 50, 60);
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, COLOR_ACCENT_ORANGE);
+        visuals.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(80, 160, 255, 50);
+        visuals.selection.stroke = egui::Stroke::new(1.0, COLOR_ACCENT_BLUE);
+        visuals.window_stroke = egui::Stroke::new(1.0, COLOR_TEXT_SECONDARY);
+        visuals.override_text_color = Some(COLOR_TEXT_PRIMARY);
 
         ctx.set_visuals(visuals);
 
@@ -591,7 +606,7 @@ impl SynoidApp {
             ui.label(
                 egui::RichText::new("SYNOID_OS v2.0")
                     .size(18.0)
-                    .color(COLOR_CRT_GREEN)
+                    .color(COLOR_ACCENT_ORANGE)
                     .strong(),
             );
             ui.add_space(12.0);
@@ -599,14 +614,14 @@ impl SynoidApp {
                 egui::RichText::new("[ LIVE ]")
                     .size(10.0)
                     .color(COLOR_BG_DARK)
-                    .background_color(COLOR_CRT_GREEN)
+                    .background_color(COLOR_ACCENT_ORANGE)
                     .strong(),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
                     egui::RichText::new("SENTINEL: SECURE")
                         .size(10.0)
-                        .color(COLOR_CRT_TEAL),
+                        .color(COLOR_ACCENT_BLUE),
                 );
                 ui.add_space(12.0);
                 ui.label(
@@ -621,7 +636,7 @@ impl SynoidApp {
         ui.painter().hline(
             ui.min_rect().min.x..=ui.min_rect().min.x + ui.available_width(),
             ui.cursor().min.y,
-            egui::Stroke::new(1.0, COLOR_CRT_GREEN_DIM),
+            egui::Stroke::new(1.0, COLOR_TEXT_SECONDARY),
         );
         ui.add_space(8.0);
 
@@ -629,7 +644,7 @@ impl SynoidApp {
         ui.columns(3, |cols| {
             // LEFT: Kernel Health + Active Processes
             let col = &mut cols[0];
-            Self::crt_panel(col, "Kernel Health", COLOR_CRT_GREEN, |ui| {
+            Self::crt_panel(col, "Kernel Health", COLOR_ACCENT_ORANGE, |ui| {
                 let stats = [
                     ("GHOST_THREAD", 0.98f32),
                     ("MOTOR_CORTEX", 0.45f32),
@@ -644,7 +659,7 @@ impl SynoidApp {
                             ui.label(
                                 egui::RichText::new(format!("{:.0}%", pct * 100.0))
                                     .size(9.0)
-                                    .color(COLOR_CRT_GREEN),
+                                    .color(COLOR_ACCENT_ORANGE),
                             );
                         });
                     });
@@ -653,23 +668,23 @@ impl SynoidApp {
                         egui::vec2(ui.available_width(), 6.0),
                         egui::Sense::hover(),
                     );
-                    ui.painter().rect_filled(rect, 0.0, COLOR_CRT_GREEN_DIM);
+                    ui.painter().rect_filled(rect, 0.0, COLOR_TEXT_SECONDARY);
                     let fill = egui::Rect::from_min_size(
                         rect.min,
                         egui::vec2(rect.width() * pct, rect.height()),
                     );
-                    ui.painter().rect_filled(fill, 0.0, COLOR_CRT_GREEN);
+                    ui.painter().rect_filled(fill, 0.0, COLOR_ACCENT_ORANGE);
                     ui.add_space(4.0);
                 }
             });
 
             col.add_space(8.0);
-            Self::crt_panel(col, "Active Processes", COLOR_CRT_GREEN, |ui| {
+            Self::crt_panel(col, "Active Processes", COLOR_ACCENT_ORANGE, |ui| {
                 let procs = [
-                    ("[OK]  ffmpeg_service.bin", COLOR_CRT_TEAL),
-                    ("[OK]  neural_brain.ghost", COLOR_CRT_TEAL),
-                    ("[WAIT] prod_queue.sync", COLOR_CRT_AMBER),
-                    ("[OK]  sentinel.guard", COLOR_CRT_TEAL),
+                    ("[OK]  ffmpeg_service.bin", COLOR_ACCENT_BLUE),
+                    ("[OK]  neural_brain.ghost", COLOR_ACCENT_BLUE),
+                    ("[WAIT] prod_queue.sync", COLOR_ACCENT_PURPLE),
+                    ("[OK]  sentinel.guard", COLOR_ACCENT_BLUE),
                 ];
                 for (label, color) in procs {
                     ui.label(egui::RichText::new(label).size(10.0).color(color));
@@ -681,9 +696,9 @@ impl SynoidApp {
                     "[OFF] autonomous_learner"
                 };
                 let auton_color = if state.is_autonomous_running {
-                    COLOR_CRT_TEAL
+                    COLOR_ACCENT_BLUE
                 } else {
-                    COLOR_CRT_ORANGE
+                    COLOR_ACCENT_RED
                 };
                 if ui
                     .add(
@@ -709,7 +724,7 @@ impl SynoidApp {
 
             // CENTER: Command Central terminal
             let col = &mut cols[1];
-            Self::crt_panel(col, "Command Central", COLOR_CRT_GREEN, |ui| {
+            Self::crt_panel(col, "Command Central", COLOR_ACCENT_ORANGE, |ui| {
                 // Terminal log scroll
                 let log_height = 160.0;
                 egui::ScrollArea::vertical()
@@ -730,19 +745,19 @@ impl SynoidApp {
                         ui.label(
                             egui::RichText::new("> Welcome back, Operator.")
                                 .size(11.0)
-                                .color(COLOR_CRT_TEAL),
+                                .color(COLOR_ACCENT_BLUE),
                         );
                         ui.label(
                             egui::RichText::new("> Brain ready for intent processing.")
                                 .size(11.0)
-                                .color(COLOR_CRT_TEAL),
+                                .color(COLOR_ACCENT_BLUE),
                         );
                         let hive = &state.hive_mind_status;
                         if !hive.is_empty() {
                             ui.label(
                                 egui::RichText::new(format!("> {}", hive))
                                     .size(11.0)
-                                    .color(COLOR_CRT_AMBER),
+                                    .color(COLOR_ACCENT_PURPLE),
                             );
                         }
                         for suggestion in state.suggestions.iter().take(3) {
@@ -758,17 +773,17 @@ impl SynoidApp {
                 ui.painter().hline(
                     ui.min_rect().min.x..=ui.min_rect().min.x + ui.available_width(),
                     ui.cursor().min.y,
-                    egui::Stroke::new(1.0, COLOR_CRT_GREEN_DIM),
+                    egui::Stroke::new(1.0, COLOR_TEXT_SECONDARY),
                 );
                 ui.add_space(4.0);
 
                 // Intent input line
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(">").size(13.0).color(COLOR_CRT_GREEN));
+                    ui.label(egui::RichText::new(">").size(13.0).color(COLOR_ACCENT_ORANGE));
                     let te = egui::TextEdit::singleline(&mut state.intent)
                         .desired_width(f32::INFINITY)
                         .frame(false)
-                        .text_color(COLOR_CRT_GREEN)
+                        .text_color(COLOR_ACCENT_ORANGE)
                         .hint_text("Type creative intent or command...");
                     ui.add(te);
                 });
@@ -782,14 +797,14 @@ impl SynoidApp {
                         .stroke(egui::Stroke::new(1.0, color))
                         .fill(egui::Color32::TRANSPARENT)
                     };
-                    if ui.add(btn_style("EXECUTE", COLOR_CRT_GREEN)).clicked() {
+                    if ui.add(btn_style("EXECUTE", COLOR_ACCENT_ORANGE)).clicked() {
                         let core = self.core.clone();
                         let intent = state.intent.clone();
                         tokio::spawn(async move {
                             let _ = core.process_brain_request(&intent).await;
                         });
                     }
-                    if ui.add(btn_style("REFRESH", COLOR_CRT_TEAL)).clicked() {
+                    if ui.add(btn_style("REFRESH", COLOR_ACCENT_BLUE)).clicked() {
                         let core = self.core.clone();
                         tokio::spawn(async move {
                             let _ = core.initialize_hive_mind().await;
@@ -800,7 +815,7 @@ impl SynoidApp {
 
             // RIGHT: Log Feed
             let col = &mut cols[2];
-            Self::crt_panel(col, "Log Feed", COLOR_CRT_GREEN, |ui| {
+            Self::crt_panel(col, "Log Feed", COLOR_ACCENT_ORANGE, |ui| {
                 let logs = self.core.get_logs();
                 egui::ScrollArea::vertical()
                     .max_height(240.0)
@@ -809,9 +824,9 @@ impl SynoidApp {
                     .show(ui, |ui| {
                         for log in logs.iter().rev().take(20) {
                             let color = if log.contains("ERR") || log.contains("WARN") {
-                                COLOR_CRT_ORANGE
+                                COLOR_ACCENT_RED
                             } else if log.contains("OK") || log.contains("SUCCESS") {
-                                COLOR_CRT_TEAL
+                                COLOR_ACCENT_BLUE
                             } else {
                                 COLOR_TEXT_SECONDARY
                             };
@@ -2102,6 +2117,42 @@ impl SynoidApp {
                                 ui.label(egui::RichText::new("Describe how you want to edit the active asset.").color(color_text_dim).small());
 
                                 ui.add_space(15.0);
+
+                                // Feature Toggles
+                                ui.group(|ui| {
+                                    ui.label(egui::RichText::new("Feature Toggles:").color(color_text_light).strong().size(12.0));
+                                    ui.add_space(8.0);
+
+                                    ui.horizontal(|ui| {
+                                        if ui.checkbox(&mut _state.enable_subtitles, "").changed() {
+                                            save_settings(&self.core.instance_id, _state, self.active_command, &self.tree_state);
+                                        }
+                                        ui.label(egui::RichText::new("💬 Generate Subtitles").color(if _state.enable_subtitles { COLOR_ACCENT_GREEN } else { color_text_dim }));
+                                    });
+
+                                    ui.horizontal(|ui| {
+                                        if ui.checkbox(&mut _state.enable_censoring, "").changed() {
+                                            save_settings(&self.core.instance_id, _state, self.active_command, &self.tree_state);
+                                        }
+                                        ui.label(egui::RichText::new("🔇 Censor Profanity").color(if _state.enable_censoring { COLOR_ACCENT_GREEN } else { color_text_dim }));
+                                    });
+
+                                    ui.horizontal(|ui| {
+                                        if ui.checkbox(&mut _state.enable_audio_enhancement, "").changed() {
+                                            save_settings(&self.core.instance_id, _state, self.active_command, &self.tree_state);
+                                        }
+                                        ui.label(egui::RichText::new("🎙️ Enhance Audio").color(if _state.enable_audio_enhancement { COLOR_ACCENT_GREEN } else { color_text_dim }));
+                                    });
+
+                                    ui.horizontal(|ui| {
+                                        if ui.checkbox(&mut _state.enable_silence_removal, "").changed() {
+                                            save_settings(&self.core.instance_id, _state, self.active_command, &self.tree_state);
+                                        }
+                                        ui.label(egui::RichText::new("✂️ Remove Silence").color(if _state.enable_silence_removal { COLOR_ACCENT_GREEN } else { color_text_dim }));
+                                    });
+                                });
+
+                                ui.add_space(15.0);
                                 ui.label("Your Prompt:");
                                 ui.add(egui::TextEdit::multiline(&mut _state.intent).desired_rows(4).desired_width(ui.available_width()));
 
@@ -2645,7 +2696,7 @@ impl eframe::App for SynoidApp {
                             ui.label(
                                 egui::RichText::new("SYNOID_OS")
                                     .size(16.0)
-                                    .color(COLOR_CRT_GREEN)
+                                    .color(COLOR_ACCENT_ORANGE)
                                     .strong(),
                             );
                         });
@@ -2779,7 +2830,7 @@ impl eframe::App for SynoidApp {
             .frame(
                 egui::Frame::none()
                     .fill(COLOR_BG_DARK)
-                    .stroke(egui::Stroke::new(1.0, COLOR_CRT_GREEN_DIM))
+                    .stroke(egui::Stroke::new(1.0, COLOR_TEXT_SECONDARY))
                     .inner_margin(egui::Margin::symmetric(12.0, 6.0)),
             )
             .show(ctx, |ui| {
@@ -2788,7 +2839,7 @@ impl eframe::App for SynoidApp {
                     ui.label(
                         egui::RichText::new(format!("TERMINAL_ID: 0x88F2  |  {}", status))
                             .size(10.0)
-                            .color(COLOR_CRT_TEAL),
+                            .color(COLOR_ACCENT_BLUE),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(

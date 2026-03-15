@@ -311,11 +311,24 @@ pub async fn smart_edit(
             let censor_timestamps = merged_stamps;
 
             if !censor_timestamps.is_empty() {
+                // Validate replacement SFX path exists; fall back to built-in beep if not
+                let replacement_sfx: Option<&str> =
+                    intent.profanity_replacement.as_deref().and_then(|p| {
+                        if Path::new(p).exists() {
+                            Some(p)
+                        } else {
+                            warn!(
+                                "[SMART] profanity_replacement '{}' not found, using built-in beep.",
+                                p
+                            );
+                            None
+                        }
+                    });
                 match production_tools::apply_audio_censor(
                     &final_enhanced_audio_path,
                     &censored_path,
                     &censor_timestamps,
-                    intent.profanity_replacement.as_deref(),
+                    replacement_sfx,
                 )
                 .await
                 {

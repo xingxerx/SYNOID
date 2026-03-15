@@ -56,8 +56,8 @@ impl Default for ProviderConfig {
             google_ai_key: None,
             google_vision_model: "gemini-1.5-flash".to_string(),
             ollama_url: std::env::var("SYNOID_API_URL")
-                .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
-            ollama_model: "llama3:latest".to_string(),
+                .unwrap_or_else(|_| "http://localhost:11434".to_string()),
+            ollama_model: "llama3.2:latest".to_string(),
         }
     }
 }
@@ -244,37 +244,38 @@ impl MultiProviderLlm {
         Ok((content, tokens_used))
     }
 
-    /// Call local Ollama (OpenAI-compatible fallback for text).
+    /// Call local Ollama using native API.
     async fn call_ollama(&self, request: &str) -> Result<String, String> {
-        info!("[LLM] Falling back to Ollama at {}", self.config.ollama_url);
+        info!("[LLM] Calling Ollama at {}", self.config.ollama_url);
+
+        let base = self
+            .config
+            .ollama_url
+            .trim_end_matches('/')
+            .trim_end_matches("/v1");
+
+        // Build the prompt with system message
+        let full_prompt = format!(
+            "You are Synoid, an autonomous video production AI. Respond with concise JSON or direct commands.\n\n{}",
+            request
+        );
 
         let payload = json!({
             "model": self.config.ollama_model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are Synoid, an autonomous video production AI. Respond with concise JSON or direct commands."
-                },
-                {
-                    "role": "user",
-                    "content": request
-                }
-            ],
-            "temperature": 0.7
+            "prompt": full_prompt,
+            "stream": false,
+            "options": {
+                "temperature": 0.7
+            }
         });
 
-        let base = self.config.ollama_url.trim_end_matches('/');
-        let endpoint = if base.ends_with("/v1") {
-            format!("{}/chat/completions", base)
-        } else {
-            format!("{}/v1/chat/completions", base)
-        };
+        let endpoint = format!("{}/api/generate", base);
 
         match self.client.post(&endpoint).json(&payload).send().await {
             Ok(resp) => {
                 if resp.status().is_success() {
                     let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-                    let content = json["choices"][0]["message"]["content"]
+                    let content = json["response"]
                         .as_str()
                         .unwrap_or("Error: Empty response")
                         .to_string();
@@ -285,7 +286,7 @@ impl MultiProviderLlm {
             }
             Err(e) => {
                 warn!(
-                    "[LLM] Ollama also unreachable ({}), entering offline mode",
+                    "[LLM] Ollama unreachable ({}), entering offline mode",
                     e
                 );
                 Ok(format!("(Offline Mode) Mock response for: {}", request))

@@ -89,7 +89,16 @@ SYNOID supports advanced reference-based video editing:
 - **Node.js 18+** and **npm** — [nodejs.org](https://nodejs.org) *(required for the Remotion animation engine)*
 - **yt-dlp** (for YouTube features)
 - **Python 3** (for Voice/TTS features)
-- **Ollama** (running `llama3:latest` or similar) — [ollama.com](https://ollama.com)
+- **Ollama** — [ollama.com](https://ollama.com)
+  - Install Ollama, then pull required models:
+    ```powershell
+    ollama pull llama3.2
+    ollama pull gemma2:9b
+    ```
+  - Start Ollama server before running SYNOID:
+    ```powershell
+    ollama serve
+    ```
 
 ### First-time Setup
 
@@ -113,12 +122,12 @@ cargo build --release
 **With Live-Reloading (Recommended for development):**
 Automatically recompiles on code changes without restarting the terminal.
 ```bash
-cargo watch -x "run --release -- gui"
+cargo watch -x "run --release --bin synoid-core -- gui"
 ```
 
 **Standard Run:**
 ```bash
-cargo run --release -- gui
+cargo run --release --bin synoid-core -- gui
 ```
 
 ---
@@ -128,7 +137,7 @@ cargo run --release -- gui
 Launch the **Command Center**:
 
 ```bash
-cargo run --release -- gui
+cargo run --release --bin synoid-core -- gui
 ```
 
 ### 🧠 Creative Intent Examples
@@ -208,13 +217,13 @@ You can run multiple independent SYNOID agents on the same machine by isolating 
 
 **Instance A (Default):**
 ```bash
-cargo run --release -- gui
+cargo run --release --bin synoid-core -- gui
 ```
 
 **Instance B (Isolated):**
 ```bash
 # Providing a different port now automatically isolates the state!
-cargo run --release -- gui --port 3001
+cargo run --release --bin synoid-core -- gui --port 3001
 ```
 
 
@@ -330,7 +339,7 @@ The codebase is organized into logical subsystems:
 Set environment variables in `.env`:
 ```env
 # Core SYNOID Configuration
-SYNOID_API_URL=http://localhost:11434/v1
+SYNOID_API_URL=http://localhost:11434  # Ollama native API (no /v1 suffix)
 
 # Optional reference-guided editing settings
 GEMINI_API_KEY=your_gemini_api_key_here
@@ -373,6 +382,59 @@ cargo run --release -- process \
   --intent "Apply film grain and cinematic color grading" \
   --blend 0.6
 ```
+
+---
+
+## 🔍 Troubleshooting
+
+### Ollama Connection Issues
+
+**Problem:** `[LLM] Ollama API Error: 404 Not Found` or `connection refused`
+
+**Solution:**
+1. Ensure Ollama is running:
+   ```powershell
+   ollama serve
+   ```
+
+2. Verify Ollama is responding:
+   ```powershell
+   curl http://localhost:11434/api/tags
+   ```
+
+3. Check that you have models installed:
+   ```powershell
+   ollama list
+   ```
+
+4. If you need to install models:
+   ```powershell
+   ollama pull llama3.2
+   ollama pull gemma2:9b
+   ```
+
+**Note:** SYNOID now uses Ollama's native API (`/api/generate`) instead of the OpenAI-compatible endpoint. No external API keys are required for local operation.
+
+### Port Already in Use
+
+**Problem:** `Failed to bind to address 127.0.0.1:3000: Only one usage of each socket address...`
+
+**Solution:** Another SYNOID instance is already running. Close it or use a different port in `.env`:
+```env
+SYNOID_DASHBOARD_PORT=3001
+```
+
+### GPU Not Detected
+
+**Problem:** FFmpeg NVENC encoding disabled or GPU not detected
+
+**Solution:**
+1. Update GPU drivers to the latest version
+2. Verify FFmpeg supports your GPU:
+   ```powershell
+   ffmpeg -encoders | findstr nvenc
+   ```
+3. For NVIDIA GPUs, ensure CUDA toolkit is installed
 
 ---
 

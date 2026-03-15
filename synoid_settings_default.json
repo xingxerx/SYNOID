@@ -1,0 +1,33 @@
+{
+  "input_path": "D:\\SYNOID\\Video\\Outbound.mp4",
+  "output_path": "Video/output.mp4",
+  "intent": "## Learning Phase\nFirst, analyze the example videos in `D:\\SYNOID\\Download` to understand proper gaming video editing patterns:\n- Study pacing and engagement techniques\n- Observe how cuts are used (or avoided) during gameplay\n- Note audio quality standards and subtitle placement\n- Learn the style and flow that maintains viewer retention\n\n## Core Editing Tasks\n\n### 1. Audio Enhancement (Priority #1)\nApply studio-quality audio processing to all voice tracks:\n- EQ for clarity and presence\n- Compression for consistent volume levels\n- Noise reduction to eliminate background interference\n- Normalization to broadcast standards (-16 LUFS)\n\n**Critical**: Complete all audio enhancement BEFORE subtitle generation. Clean audio = accurate transcription.\n\n### 2. Profanity Censoring (Priority #2)\nIdentify and beep out ALL curse words and slurs including but not limited to:\n- fuck, fucking, fucked, motherfucker\n- shit, shitty, bullshit\n- bitch, ass, asshole\n- nigga, nigger, negro\n- [and any other specific terms to censor]\n\nUse a clean, standard 1kHz beep tone. VERIFY every instance is caught - double-check the final output.\n\n### 3. Subtitle Generation (Priority #3)\nAfter audio is fully enhanced and profanity is beeped:\n- Generate accurate, word-for-word captions\n- Ensure readable timing (2-3 seconds per caption)\n- Use high-contrast, easy-to-read styling\n- Sync perfectly with enhanced audio\n\n### 4. Preserve Gameplay Integrity\n- DO NOT make random cuts or trim gameplay footage\n- Maintain the complete core gameplay loop\n- Only cut during natural breaks (loading screens, menus, deaths)\n- Keep the raw, authentic gaming experience intact\n\n## Final Quality Check\nBefore output, verify:\n- [ ] All curse words are properly beeped\n- [ ] Audio is clear, balanced, and professional\n- [ ] Subtitles are accurate and readable\n- [ ] Gameplay flow is preserved\n- [ ] No random or jarring cuts\n\nFocus on audio clarity and professional censoring over aggressive editing.\"",
+  "youtube_url": "",
+  "clip_start": "0.0",
+  "clip_duration": "10.0",
+  "compress_size": "25.0",
+  "scale_factor": "2.0",
+  "research_topic": "",
+  "style_name": "",
+  "is_autonomous_running": false,
+  "guard_mode": "all",
+  "guard_watch_path": "",
+  "active_editor_tab": "AI Magic",
+  "active_command": "Editor",
+  "tree_state": {
+    "media_expanded": true,
+    "visual_expanded": true,
+    "ai_core_expanded": true,
+    "security_expanded": false,
+    "research_expanded": false,
+    "audio_expanded": true
+  },
+  "timeline_zoom": 0.5,
+  "track_audio": "",
+  "track_overlay": "D:\\SYNOID\\Video\\Outbound.mp4",
+  "discovery_query": "",
+  "enable_subtitles": true,
+  "enable_censoring": true,
+  "enable_audio_enhancement": true,
+  "enable_silence_removal": false
+}
