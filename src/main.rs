@@ -319,7 +319,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     });
     match args.command {
         Commands::Gui { port } => {
-            use crate::agent::health::HealthMonitor;
+            use crate::agent::core_systems::health::HealthMonitor;
             use synoid_core::server;
             use synoid_core::state::KernelState;
 
@@ -468,7 +468,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             synoid_core::gpu_backend::print_gpu_status().await;
         }
         Commands::Serve { port } => {
-            use crate::agent::health::HealthMonitor;
+            use crate::agent::core_systems::health::HealthMonitor;
             use synoid_core::server;
             use synoid_core::state::KernelState;
 
@@ -543,7 +543,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
 
             info!("🚀 Starting Autonomous Learning Loop...");
-            let brain = Arc::new(Mutex::new(Brain::new(&api_url, "llama3:latest")));
+            let brain = Arc::new(Mutex::new(Brain::new(&api_url, "llama3:latest", None)));
             let instance_id = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_else(|_| "default".to_string());
             let learner = AutonomousLearner::new(brain, &instance_id);
 

@@ -42,7 +42,7 @@ async fn test_brain_learning_loop() {
     );
 
     // 3. Initialize Brain
-    let mut brain = Brain::new("http://localhost", "mock-model");
+    let mut brain = Brain::new("http://localhost", "mock-model", None);
 
     // 4. Send Learn Command
     // "Learn style from [path] name fast_paced"
@@ -58,10 +58,10 @@ async fn test_brain_learning_loop() {
 
     // BETTER APPROACH: We manually construct the Intent to test the *Logic* of process(),
     // bypassing the stubby string parser.
-    let _intent = Intent::LearnStyle {
-        input: video_path.to_str().unwrap().to_string(),
-        name: "test_style".to_string(),
-    };
+    let _intent = Intent::LearnStyle(
+        video_path.to_str().unwrap().to_string(),
+        "test_style".to_string(),
+    );
 
     // We can't pass Intent directly to process() as it takes a string.
     // So we need to refactor Brain to expose a process_intent method OR

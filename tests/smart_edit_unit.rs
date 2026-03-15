@@ -25,6 +25,8 @@ async fn test_smart_edit_fallback() {
         censor_profanity: false,
         profanity_replacement: None,
         show_cut_markers: true,
+        use_remotion: false,
+        remotion_template: None,
     };
 
     let config = EditingStrategy::default();
@@ -79,6 +81,8 @@ async fn test_speech_protection_ruthless() {
         censor_profanity: false,
         profanity_replacement: None,
         show_cut_markers: true,
+        use_remotion: false,
+        remotion_template: None,
     };
 
     let config = EditingStrategy::default();

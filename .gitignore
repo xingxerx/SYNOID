@@ -54,6 +54,12 @@ check_err.log
 check_log.txt
 check_out.txt
 output.txt
+build_errors*.txt
+cargo_test_output.txt
+test_output.txt
+final_test_output.txt
+seq_stdout.txt
+seq_stderr.txt
 
 # Empty artifact directories
 backup_good_run/
@@ -75,7 +81,6 @@ brain_memory.json
 .env
 temp_verification/
 check_errors*.txt
-.claude/
 
 # Additions for Watch & Multi-Instance Isolation
 Download/
@@ -85,3 +90,6 @@ cortex_cache*/
 target_*/
 .cargo/
 *.part
+
+# Documentation Archive (generated files)
+docs/archive/

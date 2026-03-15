@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SYNOID CRT Design System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'crt-bg': '#050505',
+                        'crt-green': '#00FF41',
+                        'crt-green-dim': '#003B00',
+                        'crt-amber': '#FFB000',
+                        'crt-teal': '#008080',
+                        'crt-orange': '#FF8C00',
+                        'crt-border': '#00FF41',
+                    },
+                    fontFamily: {
+                        'mono': ['"IBM Plex Mono"', 'monospace'],
+                    },
+                    boxShadow: {
+                        'neon': '0 0 5px rgba(0, 255, 65, 0.5), 0 0 20px rgba(0, 255, 65, 0.2)',
+                        'neon-amber': '0 0 5px rgba(255, 176, 0, 0.5), 0 0 20px rgba(255, 176, 0, 0.2)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100%); }
+        }
+        @keyframes flicker {
+            0% { opacity: 0.97; }
+            5% { opacity: 0.95; }
+            10% { opacity: 0.9; }
+            15% { opacity: 0.95; }
+            30% { opacity: 0.98; }
+            50% { opacity: 0.94; }
+            80% { opacity: 0.99; }
+            100% { opacity: 0.97; }
+        }
+        .crt-container {
+            position: relative;
+            background-color: #050505;
+            color: #00FF41;
+            font-family: 'IBM Plex Mono', monospace;
+            overflow: hidden;
+            animation: flicker 0.15s infinite;
+        }
+        .crt-container::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 2;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+        .scanline {
+            width: 100%;
+            height: 100px;
+            z-index: 3;
+            background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(0, 255, 65, 0.1) 50%, rgba(0, 0, 0, 0) 100%);
+            opacity: 0.1;
+            position: absolute;
+            bottom: 100%;
+            animation: scanline 8s linear infinite;
+        }
+        .crt-border {
+            border: 1px solid #00FF41;
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.2);
+            position: relative;
+        }
+        .crt-label {
+            position: absolute;
+            top: -10px;
+            left: 10px;
+            background: #050505;
+            padding: 0 5px;
+            font-size: 10px;
+            text-transform: uppercase;
+            font-weight: bold;
+            color: #00FF41;
+        }
+        .crt-button {
+            border: 1px solid #00FF41;
+            padding: 5px 15px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+        .crt-button:hover {
+            background: #00FF41;
+            color: #050505;
+            box-shadow: 0 0 15px rgba(0, 255, 65, 0.5);
+        }
+        .crt-button:active {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body class="bg-zinc-900 p-8">
+    <div class="max-w-4xl mx-auto crt-container p-6 border-4 border-zinc-800 rounded-lg">
+        <div class="scanline"></div>
+        
+        <header class="mb-10 text-center border-b border-crt-green pb-4">
+            <h1 class="text-4xl font-bold tracking-tighter">SYNOID DESIGN SYSTEM v2.0</h1>
+            <p class="text-xs uppercase tracking-[0.5em] mt-2">Agentic Video Production Kernel // Command Center GUI</p>
+        </header>
+
+        <section class="grid grid-cols-2 gap-8 mb-10">
+            <div class="crt-border p-4">
+                <span class="crt-label">Color Palette</span>
+                <div class="space-y-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-crt-bg border border-crt-green"></div>
+                        <span>BACKGROUND #050505</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-crt-green"></div>
+                        <span>PRIMARY #00FF41</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-crt-amber shadow-neon-amber"></div>
+                        <span>AMBER #FFB000</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-crt-teal"></div>
+                        <span>TEAL #008080</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-crt-orange"></div>
+                        <span>ORANGE #FF8C00</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="crt-border p-4">
+                <span class="crt-label">Typography</span>
+                <div class="space-y-4">
+                    <h2 class="text-2xl font-bold">H1: SYSTEM KERNEL</h2>
+                    <h3 class="text-xl">H2: MotorCortex Online</h3>
+                    <p class="text-sm">Body: Autonomous AI-powered video editing, voice cloning, and vector stylization. Built with Rust for maximum performance.</p>
+                    <p class="text-[10px] uppercase font-bold text-crt-amber">Status: Experimental [Cyberdefense Sentinel Active]</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="crt-border p-6 mb-10">
+            <span class="crt-label">Components</span>
+            <div class="grid grid-cols-3 gap-4">
+                <div class="space-y-4">
+                    <button class="crt-button w-full">Initialize</button>
+                    <button class="crt-button w-full border-crt-amber text-crt-amber hover:bg-crt-amber hover:text-black hover:shadow-neon-amber">Emergency</button>
+                    <button class="crt-button w-full border-crt-teal text-crt-teal hover:bg-crt-teal">Auxiliary</button>
+                </div>
+                <div class="col-span-2 space-y-4">
+                   <div class="crt-border p-2 bg-crt-green-dim bg-opacity-20">
+                       <p class="text-[10px] mb-1 opacity-50">SCATTER_STATUS:</p>
+                       <div class="h-2 bg-crt-green w-3/4 shadow-neon"></div>
+                   </div>
+                   <div class="crt-border p-2 bg-crt-green-dim bg-opacity-20">
+                       <p class="text-[10px] mb-1 opacity-50">SENTINEL_SECURE_MODE:</p>
+                       <div class="flex gap-1">
+                           <div class="w-4 h-4 bg-crt-green shadow-neon"></div>
+                           <div class="w-4 h-4 bg-crt-green shadow-neon"></div>
+                           <div class="w-4 h-4 bg-crt-green-dim border border-crt-green"></div>
+                       </div>
+                   </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="mt-10 pt-4 border-t border-crt-green text-[10px] flex justify-between">
+            <div>SYNOID KERNEL // BUILD_2026.03.15</div>
+            <div class="text-crt-green">TERMINAL: AUTHENTICATED</div>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,98 @@
+// SYNOID Video Editing Agent - Orchestrator for ML-Driven Betterment
+// Copyright (c) 2026 xingxerx_The_Creator | SYNOID
+
+use crate::agent::core_systems::autonomous_learner::AutonomousLearner;
+use crate::agent::core_systems::brain::Brain;
+use crate::agent::specialized::smart_editor;
+use std::path::Path;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tracing::info;
+
+#[derive(Clone)]
+pub struct VideoEditingAgent {
+    brain: Arc<Mutex<Brain>>,
+    learner: Arc<AutonomousLearner>,
+    animator: Arc<crate::agent::video_processing::animator::Animator>,
+}
+
+impl VideoEditingAgent {
+    pub fn new(brain: Arc<Mutex<Brain>>, instance_id: &str, animator: Arc<crate::agent::video_processing::animator::Animator>) -> Self {
+        let learner = Arc::new(AutonomousLearner::new(brain.clone(), instance_id));
+        Self { brain, learner, animator }
+    }
+
+    /// Run a "Betterment Cycle": Find a benchmark, learn from it, then try to apply it
+    pub async fn run_betterment_cycle(
+        &self,
+        topic: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        info!("[VEA] 🚀 Starting Betterment Cycle for topic: '{}'", topic);
+
+        // 1. Trigger the learner to find and acquire a benchmark
+        // Since the learner runs as a background loop, we could theoretically just wait for it to populate memory,
+        // or we can manually trigger a "one-off" learning event.
+        // For now, let's assume the learner is already running.
+
+        // 2. Retrieve the best pattern for this topic
+        let kernel = self.brain.lock().await.learning_kernel.clone();
+        let pattern = kernel.lock().await.recall_pattern(topic);
+
+        info!(
+            "[VEA] 🧠 Recalled pattern: '{}' (S: {:.2}s, T: {:.2}x)",
+            pattern.intent_tag, pattern.avg_scene_duration, pattern.transition_speed
+        );
+
+        Ok(())
+    }
+
+    /// Smart Edit wrapper that automatically applies the best learned pattern
+    pub async fn intelligent_edit(
+        &self,
+        input: &Path,
+        instruction: &str,
+        output: &Path,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        info!("[VEA] 🎨 Performing Intelligent Edit: '{}'", instruction);
+
+        // 1. Recall best pattern based on instruction
+        let kernel = self.brain.lock().await.learning_kernel.clone();
+        let pattern = kernel.lock().await.recall_pattern(instruction);
+
+        // 2. Perform Smart Edit with the pattern
+        let result = smart_editor::smart_edit(
+            input,
+            instruction,
+            output,
+            false, // funny_mode
+            None,  // progress_callback
+            None,  // pre_scanned_scenes
+            None,  // pre_scanned_transcript
+            Some(pattern),
+            Some(self.animator.clone()),
+        )
+        .await?;
+
+        // 3. Feed back the result to the learner
+        // (Wait for render to finish, then analyze the duration/pacing of the output)
+        if let Ok(metadata) = std::fs::metadata(output) {
+            if metadata.len() > 0 {
+                // In a real scenario, we'd get the actual video duration here
+                // For now, we use a mock or heuristic if needed
+                self.learner
+                    .learn_from_edit(instruction, output, 30.0, 0.5)
+                    .await;
+            }
+        }
+
+        Ok(result)
+    }
+
+    pub fn start_autonomous_learning(&self) {
+        self.learner.start();
+    }
+
+    pub fn stop_autonomous_learning(&self) {
+        self.learner.stop();
+    }
+}

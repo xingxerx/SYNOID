@@ -17,7 +17,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio::{fs as tfs, process::Command};
-use crate::agent::process_utils::CommandExt;
+use crate::agent::engines::process_utils::CommandExt;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -579,6 +579,7 @@ async fn ai_auto_edit(
             None,
             None,
             None,
+            Some(s.core.animator.clone()),
         )
         .await;
 
@@ -684,6 +685,7 @@ async fn start_render(
                 None,
                 None,
                 None,
+                Some(s.core.animator.clone()),
             )
             .await;
         } else {

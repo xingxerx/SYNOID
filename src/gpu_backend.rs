@@ -8,7 +8,7 @@
 // tunes CUDA batch sizes, thread counts, and FFmpeg presets so the
 // system gets faster as it learns.
 
-use crate::agent::process_utils::CommandExt;
+use crate::agent::engines::process_utils::CommandExt;
 use std::process::Command;
 use tracing::{info, warn};
 

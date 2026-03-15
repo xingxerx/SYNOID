@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SYNOID // PRODUCTION LAB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'crt-bg': '#050505',
+                        'crt-green': '#00FF41',
+                        'crt-green-dim': '#003B00',
+                        'crt-amber': '#FFB000',
+                        'crt-teal': '#008080',
+                        'crt-orange': '#FF8C00',
+                    },
+                    fontFamily: { 'mono': ['"IBM Plex Mono"', 'monospace'] },
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100%); } }
+        @keyframes flicker { 0% { opacity: 0.98; } 50% { opacity: 0.96; } 100% { opacity: 0.98; } }
+        body {
+            background-color: #050505; color: #00FF41; font-family: 'IBM Plex Mono', monospace;
+            overflow: hidden; animation: flicker 0.15s infinite;
+        }
+        body::before {
+            content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.05), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.05));
+            z-index: 100; background-size: 100% 3px, 3px 100%; pointer-events: none;
+        }
+        .crt-border { border: 1px solid #00FF41; position: relative; }
+        .crt-label { position: absolute; top: -10px; left: 10px; background: #050505; padding: 0 5px; font-size: 10px; text-transform: uppercase; color: #00FF41; }
+        .timeline-track { height: 40px; border-bottom: 1px solid #003B00; display: flex; align-items: center; position: relative; }
+        .clip-block { height: 30px; background: #003B00; border: 1px solid #00FF41; box-shadow: 0 0 5px #00FF41; }
+        .playhead { width: 2px; height: 100%; background: #FFB000; position: absolute; top: 0; z-index: 10; box-shadow: 0 0 10px #FFB000; }
+    </style>
+</head>
+<body class="p-2 h-screen flex flex-col gap-2">
+    <!-- HEADER -->
+    <div class="flex justify-between items-center text-[10px] uppercase border-b border-crt-green pb-1 px-2">
+        <span>PROJECT: VIRAL_RECAP_004</span>
+        <div class="flex gap-4">
+            <span class="text-crt-teal">EDITOR_V3 // CONNECTED</span>
+            <span>FPS: 60.0</span>
+        </div>
+    </div>
+
+    <!-- MAIN INTERFACE -->
+    <div class="flex-1 grid grid-cols-12 gap-2 overflow-hidden">
+        <!-- LEFT: TOOLBOX -->
+        <div class="col-span-1 space-y-2">
+            <div class="crt-border aspect-square flex items-center justify-center hover:bg-crt-green hover:text-black cursor-pointer">
+                <span class="text-xl">✂</span>
+            </div>
+            <div class="crt-border aspect-square flex items-center justify-center hover:bg-crt-green hover:text-black cursor-pointer">
+                <span class="text-xl">✎</span>
+            </div>
+            <div class="crt-border aspect-square flex items-center justify-center hover:bg-crt-green hover:text-black cursor-pointer">
+                <span class="text-xl">⚡</span>
+            </div>
+            <div class="crt-border aspect-square flex items-center justify-center hover:bg-crt-green hover:text-black cursor-pointer">
+                <span class="text-xl">▣</span>
+            </div>
+        </div>
+
+        <!-- CENTER: PREVIEW -->
+        <div class="col-span-8 flex flex-col gap-2">
+            <div class="crt-border flex-1 bg-black overflow-hidden flex items-center justify-center relative">
+                <span class="crt-label">Vector Preview Matrix</span>
+                <div class="w-full h-full opacity-30 pointer-events-none" style="background-image: radial-gradient(#00FF41 0.5px, transparent 0.5px); background-size: 20px 20px;"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <p class="text-xs tracking-[1em] opacity-50 uppercase">Rendering Vector Space...</p>
+                </div>
+                <!-- Mock UI Overlays -->
+                <div class="absolute top-4 left-4 text-[9px] font-bold">
+                    <p>RESOL: 3840 x 2160</p>
+                    <p>SCALE: 100.0%</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: INSPECTOR -->
+        <div class="col-span-3 space-y-2">
+            <div class="crt-border p-3 h-1/2">
+                <span class="crt-label">Neural Edit Intent</span>
+                <textarea class="w-full h-24 bg-transparent border-none outline-none text-xs text-crt-amber placeholder-crt-green opacity-80" placeholder="Type editing instructions..."></textarea>
+                <div class="mt-4 flex gap-2">
+                    <button class="flex-1 border border-crt-green text-[10px] p-1 hover:bg-crt-green hover:text-black uppercase font-bold">Compute</button>
+                    <button class="flex-1 border border-crt-teal text-crt-teal text-[10px] p-1 hover:bg-crt-teal hover:text-black uppercase font-bold">Apply</button>
+                </div>
+            </div>
+            <div class="crt-border p-3 flex-1">
+                <span class="crt-label">Reference Media</span>
+                <div class="w-full aspect-video bg-crt-green-dim border border-crt-green border-dashed flex items-center justify-center">
+                    <span class="text-[9px] opacity-50">DROP REFERENCE IMAGE</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TIMELINE -->
+    <div class="h-1/3 crt-border p-2 bg-black bg-opacity-50 overflow-hidden flex flex-col">
+        <span class="crt-label">Timeline Orchestrator</span>
+        <div class="flex-1 overflow-x-auto relative pt-4">
+            <div class="playhead" style="left: 45%;"></div>
+            <!-- Track 1 -->
+            <div class="timeline-track">
+                <div class="text-[8px] absolute -top-4 left-0">VIDEO_01</div>
+                <div class="clip-block w-24 ml-4"></div>
+                <div class="clip-block w-64 ml-2 border-crt-amber shadow-none"></div>
+                <div class="clip-block w-32 ml-4"></div>
+            </div>
+            <!-- Track 2 -->
+            <div class="timeline-track">
+                <div class="text-[8px] absolute -top-4 left-0">AUDIO_ENG</div>
+                <div class="clip-block w-full border-crt-teal bg-opacity-10 bg-crt-teal"></div>
+            </div>
+        </div>
+        <div class="flex justify-between items-center text-[9px] mt-2 opacity-70">
+            <span>00:04:12 / 00:15:00</span>
+            <div class="flex gap-4">
+                <span>ZOOM: 25.0%</span>
+                <span>MODE: RUTHLESS_EDIT</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

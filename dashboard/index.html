@@ -4,292 +4,210 @@
 <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-    <title>SYNOID Project Dashboard V1</title>
+    <title>SYNOID // COMMAND CENTER</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&amp;display=swap"
-        rel="stylesheet" />
-    <link
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
-        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet" />
     <script id="tailwind-config">
         tailwind.config = {
             darkMode: "class",
             theme: {
                 extend: {
                     colors: {
-                        "primary": "#1111d4",
-                        "accent-purple": "#a855f7",
-                        "background-light": "#f6f6f8",
-                        "background-dark": "#101022",
-                        "glass-border": "rgba(255, 255, 255, 0.1)",
-                        "glass-bg": "rgba(255, 255, 255, 0.05)",
+                        'crt-bg': '#050505',
+                        'crt-green': '#00FF41',
+                        'crt-green-dim': '#003B00',
+                        'crt-amber': '#FFB000',
+                        'crt-teal': '#008080',
+                        'crt-orange': '#FF8C00',
+                        'crt-border': '#00FF41',
                     },
                     fontFamily: {
-                        "display": ["Inter", "sans-serif"]
-                    },
-                    borderRadius: {
-                        "DEFAULT": "0.25rem",
-                        "lg": "0.5rem",
-                        "xl": "0.75rem",
-                        "full": "9999px"
+                        'mono': ['"IBM Plex Mono"', 'monospace'],
                     },
                 },
             },
         }
     </script>
     <style>
-        .glass-card {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100%); } }
+        @keyframes flicker { 
+            0% { opacity: 0.97; } 5% { opacity: 0.95; } 10% { opacity: 0.9; } 15% { opacity: 0.95; } 
+            30% { opacity: 0.98; } 50% { opacity: 0.94; } 80% { opacity: 0.99; } 100% { opacity: 0.97; } 
+        }
+        
+        body {
+            background-color: #050505;
+            color: #00FF41;
+            font-family: 'IBM Plex Mono', monospace;
+            overflow-x: hidden;
+            animation: flicker 0.15s infinite;
+            position: relative;
         }
 
-        .ai-glow {
-            box-shadow: 0 0 20px rgba(17, 17, 212, 0.3);
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.05), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.05));
+            z-index: 100;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
         }
 
-        .presence-ring-online {
-            box-shadow: 0 0 0 2px #101022, 0 0 0 4px #0bda68;
+        .scanline {
+            width: 100%; height: 100px; z-index: 101;
+            background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(0, 255, 65, 0.03) 50%, rgba(0, 0, 0, 0) 100%);
+            position: fixed; bottom: 100%; animation: scanline 12s linear infinite;
+            pointer-events: none;
         }
+
+        .crt-border { border: 1px solid #00FF41; position: relative; background: rgba(0, 59, 0, 0.05); }
+        .crt-label { position: absolute; top: -10px; left: 10px; background: #050505; padding: 0 5px; font-size: 10px; text-transform: uppercase; font-weight: bold; color: #00FF41; }
+        
+        .stat-bar { height: 6px; background: #003B00; border: 1px solid #00FF41; position: relative; overflow: hidden; }
+        .stat-fill { height: 100%; background: #00FF41; box-shadow: 0 0 10px #00FF41; transition: width 0.5s ease-out; }
+
+        input, textarea {
+            background: rgba(0, 255, 65, 0.05) !important;
+            border: 1px solid rgba(0, 255, 65, 0.3) !important;
+            color: #00FF41 !important;
+            outline: none !important;
+        }
+        input:focus, textarea:focus {
+            border-color: #00FF41 !important;
+            box-shadow: 0 0 10px rgba(0, 255, 65, 0.2) !important;
+        }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #050505; }
+        ::-webkit-scrollbar-thumb { background: #00FF41; }
     </style>
 </head>
 
-<body
-    class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased overflow-x-hidden">
-    <div class="flex h-screen w-full overflow-hidden">
-        <!-- Sidebar Navigation -->
-        <aside
-            class="w-20 lg:w-64 flex flex-col border-r border-glass-border bg-background-light dark:bg-[#0a0a1a] transition-all duration-300">
-            <div class="p-6 flex items-center gap-3">
-                <div class="bg-primary p-2 rounded-lg ai-glow">
-                    <span class="material-symbols-outlined text-white">auto_awesome</span>
-                </div>
-                <div class="hidden lg:block overflow-hidden">
-                    <h1 class="text-xl font-black tracking-tight leading-none">SYNOID</h1>
-                    <p class="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 font-bold">AI
-                        Co-Pilot</p>
-                </div>
+<body class="p-4 min-h-screen flex flex-col">
+    <div class="scanline"></div>
+
+    <!-- TOP HEADER -->
+    <header class="flex justify-between items-center mb-6 border-b border-crt-green pb-2">
+        <div class="flex items-center gap-4">
+            <h1 class="text-2xl font-bold tracking-tighter">SYNOID_KERNEL v2.0</h1>
+            <span class="text-[10px] px-2 py-0.5 border border-crt-green bg-crt-green text-black font-bold animate-pulse">ACTIVE_SESSION</span>
+        </div>
+        <div class="flex gap-8 text-[10px] uppercase font-bold">
+            <div class="flex items-center gap-2">
+                <span class="text-crt-teal">SENTINEL:</span>
+                <span class="text-crt-green">SECURE</span>
             </div>
-            <nav class="flex-1 px-4 py-6 space-y-2">
-                <div
-                    class="flex items-center gap-3 px-3 py-3 rounded-xl bg-primary/10 text-primary border border-primary/20">
-                    <span class="material-symbols-outlined">dashboard</span>
-                    <span class="text-sm font-semibold hidden lg:block">Dashboard</span>
-                </div>
-                <div
-                    class="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-200 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 transition-colors cursor-pointer">
-                    <span class="material-symbols-outlined">check_circle</span>
-                    <span class="text-sm font-medium hidden lg:block">Tasks</span>
-                </div>
-                <div
-                    class="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-200 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 transition-colors cursor-pointer">
-                    <span class="material-symbols-outlined">smart_toy</span>
-                    <span class="text-sm font-medium hidden lg:block">AI Assistant</span>
-                </div>
-                <div
-                    class="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-200 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 transition-colors cursor-pointer">
-                    <span class="material-symbols-outlined">folder_open</span>
-                    <span class="text-sm font-medium hidden lg:block">Files</span>
-                </div>
-                <a href="/watch.html"
-                    class="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-200 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 transition-colors cursor-pointer">
-                    <span class="material-symbols-outlined">play_circle</span>
-                    <span class="text-sm font-medium hidden lg:block">Video Player</span>
-                </a>
-                <a href="/viewer.html"
-                    class="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-200 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 transition-colors cursor-pointer">
-                    <span class="material-symbols-outlined">photo_library</span>
-                    <span class="text-sm font-medium hidden lg:block">Omni Viewer</span>
-                </a>
-                <div
-                    class="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-200 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 transition-colors cursor-pointer">
-                    <span class="material-symbols-outlined">insights</span>
-                    <span class="text-sm font-medium hidden lg:block">Analytics</span>
-                </div>
-            </nav>
-            <div class="p-4 mt-auto border-t border-glass-border">
-                <div
-                    class="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-200 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 transition-colors cursor-pointer">
-                    <span class="material-symbols-outlined">settings</span>
-                    <span class="text-sm font-medium hidden lg:block">Settings</span>
-                </div>
-                <div
-                    class="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-red-500/10 text-red-500 transition-colors cursor-pointer">
-                    <span class="material-symbols-outlined">logout</span>
-                    <span class="text-sm font-medium hidden lg:block">Sign Out</span>
-                </div>
+            <div class="flex items-center gap-2">
+                <span class="text-crt-teal">UNITS:</span>
+                <span id="active-units">01</span>
             </div>
-        </aside>
-        <!-- Main Content Area -->
-        <main class="flex-1 flex flex-col overflow-y-auto bg-slate-50 dark:bg-background-dark">
-            <!-- Header -->
-            <header
-                class="h-20 flex items-center justify-between px-8 border-b border-glass-border sticky top-0 bg-slate-50/80 dark:bg-background-dark/80 backdrop-blur-xl z-20">
-                <div class="flex items-center gap-4">
-                    <h2 class="text-xl font-bold tracking-tight">Project Overview</h2>
-                    <div class="h-4 w-px bg-glass-border mx-2"></div>
-                    <div class="flex -space-x-2" id="team-presence">
-                        <!-- Team presence will be loaded here -->
-                    </div>
-                </div>
-                <div class="flex items-center gap-4">
-                    <div class="relative hidden md:block">
-                        <span
-                            class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">search</span>
-                        <input
-                            class="w-64 pl-10 pr-4 py-2 rounded-lg bg-slate-200/50 dark:bg-white/5 border border-glass-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                            placeholder="Search project, tasks, files..." type="text" />
-                    </div>
-                    <button
-                        class="size-10 flex items-center justify-center rounded-lg bg-slate-200/50 dark:bg-white/5 border border-glass-border hover:bg-primary/10 hover:text-primary transition-all">
-                        <span class="material-symbols-outlined">notifications</span>
-                    </button>
-                    <div class="size-10 rounded-lg bg-cover bg-center border border-glass-border profile-pic"
-                        data-alt="Current user profile picture"></div>
-                </div>
-            </header>
-            <div class="p-8 space-y-8 max-w-7xl mx-auto w-full">
-                <!-- Welcome Section -->
-                <section class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <span id="system-clock">MARCH 15, 2026 // 01:42</span>
+        </div>
+    </header>
+
+    <!-- NAVIGATION BAR -->
+    <nav class="flex gap-4 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+        <a href="/" class="px-4 py-1 border border-crt-green bg-crt-green text-black text-xs font-bold uppercase">Dashboard</a>
+        <a href="/watch.html" class="px-4 py-1 border border-crt-green text-crt-green text-xs font-bold uppercase hover:bg-crt-green hover:text-black transition-all">Watch</a>
+        <a href="/viewer.html" class="px-4 py-1 border border-crt-green text-crt-green text-xs font-bold uppercase hover:bg-crt-green hover:text-black transition-all">Omni_Viewer</a>
+        <button class="px-4 py-1 border border-crt-amber text-crt-amber text-xs font-bold uppercase hover:bg-crt-amber hover:text-black transition-all">System_Settings</button>
+    </nav>
+
+    <!-- CONTENT GRID -->
+    <div class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-6">
+        
+        <!-- LEFT COLUMN: SYSTEM TELEMETRY -->
+        <div class="md:col-span-3 space-y-6">
+            <div class="crt-border p-5">
+                <span class="crt-label">Cortex Telemetry</span>
+                <div class="space-y-6 mt-2">
                     <div>
-                        <h3 class="text-3xl font-black tracking-tight text-slate-900 dark:text-white mb-2"
-                            id="welcome-message">Welcome back, Sarah.</h3>
-                        <p class="text-slate-500 dark:text-slate-400">SYNOID has identified <span
-                                class="text-primary font-bold" id="critical-items-count">3 critical action items</span>
-                            for today's sprint.</p>
+                        <div class="flex justify-between text-[10px] mb-1 uppercase"><span>Active Tasks</span><span id="tasks-stat">0/0</span></div>
+                        <div class="stat-bar"><div id="tasks-progress" class="stat-fill" style="width: 0%"></div></div>
                     </div>
-                    <div class="flex gap-3">
-                        <button
-                            class="px-5 py-2.5 rounded-xl bg-primary text-white font-bold text-sm ai-glow hover:opacity-90 transition-all flex items-center gap-2">
-                            <span class="material-symbols-outlined text-sm">add</span> New Task
-                        </button>
-                    </div>
-                </section>
-                <!-- Stats Grid -->
-                <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div
-                        class="glass-card p-6 rounded-2xl relative overflow-hidden group hover:border-primary/50 transition-all">
-                        <div class="flex justify-between items-start mb-4">
-                            <p class="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                Active Tasks</p>
-                            <span class="material-symbols-outlined text-primary">analytics</span>
-                        </div>
-                        <div class="flex items-end gap-3">
-                            <h4 class="text-4xl font-black" id="tasks-stat">24/40</h4>
-                            <span class="text-green-500 font-bold text-sm mb-1.5" id="tasks-change">+60%</span>
-                        </div>
-                        <div class="mt-4 w-full bg-slate-200 dark:bg-white/10 h-1.5 rounded-full overflow-hidden">
-                            <div class="bg-primary h-full rounded-full" id="tasks-progress" style="width: 60%"></div>
-                        </div>
-                        <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <span class="material-symbols-outlined text-8xl">checklist</span>
-                        </div>
-                    </div>
-                    <div
-                        class="glass-card p-6 rounded-2xl relative overflow-hidden group hover:border-accent-purple/50 transition-all">
-                        <div class="flex justify-between items-start mb-4">
-                            <p class="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                                Productivity</p>
-                            <span class="material-symbols-outlined text-accent-purple">trending_up</span>
-                        </div>
-                        <div class="flex items-end gap-3">
-                            <h4 class="text-4xl font-black" id="productivity-stat">+12%</h4>
-                            <span class="text-accent-purple font-bold text-sm mb-1.5">Weekly</span>
-                        </div>
-                        <div class="mt-4 flex gap-1 items-end h-8" id="productivity-bars">
-                            <!-- Bars dynamically added -->
-                        </div>
-                    </div>
-                    <div class="glass-card p-6 rounded-2xl border-primary/20 bg-primary/5">
-                        <div class="flex justify-between items-start mb-4">
-                            <p class="text-sm font-bold text-primary uppercase tracking-wider">AI Insights</p>
-                            <div class="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20">
-                                <span class="material-symbols-outlined text-[14px] text-primary">bolt</span>
-                            </div>
-                        </div>
-                        <div class="space-y-3" id="ai-insights">
-                            <!-- Insights dynamically added -->
-                        </div>
-                    </div>
-                </section>
-                <!-- Main Grid -->
-                <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                    <!-- Left: AI Co-pilot & Task Board -->
-                    <div class="xl:col-span-2 space-y-8">
-                        <!-- AI Co-pilot Input -->
-                        <div class="glass-card p-1.5 rounded-2xl ai-glow border-primary/30">
-                            <div class="bg-background-light dark:bg-[#15152a] rounded-xl p-4 flex flex-col gap-4">
-                                <div class="flex items-start gap-4">
-                                    <div
-                                        class="size-10 rounded-full bg-primary flex items-center justify-center shrink-0">
-                                        <span class="material-symbols-outlined text-white">smart_toy</span>
-                                    </div>
-                                    <textarea id="ai-input"
-                                        class="w-full bg-transparent border-none focus:ring-0 text-lg resize-none placeholder:text-slate-600 placeholder:font-light"
-                                        placeholder="Ask SYNOID to summarize today's standup or analyze project risks..."
-                                        rows="2"></textarea>
-                                </div>
-                                <div id="ai-response"
-                                    class="hidden text-sm text-slate-300 bg-black/30 p-3 rounded-lg border border-glass-border">
-                                </div>
-                                <div class="flex items-center justify-between pt-2 border-t border-glass-border">
-                                    <div class="flex items-center gap-1">
-                                        <button class="p-2 text-slate-500 hover:text-primary transition-colors">
-                                            <span class="material-symbols-outlined">mic</span>
-                                        </button>
-                                        <button class="p-2 text-slate-500 hover:text-primary transition-colors">
-                                            <span class="material-symbols-outlined">attach_file</span>
-                                        </button>
-                                        <button class="p-2 text-slate-500 hover:text-primary transition-colors">
-                                            <span class="material-symbols-outlined">image</span>
-                                        </button>
-                                    </div>
-                                    <button id="ask-ai-btn"
-                                        class="px-6 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:scale-[1.02] active:scale-95 transition-all">
-                                        Ask AI Co-pilot
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- Active Projects/Tasks -->
-                        <div class="glass-card rounded-2xl overflow-hidden">
-                            <div class="px-6 py-4 border-b border-glass-border flex justify-between items-center">
-                                <h5 class="font-bold">Focus Tasks</h5>
-                                <button
-                                    class="text-xs text-slate-500 hover:text-white uppercase tracking-widest font-bold">View
-                                    Board</button>
-                            </div>
-                            <div class="divide-y divide-glass-border" id="focus-tasks">
-                                <!-- Tasks dynamically added -->
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Right: Activity Feed & Presence -->
-                    <div class="space-y-8">
-                        <!-- Presence Bar Card -->
-                        <div class="glass-card p-6 rounded-2xl">
-                            <h5 class="font-bold mb-6 flex items-center gap-2">
-                                <span class="material-symbols-outlined text-sm text-green-500 fill-1">circle</span>
-                                Team Activity
-                            </h5>
-                            <div class="space-y-4" id="team-activity-list">
-                                <!-- Activity list dynamically added -->
-                            </div>
-                        </div>
-                        <!-- Recent Activity -->
-                        <div class="glass-card rounded-2xl overflow-hidden">
-                            <div class="px-6 py-4 border-b border-glass-border">
-                                <h5 class="font-bold">Recent Activity</h5>
-                            </div>
-                            <div class="p-6 space-y-6" id="recent-activity-list">
-                                <!-- Recent activity dynamically added -->
-                            </div>
-                        </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] mb-1 uppercase"><span>Productivity</span><span id="productivity-stat">0%</span></div>
+                        <div class="stat-bar"><div id="productivity-progress" class="stat-fill" style="width: 0%"></div></div>
                     </div>
                 </div>
             </div>
-        </main>
+
+            <div class="crt-border p-5 flex-1 min-h-[200px]">
+                <span class="crt-label">Active Processes</span>
+                <div class="text-[10px] space-y-2 font-bold mt-2" id="process-list">
+                    <p class="text-crt-teal">[SUCCESS] ffmpeg_engine.bin</p>
+                    <p class="text-crt-teal">[SUCCESS] motor_cortex.rs</p>
+                    <p class="text-crt-amber">[BUSY] vector_scaler.svg</p>
+                    <p class="text-crt-orange">[DETRCT] sentinel_integrity.check</p>
+                    <p class="opacity-30">. . . WAITING_FOR_INPUT</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER COLUMN: INTENT TERMINAL -->
+        <div class="md:col-span-6 flex flex-col gap-6">
+            <div class="crt-border p-5 flex-1 flex flex-col min-h-[400px]">
+                <span class="crt-label">Intent Terminal</span>
+                <div class="flex-1 overflow-y-auto font-bold text-sm mb-6 pr-2" id="terminal-output">
+                    <p class="opacity-50 text-xs">SYNOID Kernel Initialized successfully.</p>
+                    <p class="opacity-50 text-xs">Awaiting creative directives...</p>
+                    <div id="ai-response-container" class="mt-4 hidden border-l-2 border-crt-teal pl-4 py-2 bg-crt-teal bg-opacity-5">
+                        <p class="text-crt-teal uppercase text-[10px] mb-1">Response from Brain:</p>
+                        <p id="ai-response" class="text-crt-green text-xs leading-relaxed"></p>
+                    </div>
+                </div>
+                <div class="border-t border-crt-green pt-5 flex items-start gap-3">
+                    <span class="animate-pulse text-crt-amber font-black mt-2">&gt;_</span>
+                    <textarea id="ai-input" class="w-full bg-transparent p-3 text-sm placeholder-crt-green-dim resize-none" placeholder="Enter creative intent or system command..." rows="3"></textarea>
+                </div>
+                <div class="flex justify-end mt-4">
+                    <button id="ask-ai-btn" class="px-8 py-2 border border-crt-green text-crt-green hover:bg-crt-green hover:text-black font-bold uppercase text-xs transition-all shadow-neon">Execute Intent</button>
+                </div>
+            </div>
+
+            <div class="crt-border p-4">
+                <span class="crt-label">Focus Pipeline</span>
+                <div class="divide-y divide-crt-green-dim divide-opacity-30" id="focus-tasks">
+                    <!-- Tasks dynamically added -->
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: KERNEL LOGS -->
+        <div class="md:col-span-3 space-y-6">
+            <div class="crt-border p-5 h-full">
+                <span class="crt-label">Kernel Logs</span>
+                <div id="log-list" class="text-[10px] space-y-4 mt-2 h-full overflow-y-auto">
+                    <div class="border-l border-crt-green pl-3">
+                        <p class="opacity-40">01:34:22</p>
+                        <p class="font-bold">RENDER_MODE: RUTHLESS_EDIT_COMPLETE</p>
+                    </div>
+                    <div class="border-l border-crt-teal pl-3">
+                        <p class="opacity-40">01:35:10</p>
+                        <p class="font-bold">VECTOR_BUFFER: 4K UPSCALING_ENGAGED</p>
+                    </div>
+                    <div class="border-l border-crt-orange pl-3">
+                        <p class="opacity-40">01:38:01</p>
+                        <p class="font-bold">SENTINEL_GATE: DISK_INTEGRITY_VERIFIED</p>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <!-- FOOTER STATUS -->
+    <footer class="mt-8 border-t border-crt-green pt-4 flex justify-between items-center text-[9px] font-bold uppercase">
+        <div class="flex gap-8">
+            <div class="flex gap-2"><span class="text-crt-teal">KERNEL_ID:</span><span>SYNOID_0x0A2</span></div>
+            <div class="flex gap-2"><span class="text-crt-teal">UPTIME:</span><span>04:12:05:22</span></div>
+        </div>
+        <div class="flex gap-6">
+            <span class="cursor-pointer hover:text-crt-amber transition-all">SYSTEM_RESET</span>
+            <span class="cursor-pointer hover:text-crt-orange transition-all text-crt-orange underline">EMERGENCY_HALT</span>
+        </div>
+    </footer>
 
     <script>
         // SYNOID Project Dashboard API Connection
@@ -333,8 +251,15 @@
             if (!data) return;
 
             document.getElementById('tasks-stat').textContent = `${data.tasks.active}/${data.tasks.total}`;
-            document.getElementById('tasks-progress').style.width = `${(data.tasks.active / data.tasks.total) * 100}%`;
-            document.getElementById('productivity-stat').textContent = `${data.productivity}%`;
+            const progress = (data.tasks.active / data.tasks.total) * 100;
+            const progressElement = document.getElementById('tasks-progress');
+            if (progressElement) progressElement.style.width = `${progress}%`;
+            
+            const prodStat = document.getElementById('productivity-stat');
+            if (prodStat) prodStat.textContent = `${data.productivity}%`;
+            
+            const prodProgress = document.getElementById('productivity-progress');
+            if (prodProgress) prodProgress.style.width = `${data.productivity}%`;
         }
 
         async function updateTasks() {
@@ -343,16 +268,16 @@
 
             const container = document.getElementById('focus-tasks');
             container.innerHTML = tasks.map(task => `
-            <div class="p-6 flex items-center gap-4 hover:bg-white/5 transition-colors group">
-                <div class="size-5 rounded border-2 ${task.completed ? 'border-primary bg-primary' : 'border-slate-600 group-hover:border-primary'} transition-colors cursor-pointer flex items-center justify-center">
-                    ${task.completed ? '<span class="material-symbols-outlined text-[16px] font-bold">check</span>' : ''}
+            <div class="py-3 flex items-center gap-4 hover:bg-crt-green hover:bg-opacity-5 transition-all group">
+                <div class="size-4 border ${task.completed ? 'bg-crt-green' : 'border-crt-green'} flex items-center justify-center">
+                    ${task.completed ? '<span class="text-[10px] text-black font-black">X</span>' : ''}
                 </div>
                 <div class="flex-1">
-                    <h6 class="font-semibold text-sm ${task.completed ? 'line-through text-slate-500' : ''}">${task.title}</h6>
-                    <p class="text-xs text-slate-500">${task.category} • ${task.due}</p>
+                    <h6 class="text-[11px] font-bold ${task.completed ? 'line-through opacity-40' : ''}">${task.title}</h6>
+                    <p class="text-[9px] opacity-50 uppercase tracking-tighter">${task.category} // DL: ${task.due}</p>
                 </div>
-                <div class="flex items-center gap-3">
-                    <div class="px-2 py-1 rounded-md bg-${task.priority === 'High' ? 'red-500/10 text-red-500' : 'primary/10 text-primary'} text-[10px] font-bold uppercase tracking-tighter">${task.priority}</div>
+                <div class="text-[9px] font-black uppercase text-crt-green group-hover:text-white px-2 border border-crt-green">
+                    ${task.priority}
                 </div>
             </div>
         `).join('');
@@ -361,12 +286,13 @@
         document.getElementById('ask-ai-btn').addEventListener('click', async () => {
             const input = document.getElementById('ai-input');
             const responseBox = document.getElementById('ai-response');
+            const container = document.getElementById('ai-response-container');
             const text = input.value.trim();
             if (!text) return;
 
             input.disabled = true;
-            responseBox.classList.remove('hidden');
-            responseBox.textContent = 'SYNOID is thinking...';
+            container.classList.remove('hidden');
+            responseBox.textContent = 'Brain is processing directive...';
 
             try {
                 const data = await fetchData('/chat', {
@@ -378,16 +304,31 @@
                     responseBox.textContent = data.response;
                 }
             } catch (e) {
-                responseBox.textContent = 'Connection Error.';
+                responseBox.textContent = 'PROTOCOL_ERROR: Connection to Brain failed.';
+                responseBox.classList.add('text-crt-orange');
             } finally {
                 input.disabled = false;
+                input.value = '';
             }
         });
+
+        // Simple Clock
+        function updateClock() {
+            const now = new Date();
+            const timeStr = now.toLocaleString('en-US', { 
+                month: 'short', day: '2-digit', year: 'numeric', 
+                hour: '2-digit', minute: '2-digit', hour12: false 
+            }).toUpperCase().replace(',', ' //');
+            const clockElement = document.getElementById('system-clock');
+            if (clockElement) clockElement.textContent = timeStr;
+        }
 
         // Initial load
         updateStatus();
         updateTasks();
+        updateClock();
         setInterval(updateStatus, 5000);
+        setInterval(updateClock, 1000);
     </script>
 </body>
 

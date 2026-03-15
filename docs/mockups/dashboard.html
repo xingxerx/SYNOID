@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SYNOID // COMMAND CENTER</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'crt-bg': '#050505',
+                        'crt-green': '#00FF41',
+                        'crt-green-dim': '#003B00',
+                        'crt-amber': '#FFB000',
+                        'crt-teal': '#008080',
+                        'crt-orange': '#FF8C00',
+                    },
+                    fontFamily: {
+                        'mono': ['"IBM Plex Mono"', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100%); } }
+        @keyframes flicker { 0% { opacity: 0.97; } 50% { opacity: 0.94; } 100% { opacity: 0.97; } }
+        body {
+            background-color: #050505;
+            color: #00FF41;
+            font-family: 'IBM Plex Mono', monospace;
+            overflow: hidden;
+            animation: flicker 0.1s infinite;
+        }
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 100;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+        .scanline {
+            width: 100%; height: 100px; z-index: 101;
+            background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(0, 255, 65, 0.05) 50%, rgba(0, 0, 0, 0) 100%);
+            position: absolute; bottom: 100%; animation: scanline 10s linear infinite;
+        }
+        .crt-border { border: 1px solid #00FF41; position: relative; }
+        .crt-label { position: absolute; top: -10px; left: 10px; background: #050505; padding: 0 5px; font-size: 10px; text-transform: uppercase; color: #00FF41; }
+        .stat-bar { height: 8px; background: #003B00; border: 1px solid #00FF41; position: relative; overflow: hidden; }
+        .stat-fill { height: 100%; background: #00FF41; box-shadow: 0 0 10px #00FF41; }
+    </style>
+</head>
+<body class="p-4 h-screen flex flex-col">
+    <div class="scanline"></div>
+    
+    <!-- TOP NAV -->
+    <header class="flex justify-between items-center mb-6 border-b border-crt-green pb-2">
+        <div class="flex items-center gap-4">
+            <h1 class="text-2xl font-bold tracking-tighter">SYNOID_OS v2.0</h1>
+            <span class="text-xs px-2 py-0.5 border border-crt-green bg-crt-green text-black font-bold animate-pulse">LIVE</span>
+        </div>
+        <div class="flex gap-6 text-[10px] uppercase">
+            <span>MEM: 1.2GB/16GB</span>
+            <span>GPU: RTX_3080_ENABLED</span>
+            <span class="text-crt-teal">SENTINEL: SECURE</span>
+            <span id="clock">MARCH 15, 2026 01:38</span>
+        </div>
+    </header>
+
+    <!-- CONTENT GRID -->
+    <div class="flex-1 grid grid-cols-12 gap-4">
+        
+        <!-- LEFT: SYSTEM MONITOR -->
+        <div class="col-span-3 space-y-4">
+            <div class="crt-border p-4 h-1/3">
+                <span class="crt-label">Kernel Health</span>
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-[10px] mb-1"><span>GHOST_THREAD</span><span>98%</span></div>
+                        <div class="stat-bar"><div class="stat-fill" style="width: 98%"></div></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-[10px] mb-1"><span>MOTOR_CORTEX</span><span>45%</span></div>
+                        <div class="stat-bar"><div class="stat-fill" style="width: 45%"></div></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="crt-border p-4 flex-1">
+                <span class="crt-label">Active Processes</span>
+                <div class="text-[10px] space-y-1 font-bold">
+                    <p class="text-crt-teal">[OK] ffmpeg_service.bin</p>
+                    <p class="text-crt-teal">[OK] neural_brain.ghost</p>
+                    <p class="text-crt-amber">[WAIT] production_queue.sync</p>
+                    <p class="text-red-500">[WARN] unauthorized_login_attempt</p>
+                    <p class="opacity-50">. . . </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- CENTER: COMMAND TERMINAL -->
+        <div class="col-span-6 flex flex-col gap-4">
+            <div class="crt-border p-4 flex-1 flex flex-col">
+                <span class="crt-label">Command Central</span>
+                <div class="flex-1 overflow-y-auto font-bold text-sm mb-4">
+                    <p class="opacity-70">SYNOID Kernel Initialized.</p>
+                    <p class="opacity-70">Loading cortex modules...</p>
+                    <p class="text-crt-teal">&gt; Welcome back, Operator.</p>
+                    <p class="text-crt-teal">&gt; Brain is ready for intent processing.</p>
+                    <div class="mt-4 p-2 border border-crt-green border-dashed bg-crt-green bg-opacity-5">
+                       <p class="text-crt-amber">[INTENT DETECTED]</p>
+                       <p>"Analyze gameplay.mp4 and enhance audio for broadcast standards"</p>
+                    </div>
+                </div>
+                <div class="border-t border-crt-green pt-4 flex gap-2">
+                    <span class="animate-pulse">&gt;</span>
+                    <input type="text" class="bg-transparent border-none outline-none flex-1 placeholder-crt-green placeholder-opacity-30" placeholder="Type command or creative intent here...">
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: RECENT LOGS & COMMS -->
+        <div class="col-span-3 space-y-4">
+            <div class="crt-border p-4 h-full">
+                <span class="crt-label">Log Feed</span>
+                <div class="text-[9px] space-y-2">
+                    <div class="border-l-2 border-crt-green pl-2">
+                        <p class="opacity-50">01:34:22</p>
+                        <p>RENDER_SUCCESS: clip_01.mp4</p>
+                    </div>
+                    <div class="border-l-2 border-crt-teal pl-2">
+                        <p class="opacity-50">01:35:10</p>
+                        <p>VECTOR_ENGINE: Scaling frame 2400 to 4K</p>
+                    </div>
+                    <div class="border-l-2 border-crt-orange pl-2">
+                        <p class="opacity-50">01:38:01</p>
+                        <p>SENTINEL: File integrity check completed</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOTTOM STRIP -->
+    <footer class="mt-4 border-t border-crt-green pt-2 flex justify-between text-[10px]">
+        <div class="flex gap-4">
+            <span>TERMINAL_ID: 0x88F2</span>
+            <span>UPTIME: 44:12:05</span>
+        </div>
+        <div class="flex gap-4">
+            <span class="text-crt-amber hover:underline cursor-pointer">INIT_RECOVERY</span>
+            <span class="text-crt-green hover:underline cursor-pointer">POWER_OFF</span>
+        </div>
+    </footer>
+</body>
+</html>

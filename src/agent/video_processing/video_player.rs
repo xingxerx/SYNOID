@@ -1,0 +1,161 @@
+use std::io::Read;
+use std::process::{Child, Command, Stdio};
+use crate::agent::engines::process_utils::CommandExt;
+use std::sync::mpsc::{sync_channel, Receiver, TryRecvError};
+use std::thread;
+use std::time::{Duration, Instant};
+
+pub struct VideoPlayer {
+    receiver: Receiver<Vec<u8>>,
+    process: Option<Child>,
+    pub width: usize,
+    pub height: usize,
+    pub fps: f64,
+    last_frame_time: Option<Instant>,
+    current_frame: Option<Vec<u8>>,
+    pub playing: bool,
+}
+
+impl VideoPlayer {
+    pub fn new(
+        path: &str,
+        timestamp: f64,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let width = 640;
+        let height = 360;
+        let fps = 30.0;
+
+        let mut child = Command::new("ffmpeg")
+            .stealth()
+            .arg("-ss")
+            .arg(format!("{:.3}", timestamp))
+            .arg("-i")
+            .arg(path)
+            .arg("-f")
+            .arg("image2pipe")
+            .arg("-pix_fmt")
+            .arg("rgb24")
+            .arg("-vcodec")
+            .arg("rawvideo")
+            .arg("-s")
+            .arg(format!("{}x{}", width, height))
+            .arg("-r")
+            .arg(fps.to_string())
+            .arg("-")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        let mut stdout = child.stdout.take().expect("Failed to grab stdout");
+        let stderr = child.stderr.take().expect("Failed to grab stderr");
+        let (tx, rx) = sync_channel(5);
+
+        let frame_size = width * height * 3;
+
+        // Thread to read stderr for logging
+        thread::spawn(move || {
+            use std::io::BufRead;
+            let mut err_reader = std::io::BufReader::new(stderr);
+            let mut line = String::new();
+            while let Ok(n) = err_reader.read_line(&mut line) {
+                if n == 0 {
+                    break;
+                }
+                if line.contains("Error") || line.contains("fatal") || line.contains("Can't") {
+                    tracing::error!("[ffmpeg] {}", line.trim());
+                }
+                line.clear();
+            }
+        });
+
+        thread::spawn(move || {
+            let mut buffer = vec![0u8; frame_size];
+            loop {
+                match stdout.read_exact(&mut buffer) {
+                    Ok(_) => {
+                        if tx.send(buffer.clone()).is_err() {
+                            break; // receiver dropped
+                        }
+                    }
+                    Err(_) => break, // EOF or error
+                }
+            }
+        });
+
+        // Also spawn a detatched audio player
+        let _audio_process = Command::new("ffplay")
+            .stealth()
+            .arg("-nodisp")
+            .arg("-autoexit")
+            .arg("-ss")
+            .arg(format!("{:.3}", timestamp))
+            .arg(path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+
+        Ok(Self {
+            receiver: rx,
+            process: Some(child),
+            width,
+            height,
+            fps,
+            last_frame_time: None,
+            current_frame: None,
+            playing: true,
+        })
+    }
+
+    pub fn stop(&mut self) {
+        if let Some(mut child) = self.process.take() {
+            let _ = child.kill();
+        }
+        self.playing = false;
+        // Kill ffplay instances just in case
+        let _ = Command::new("pkill").stealth().arg("ffplay").spawn();
+        #[cfg(target_os = "windows")]
+        let _ = Command::new("taskkill")
+            .stealth()
+            .arg("/F")
+            .arg("/IM")
+            .arg("ffplay.exe")
+            .spawn();
+    }
+
+    pub fn get_next_frame(&mut self) -> Option<(bool, &Vec<u8>)> {
+        if !self.playing {
+            return self.current_frame.as_ref().map(|f| (false, f));
+        }
+
+        let now = Instant::now();
+        let frame_duration = Duration::from_secs_f64(1.0 / self.fps);
+
+        if let Some(last) = self.last_frame_time {
+            if now.duration_since(last) < frame_duration {
+                return self.current_frame.as_ref().map(|f| (false, f));
+            }
+        }
+
+        match self.receiver.try_recv() {
+            Ok(frame) => {
+                self.current_frame = Some(frame);
+                self.last_frame_time = Some(now);
+                self.current_frame.as_ref().map(|f| (true, f))
+            }
+            Err(TryRecvError::Empty) => {
+                // Wait for ffmpeg to catch up
+                self.current_frame.as_ref().map(|f| (false, f))
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.playing = false;
+                self.current_frame.as_ref().map(|f| (false, f))
+            }
+        }
+    }
+}
+
+impl Drop for VideoPlayer {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}

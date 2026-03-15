@@ -8,7 +8,7 @@ use eframe::egui;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use crate::agent::core::AgentCore;
+use crate::agent::core_systems::core::AgentCore;
 
 // --- Color Palette (Premium Dark) ---
 const COLOR_BG_DARK: egui::Color32 = egui::Color32::from_rgb(22, 22, 26);
