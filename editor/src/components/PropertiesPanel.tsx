@@ -1,10 +1,10 @@
 import React from 'react';
 import type { TimelineClip, CaptionData, CaptionStyle, ClipTransform } from '../types';
 
-const CAPTION_COLORS = ['#ffffff', '#ffff00', '#ff7832', '#00ff88', '#4a9eff', '#ff4444'];
-const ANIMATIONS = ['none', 'karaoke', 'fade', 'pop', 'bounce', 'typewriter'] as const;
-const POSITIONS = ['top', 'center', 'bottom'] as const;
-const FONTS = ['Inter', 'Arial', 'Impact', 'Georgia', 'Courier New', 'Comic Sans MS'];
+const CAPTION_COLORS = ['#ffffff', '#00ff88', '#ffb000', '#008080', '#00ffd5', '#ff0000'];
+const ANIMATIONS = ['NONE', 'KARAOKE', 'FADE', 'POP', 'BOUNCE', 'TYPEWRITER'] as const;
+const POSITIONS = ['TOP', 'CENTER', 'BOTTOM'] as const;
+const FONTS = ['IBM Plex Mono', 'Courier New', 'Consolas', 'monospace'];
 
 interface Props {
     selectedClip: TimelineClip | null;
@@ -23,9 +23,9 @@ export function PropertiesPanel({
 
     if (!selectedClip) {
         return (
-            <div style={{ padding: '20px 12px', color: 'var(--text-dim)', fontSize: 12, textAlign: 'center' }}>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>☝️</div>
-                Select a clip to view its properties
+            <div style={{ padding: '20px 12px', color: 'var(--crt-green)', fontSize: 10, textAlign: 'center', opacity: 0.7 }}>
+                <div style={{ fontSize: 24, marginBottom: 8 }}>[ ! ]</div>
+                AWAITING_SELECTION...
             </div>
         );
     }
@@ -34,7 +34,7 @@ export function PropertiesPanel({
         <div>
             {/* Clip basics */}
             <div className="prop-section">
-                <h4>Clip</h4>
+                <h4>DATA::NODE</h4>
                 <div className="prop-row">
                     <span className="prop-label">Start</span>
                     <input
@@ -154,8 +154,8 @@ export function PropertiesPanel({
                             {ANIMATIONS.map(a => (
                                 <button
                                     key={a}
-                                    className={`caption-anim-btn${style.animation === a ? ' active' : ''}`}
-                                    onClick={() => onUpdateCaptionStyle(selectedClip.id, { animation: a })}
+                                    className={`caption-anim-btn${style.animation === a.toLowerCase() ? ' active' : ''}`}
+                                    onClick={() => onUpdateCaptionStyle(selectedClip.id, { animation: a.toLowerCase() as any })}
                                 >
                                     {a}
                                 </button>
@@ -169,8 +169,8 @@ export function PropertiesPanel({
                             {POSITIONS.map(p => (
                                 <button
                                     key={p}
-                                    className={`caption-anim-btn${style.position === p ? ' active' : ''}`}
-                                    onClick={() => onUpdateCaptionStyle(selectedClip.id, { position: p })}
+                                    className={`caption-anim-btn${style.position === p.toLowerCase() ? ' active' : ''}`}
+                                    onClick={() => onUpdateCaptionStyle(selectedClip.id, { position: p.toLowerCase() as any })}
                                 >
                                     {p}
                                 </button>
@@ -194,7 +194,7 @@ export function PropertiesPanel({
                             onClick={() => selectedClip.assetId && onTranscribe(selectedClip.assetId)}
                             disabled={!selectedClip.assetId}
                         >
-                            🎙 Transcribe Audio
+                            [ 🎙 ] RUN_TRANSCRIBER
                         </button>
                     )}
                 </div>

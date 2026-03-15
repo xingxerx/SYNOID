@@ -2,9 +2,9 @@ import React, { useCallback, useRef, useState, useEffect } from 'react';
 import type { Track, TimelineClip, Asset, CaptionData } from '../types';
 
 const TRACK_COLORS: Record<string, string> = {
-    text: 'rgba(180,100,255,0.85)',
-    video: 'rgba(74,158,255,0.85)',
-    audio: 'rgba(61,190,122,0.85)',
+    text: 'rgba(0, 128, 128, 0.4)', // crt-teal
+    video: 'rgba(0, 255, 65, 0.2)', // crt-green
+    audio: 'rgba(255, 176, 0, 0.2)', // crt-amber
 };
 
 interface Props {
@@ -117,17 +117,17 @@ export function Timeline({
         <div className="timeline">
             {/* Timeline toolbar */}
             <div className="timeline-toolbar">
-                <button className="tl-btn" onClick={() => onSeek(0)} title="Go to start">⏮</button>
+                <button className="tl-btn" onClick={() => onSeek(0)} title="Go to start">«</button>
                 <button className={`tl-btn${isPlaying ? ' active' : ''}`} onClick={onPlayPause} title="Play/Pause">
-                    {isPlaying ? '⏸' : '▶'}
+                    {isPlaying ? '▣' : '▶'}
                 </button>
-                <button className="tl-btn" onClick={() => onSeek(duration)} title="Go to end">⏭</button>
+                <button className="tl-btn" onClick={() => onSeek(duration)} title="Go to end">»</button>
                 <button className="tl-btn" title="Split at playhead (S)" onClick={() => {
                     if (selectedClipId) onSplitClip(selectedClipId, playheadPosition);
                 }}>✂</button>
                 <button className="tl-btn" title="Delete selected" onClick={() => {
                     if (selectedClipId) onDeleteClip(selectedClipId);
-                }}>🗑</button>
+                }}>✖</button>
 
                 <div className="tl-spacer" />
 
@@ -152,9 +152,9 @@ export function Timeline({
                     {tracks.map(t => (
                         <div key={t.id} className="track-label">
                             <span style={{ marginRight: 4, fontSize: 10 }}>
-                                {t.type === 'text' ? '💬' : t.type === 'video' ? '▶' : '🎵'}
+                                {t.type === 'text' ? '◈' : t.type === 'video' ? '▣' : '∿'}
                             </span>
-                            {t.name}
+                            {t.name.toUpperCase()}
                         </div>
                     ))}
                 </div>
@@ -188,7 +188,7 @@ export function Timeline({
                                         {trackClips.map(clip => {
                                             const asset = assets.find(a => a.id === clip.assetId);
                                             const data = captionData[clip.id];
-                                            const label = data ? '💬 Captions' : (asset?.filename ?? 'Clip');
+                                            const label = data ? 'DATA::CAPTIONS' : (asset?.filename?.toUpperCase() ?? 'CLIP_RAW');
                                             const color = TRACK_COLORS[track.type] ?? 'rgba(100,100,100,0.8)';
                                             const w = Math.max(clip.duration * timelineZoom, 8);
 

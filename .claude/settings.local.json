@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo test --test cuda_agent_test -- --nocapture)",
+      "Bash(cargo test --lib cuda_kernel_gen::tests --no-fail-fast -- --nocapture)",
+      "Bash(cargo build --lib)",
+      "Bash(Select-Object -First 50)",
+      "Bash(cargo test --lib -- cuda --nocapture)",
+      "Bash(cargo check:*)",
+      "Bash(cargo test --lib cuda --no-fail-fast -- --nocapture)",
+      "Bash(cargo run --example cuda_agent_demo)",
+      "Bash(npm audit)",
+      "Bash(npm audit fix)",
+      "Bash(npm outdated)",
+      "Bash(npm view yauzl versions --json)",
+      "Bash(npm install)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

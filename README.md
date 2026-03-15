@@ -236,23 +236,92 @@ This script automatically:
 
 ## 🏗️ Architecture
 
-SYNOID is built on a modular "Brain-Cortex" architecture:
+SYNOID is built on a modular "Brain-Cortex" architecture with organized subsystems:
 
 ```
 src/
 ├── main.rs              # CLI Entry Point
 ├── window.rs            # Command Center GUI (eframe/egui)
+├── editor_api.rs        # Video editing API
+├── gpu_backend.rs       # GPU acceleration backend
 └── agent/
-    ├── core.rs          # AgentCore: The central state manager ("The Ghost")
-    ├── brain.rs         # AI Brain: Intent processing & Neuroplasticity
-    ├── motor_cortex.rs  # MotorCortex: Execution engine & FFmpeg generation
-    ├── unified_pipeline.rs # Pipeline: Orchestrates multi-stage workflows
-    ├── vector_engine.rs # Vector Engine: SVG conversion & upscaling
-    ├── voice/           # Voice Engine: Cloning, TTS, Transcription
-    ├── defense/         # Sentinel: Cyberdefense & Integrity monitoring
-    ├── academy/         # Style Library & Learning
-    └── tools/           # Vision, Audio, Source, Production tools
+    ├── core_systems/    # Brain, consciousness, learning, health
+    │   ├── brain.rs           # AI Brain: Intent processing & Neuroplasticity
+    │   ├── consciousness.rs   # Self-awareness and decision making
+    │   ├── neuroplasticity.rs # Adaptive learning patterns
+    │   ├── autonomous_learner.rs # Style learning from reference videos
+    │   ├── learning.rs        # Knowledge accumulation
+    │   ├── core.rs            # AgentCore: Central state manager
+    │   ├── body.rs            # Physical manifestation
+    │   └── health.rs          # System health monitoring
+    │
+    ├── ai_systems/      # LLM providers, reasoning, orchestration
+    │   ├── llm_provider.rs    # Multi-provider LLM interface
+    │   ├── gpt_oss_bridge.rs  # OSS model bridge (Ollama/Groq)
+    │   ├── token_optimizer.rs # Token usage optimization
+    │   ├── reasoning.rs       # Logical reasoning engine
+    │   ├── moe.rs             # Mixture-of-Experts routing
+    │   ├── supervisor.rs      # Multi-agent supervisor
+    │   ├── multi_agent.rs     # Multi-agent coordination
+    │   └── hive_mind.rs       # Distributed agent intelligence
+    │
+    ├── video_processing/ # Video editing, playback, style learning
+    │   ├── video_editing_agent.rs # Smart video editing agent
+    │   ├── video_player.rs        # Video playback engine
+    │   ├── video_stitcher.rs      # Multi-clip stitching
+    │   ├── video_style_learner.rs # Style pattern learning
+    │   ├── multicam.rs            # Multi-camera sync & switching
+    │   ├── animator.rs            # Motion & animation engine
+    │   └── upscale_engine.rs      # Video upscaling (SeedVR2/Real-ESRGAN)
+    │
+    ├── tools/           # Audio, vision, transcription, research
+    │   ├── audio_tools.rs     # Audio enhancement & analysis
+    │   ├── vision_tools.rs    # Computer vision & frame analysis
+    │   ├── transcription.rs   # Speech-to-text transcription
+    │   ├── source_tools.rs    # Content sourcing (YouTube, etc.)
+    │   ├── research_tools.rs  # AI-powered research
+    │   └── production_tools.rs # FFmpeg & production utilities
+    │
+    ├── engines/         # Core processing engines and pipelines
+    │   ├── super_engine.rs    # High-level orchestration engine
+    │   ├── unified_pipeline.rs # Multi-stage workflow pipeline
+    │   ├── motor_cortex.rs    # Execution engine & FFmpeg generation
+    │   ├── editor_queue.rs    # Edit job queue manager
+    │   └── process_utils.rs   # Process management utilities
+    │
+    ├── cuda/            # High-performance GPU computation
+    │   ├── cuda_kernel_gen.rs # AI-powered CUDA kernel generation
+    │   ├── cuda_pipeline.rs   # CUDA-enhanced pipeline
+    │   ├── latent_optimizer.rs # Latent-space optimization
+    │   └── cuda_skills/       # Pre-written CUDA kernels
+    │
+    ├── security/        # Defense, validation, safety systems
+    │   ├── io_shield.rs       # I/O monitoring & protection
+    │   ├── validation_gate.rs # Input validation
+    │   ├── download_guard.rs  # Download safety checks
+    │   ├── recovery.rs        # Error recovery & rollback
+    │   └── defense/           # Sentinel & file integrity monitoring
+    │
+    └── specialized/     # Domain-specific agents and editors
+        ├── reference_editor.rs # Reference-guided video editing
+        ├── synoid_link.rs      # CUDA kernel execution bridge
+        ├── global_discovery.rs # Content discovery agent
+        ├── smart_editor/       # Intent-based smart editing
+        └── academy/            # Style library & code analysis
 ```
+
+### Module Organization
+
+The codebase is organized into logical subsystems:
+
+- **Core Systems**: Brain, consciousness, learning - the "mind" of SYNOID
+- **AI Systems**: LLM integration, reasoning, multi-agent orchestration
+- **Video Processing**: Video editing, playback, style learning, upscaling
+- **Tools**: Specialized utilities for audio, vision, transcription, research
+- **Engines**: Core processing pipelines and execution engines
+- **CUDA**: GPU-accelerated computation and kernel generation
+- **Security**: Defense mechanisms, validation, and safety systems
+- **Specialized**: Domain-specific agents and advanced editing features
 
 ---
 

@@ -93,3 +93,7 @@ target_*/
 
 # Documentation Archive (generated files)
 docs/archive/
+
+# Configuration files (instance-specific)
+config/synoid_settings_*.json
+config/editing_strategy.json

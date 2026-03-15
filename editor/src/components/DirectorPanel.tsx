@@ -12,7 +12,7 @@ export function DirectorPanel({ sessionId, assetId, onAction }: Props) {
     const [messages, setMessages] = useState<AIChatMessage[]>([
         {
             role: 'assistant',
-            content: "👋 I'm your AI Director. Tell me what you want to do with this video — remove silences, add captions, highlight action moments, or anything else!",
+            content: ":: INITIALIZING_DIRECTOR_KERNEL...\n:: AWAITING_CMD: [ SILENCE_REMOVAL | CAPTION_GEN | ACTION_HIGHLIGHT ]\n:: SYSTEM_READY.",
             timestamp: Date.now(),
         }
     ]);
@@ -45,7 +45,7 @@ export function DirectorPanel({ sessionId, assetId, onAction }: Props) {
         } catch (e: any) {
             setMessages(prev => [...prev, {
                 role: 'assistant',
-                content: `⚠️ Error: ${e.message}. Is Ollama running? Try: \`ollama serve\``,
+                content: `!! ERROR: ${e.message}\n!! CHECK_DEPENDENCY: [ OLLAMA ]\n!! CMD: [ ollama serve ]`,
                 timestamp: Date.now(),
             }]);
         } finally {
@@ -72,7 +72,7 @@ export function DirectorPanel({ sessionId, assetId, onAction }: Props) {
                 <div className="chat-messages">
                     {messages.map((msg, i) => (
                         <div key={i} className={`chat-msg ${msg.role}`}>
-                            {msg.role === 'assistant' && <div className="msg-label">🎬 SYNOID Director</div>}
+                            {msg.role === 'assistant' && <div className="msg-label">:: SYNOID::DIRECTOR_PROMPT</div>}
                             <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
                             {msg.actions && msg.actions.length > 0 && (
                                 <div className="chat-actions">
@@ -82,7 +82,7 @@ export function DirectorPanel({ sessionId, assetId, onAction }: Props) {
                                             className="chat-action-btn"
                                             onClick={() => executeAction(action)}
                                         >
-                                            ⚡ {action.label}
+                                            [ ▷ ] {action.label.toUpperCase()}
                                         </button>
                                     ))}
                                 </div>
@@ -91,7 +91,7 @@ export function DirectorPanel({ sessionId, assetId, onAction }: Props) {
                     ))}
                     {loading && (
                         <div className="chat-msg assistant">
-                            <div className="msg-label">🎬 SYNOID Director</div>
+                            <div className="msg-label">:: SYNOID::DIRECTOR_PROMPT</div>
                             <span className="spinner" />
                         </div>
                     )}
@@ -103,7 +103,7 @@ export function DirectorPanel({ sessionId, assetId, onAction }: Props) {
             <div className="chat-input-area" style={{ padding: '8px 0 0', borderTop: '1px solid var(--border-dim)' }}>
                 <textarea
                     className="chat-textarea"
-                    placeholder="Describe what you want... e.g. 'Remove silences and add captions'"
+                    placeholder="INPUT_COMMANDS_HERE... e.g. 'EXTRACT_HIGHLIGHTS'"
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKey}
@@ -115,7 +115,7 @@ export function DirectorPanel({ sessionId, assetId, onAction }: Props) {
                     onClick={send}
                     disabled={loading || !input.trim() || !sessionId}
                 >
-                    {loading ? '...' : '⚡ Execute'}
+                    {loading ? '...' : '[ ⚡ ] RUN_COMMIT'}
                 </button>
             </div>
         </div>

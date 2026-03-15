@@ -169,14 +169,18 @@ export function PreviewPanel({
                             onEnded={() => seekingRef.current = false}
                             preload="metadata"
                             playsInline
-                            style={{ cursor: 'pointer' }}
+                            style={{ 
+                                cursor: 'pointer',
+                                filter: 'brightness(1.1) contrast(1.1) sepia(0.2) hue-rotate(-10deg)',
+                                border: '1px solid var(--crt-green)'
+                            }}
                         />
                         <canvas ref={canvasRef} className="preview-canvas" />
                     </>
                 ) : (
                     <div className="preview-placeholder">
-                        <div className="play-icon">▶</div>
-                        <span style={{ fontSize: 12 }}>Import a video to begin</span>
+                        <div className="play-icon border border-crt-green p-4">▣</div>
+                        <span style={{ fontSize: 10, fontWeight: 'bold' }}>AWAITING_SOURCE_STREAM...</span>
                     </div>
                 )}
             </div>

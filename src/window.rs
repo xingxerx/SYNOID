@@ -10,18 +10,24 @@ use std::sync::{Arc, Mutex};
 
 use crate::agent::core_systems::core::AgentCore;
 
-// --- Color Palette (Premium Dark) ---
-const COLOR_BG_DARK: egui::Color32 = egui::Color32::from_rgb(22, 22, 26);
-const COLOR_PANEL_BG: egui::Color32 = egui::Color32::from_rgb(30, 30, 34);
-const COLOR_SIDEBAR_BG: egui::Color32 = egui::Color32::from_rgb(26, 26, 30);
-const COLOR_ACCENT_ORANGE: egui::Color32 = egui::Color32::from_rgb(255, 120, 50);
-const COLOR_ACCENT_BLUE: egui::Color32 = egui::Color32::from_rgb(80, 160, 255);
-const COLOR_ACCENT_GREEN: egui::Color32 = egui::Color32::from_rgb(80, 200, 120);
-const COLOR_ACCENT_PURPLE: egui::Color32 = egui::Color32::from_rgb(180, 100, 255);
-const COLOR_ACCENT_RED: egui::Color32 = egui::Color32::from_rgb(255, 80, 80);
-const COLOR_TEXT_PRIMARY: egui::Color32 = egui::Color32::from_rgb(220, 220, 220);
-const COLOR_TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(140, 140, 150);
-const COLOR_TREE_ITEM: egui::Color32 = egui::Color32::from_rgb(100, 180, 255);
+// --- Color Palette (CRT Terminal / Cyberpunk) ---
+const COLOR_BG_DARK: egui::Color32 = egui::Color32::from_rgb(5, 5, 5);         // #050505 Deep Black
+const COLOR_PANEL_BG: egui::Color32 = egui::Color32::from_rgb(8, 8, 8);         // #080808
+const COLOR_SIDEBAR_BG: egui::Color32 = egui::Color32::from_rgb(6, 6, 6);       // #060606
+const COLOR_CRT_GREEN: egui::Color32 = egui::Color32::from_rgb(0, 255, 65);     // #00FF41 Matrix Green
+const COLOR_CRT_GREEN_DIM: egui::Color32 = egui::Color32::from_rgb(0, 59, 0);   // #003B00
+const COLOR_CRT_AMBER: egui::Color32 = egui::Color32::from_rgb(255, 176, 0);    // #FFB000 Amber
+const COLOR_CRT_TEAL: egui::Color32 = egui::Color32::from_rgb(0, 128, 128);     // #008080 Teal
+const COLOR_CRT_ORANGE: egui::Color32 = egui::Color32::from_rgb(255, 140, 0);   // #FF8C00 Warning
+// Semantic aliases used throughout the codebase
+const COLOR_ACCENT_ORANGE: egui::Color32 = COLOR_CRT_GREEN;   // primary = matrix green
+const COLOR_ACCENT_BLUE: egui::Color32 = COLOR_CRT_TEAL;
+const COLOR_ACCENT_GREEN: egui::Color32 = COLOR_CRT_GREEN;
+const COLOR_ACCENT_PURPLE: egui::Color32 = COLOR_CRT_AMBER;
+const COLOR_ACCENT_RED: egui::Color32 = COLOR_CRT_ORANGE;
+const COLOR_TEXT_PRIMARY: egui::Color32 = COLOR_CRT_GREEN;
+const COLOR_TEXT_SECONDARY: egui::Color32 = egui::Color32::from_rgb(0, 140, 44); // dimmed green
+const COLOR_TREE_ITEM: egui::Color32 = egui::Color32::from_rgb(0, 200, 55);      // bright green for nav
 
 // --- WSL Helpers ---
 fn is_wsl() -> bool {
@@ -352,27 +358,40 @@ impl SynoidApp {
         let mut visuals = egui::Visuals::dark();
         visuals.window_fill = COLOR_BG_DARK;
         visuals.panel_fill = COLOR_PANEL_BG;
+        visuals.extreme_bg_color = COLOR_BG_DARK;
+        visuals.faint_bg_color = egui::Color32::from_rgb(0, 20, 5);
         visuals.widgets.noninteractive.bg_fill = COLOR_PANEL_BG;
-        visuals.widgets.active.bg_fill = COLOR_ACCENT_ORANGE;
-        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(50, 50, 60);
-        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-        visuals.selection.bg_fill = COLOR_ACCENT_ORANGE;
+        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN_DIM);
+        visuals.widgets.inactive.bg_fill = COLOR_BG_DARK;
+        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
+        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN_DIM);
+        visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(0, 40, 10);
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
+        visuals.widgets.active.bg_fill = COLOR_CRT_GREEN_DIM;
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
+        visuals.selection.bg_fill = egui::Color32::from_rgba_unmultiplied(0, 255, 65, 50);
+        visuals.selection.stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
+        visuals.window_stroke = egui::Stroke::new(1.0, COLOR_CRT_GREEN);
+        visuals.override_text_color = Some(COLOR_CRT_GREEN);
 
         ctx.set_visuals(visuals);
 
         let mut style = (*ctx.style()).clone();
+        // All text in monospace — enforces the terminal aesthetic
         style.text_styles = [
             (
                 egui::TextStyle::Heading,
-                egui::FontId::new(22.0, egui::FontFamily::Proportional),
+                egui::FontId::new(16.0, egui::FontFamily::Monospace),
             ),
             (
                 egui::TextStyle::Body,
-                egui::FontId::new(14.0, egui::FontFamily::Proportional),
+                egui::FontId::new(13.0, egui::FontFamily::Monospace),
             ),
             (
                 egui::TextStyle::Button,
-                egui::FontId::new(13.0, egui::FontFamily::Proportional),
+                egui::FontId::new(12.0, egui::FontFamily::Monospace),
             ),
             (
                 egui::TextStyle::Monospace,
@@ -380,13 +399,68 @@ impl SynoidApp {
             ),
             (
                 egui::TextStyle::Small,
-                egui::FontId::new(11.0, egui::FontFamily::Proportional),
+                egui::FontId::new(10.0, egui::FontFamily::Monospace),
             ),
         ]
         .into();
-        style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        style.spacing.button_padding = egui::vec2(12.0, 6.0);
+        style.spacing.item_spacing = egui::vec2(6.0, 4.0);
+        style.spacing.button_padding = egui::vec2(10.0, 4.0);
         ctx.set_style(style);
+    }
+
+    /// Draws a CRT-style bordered panel with a floating uppercase label.
+    /// Returns the inner `Rect` where content should be drawn.
+    fn crt_panel(
+        ui: &mut egui::Ui,
+        label: &str,
+        color: egui::Color32,
+        add_contents: impl FnOnce(&mut egui::Ui),
+    ) {
+        let frame = egui::Frame::none()
+            .stroke(egui::Stroke::new(1.0, color))
+            .inner_margin(egui::Margin::same(10.0))
+            .fill(egui::Color32::TRANSPARENT);
+
+        let response = frame.show(ui, |ui| {
+            // Floating label painted above top-left corner of the frame
+            let rect = ui.min_rect();
+            let label_pos = egui::pos2(rect.min.x + 10.0, rect.min.y - 8.0);
+            let galley = ui.painter().layout_no_wrap(
+                format!("[ {} ]", label.to_uppercase()),
+                egui::FontId::new(10.0, egui::FontFamily::Monospace),
+                color,
+            );
+            // Erase background behind label text
+            ui.painter().rect_filled(
+                egui::Rect::from_min_size(label_pos, galley.size())
+                    .expand2(egui::vec2(3.0, 0.0)),
+                0.0,
+                COLOR_BG_DARK,
+            );
+            ui.painter().galley(label_pos, galley, color);
+            add_contents(ui);
+        });
+        let _ = response;
+    }
+
+    /// Paints a subtle CRT scanline overlay over the entire window.
+    fn render_crt_overlay(ctx: &egui::Context) {
+        let screen = ctx.screen_rect();
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("crt_scanlines"),
+        ));
+        // Horizontal scanlines every 3px
+        let scanline_color = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 40);
+        let mut y = screen.min.y;
+        while y < screen.max.y {
+            painter.rect_filled(
+                egui::Rect::from_min_size(egui::pos2(screen.min.x, y), egui::vec2(screen.width(), 1.0)),
+                0.0,
+                scanline_color,
+            );
+            y += 3.0;
+        }
     }
 
     fn render_tree_category(
@@ -512,56 +586,115 @@ impl SynoidApp {
     }
 
     fn render_dashboard(&self, ui: &mut egui::Ui, state: &mut UiState) {
-        ui.vertical_centered(|ui| {
-            ui.add_space(20.0);
+        // ── Top header bar ──────────────────────────────────────────────────
+        ui.horizontal(|ui| {
             ui.label(
-                egui::RichText::new("🚀 SYNOID Dashboard")
-                    .size(24.0)
-                    .color(COLOR_ACCENT_ORANGE)
+                egui::RichText::new("SYNOID_OS v2.0")
+                    .size(18.0)
+                    .color(COLOR_CRT_GREEN)
                     .strong(),
             );
-            ui.add_space(10.0);
+            ui.add_space(12.0);
             ui.label(
-                egui::RichText::new("Autonomous Video Kernel v0.1.1").color(COLOR_TEXT_SECONDARY),
+                egui::RichText::new("[ LIVE ]")
+                    .size(10.0)
+                    .color(COLOR_BG_DARK)
+                    .background_color(COLOR_CRT_GREEN)
+                    .strong(),
             );
-            ui.add_space(30.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new("SENTINEL: SECURE")
+                        .size(10.0)
+                        .color(COLOR_CRT_TEAL),
+                );
+                ui.add_space(12.0);
+                ui.label(
+                    egui::RichText::new("GPU: RTX_5080_NVENC")
+                        .size(10.0)
+                        .color(COLOR_TEXT_SECONDARY),
+                );
+            });
         });
 
-        ui.columns(2, |cols| {
-            cols[0].group(|ui| {
-                ui.heading("🐝 Hive Status");
-                ui.label(egui::RichText::new(&state.hive_mind_status).monospace());
-                ui.add_space(10.0);
-                if ui.button("🔄 Refresh Nodes").clicked() {
-                    let core = self.core.clone();
-                    tokio::spawn(async move {
-                        let _ = core.initialize_hive_mind().await;
+        ui.add_space(6.0);
+        ui.painter().hline(
+            ui.min_rect().min.x..=ui.min_rect().min.x + ui.available_width(),
+            ui.cursor().min.y,
+            egui::Stroke::new(1.0, COLOR_CRT_GREEN_DIM),
+        );
+        ui.add_space(8.0);
+
+        // ── 3-column CRT grid ───────────────────────────────────────────────
+        ui.columns(3, |cols| {
+            // LEFT: Kernel Health + Active Processes
+            let col = &mut cols[0];
+            Self::crt_panel(col, "Kernel Health", COLOR_CRT_GREEN, |ui| {
+                let stats = [
+                    ("GHOST_THREAD", 0.98f32),
+                    ("MOTOR_CORTEX", 0.45f32),
+                    ("NEURAL_BRAIN", 1.0f32),
+                ];
+                for (label, pct) in stats {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(label).size(9.0).color(COLOR_TEXT_SECONDARY),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                egui::RichText::new(format!("{:.0}%", pct * 100.0))
+                                    .size(9.0)
+                                    .color(COLOR_CRT_GREEN),
+                            );
+                        });
                     });
+                    // Stat bar
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 6.0),
+                        egui::Sense::hover(),
+                    );
+                    ui.painter().rect_filled(rect, 0.0, COLOR_CRT_GREEN_DIM);
+                    let fill = egui::Rect::from_min_size(
+                        rect.min,
+                        egui::vec2(rect.width() * pct, rect.height()),
+                    );
+                    ui.painter().rect_filled(fill, 0.0, COLOR_CRT_GREEN);
+                    ui.add_space(4.0);
                 }
             });
 
-            cols[1].group(|ui| {
-                ui.heading("🎓 Neuroplasticity");
-                ui.label("Learning Loop: Active");
-                ui.label(format!(
-                    "Adaptation: {}",
-                    if state.is_autonomous_running {
-                        "Stable"
-                    } else {
-                        "Paused"
-                    }
-                ));
-                ui.add_space(10.0);
+            col.add_space(8.0);
+            Self::crt_panel(col, "Active Processes", COLOR_CRT_GREEN, |ui| {
+                let procs = [
+                    ("[OK]  ffmpeg_service.bin", COLOR_CRT_TEAL),
+                    ("[OK]  neural_brain.ghost", COLOR_CRT_TEAL),
+                    ("[WAIT] prod_queue.sync", COLOR_CRT_AMBER),
+                    ("[OK]  sentinel.guard", COLOR_CRT_TEAL),
+                ];
+                for (label, color) in procs {
+                    ui.label(egui::RichText::new(label).size(10.0).color(color));
+                }
+
+                let auton_label = if state.is_autonomous_running {
+                    "[ON]  autonomous_learner"
+                } else {
+                    "[OFF] autonomous_learner"
+                };
+                let auton_color = if state.is_autonomous_running {
+                    COLOR_CRT_TEAL
+                } else {
+                    COLOR_CRT_ORANGE
+                };
                 if ui
-                    .toggle_value(&mut state.is_autonomous_running, "Autonomous Mode")
-                    .changed()
+                    .add(
+                        egui::Label::new(
+                            egui::RichText::new(auton_label).size(10.0).color(auton_color),
+                        )
+                        .sense(egui::Sense::click()),
+                    )
+                    .clicked()
                 {
-                    save_settings(
-                        &self.core.instance_id,
-                        state,
-                        self.active_command,
-                        &self.tree_state,
-                    );
+                    state.is_autonomous_running = !state.is_autonomous_running;
                     let core = self.core.clone();
                     let running = state.is_autonomous_running;
                     tokio::spawn(async move {
@@ -573,24 +706,127 @@ impl SynoidApp {
                     });
                 }
             });
+
+            // CENTER: Command Central terminal
+            let col = &mut cols[1];
+            Self::crt_panel(col, "Command Central", COLOR_CRT_GREEN, |ui| {
+                // Terminal log scroll
+                let log_height = 160.0;
+                egui::ScrollArea::vertical()
+                    .max_height(log_height)
+                    .id_salt("dash_term_scroll")
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new("SYNOID Kernel Initialized.")
+                                .size(11.0)
+                                .color(COLOR_TEXT_SECONDARY),
+                        );
+                        ui.label(
+                            egui::RichText::new("Loading cortex modules...")
+                                .size(11.0)
+                                .color(COLOR_TEXT_SECONDARY),
+                        );
+                        ui.label(
+                            egui::RichText::new("> Welcome back, Operator.")
+                                .size(11.0)
+                                .color(COLOR_CRT_TEAL),
+                        );
+                        ui.label(
+                            egui::RichText::new("> Brain ready for intent processing.")
+                                .size(11.0)
+                                .color(COLOR_CRT_TEAL),
+                        );
+                        let hive = &state.hive_mind_status;
+                        if !hive.is_empty() {
+                            ui.label(
+                                egui::RichText::new(format!("> {}", hive))
+                                    .size(11.0)
+                                    .color(COLOR_CRT_AMBER),
+                            );
+                        }
+                        for suggestion in state.suggestions.iter().take(3) {
+                            ui.label(
+                                egui::RichText::new(format!("  >> {}", suggestion))
+                                    .size(10.0)
+                                    .color(COLOR_TEXT_SECONDARY),
+                            );
+                        }
+                    });
+
+                ui.add_space(4.0);
+                ui.painter().hline(
+                    ui.min_rect().min.x..=ui.min_rect().min.x + ui.available_width(),
+                    ui.cursor().min.y,
+                    egui::Stroke::new(1.0, COLOR_CRT_GREEN_DIM),
+                );
+                ui.add_space(4.0);
+
+                // Intent input line
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(">").size(13.0).color(COLOR_CRT_GREEN));
+                    let te = egui::TextEdit::singleline(&mut state.intent)
+                        .desired_width(f32::INFINITY)
+                        .frame(false)
+                        .text_color(COLOR_CRT_GREEN)
+                        .hint_text("Type creative intent or command...");
+                    ui.add(te);
+                });
+
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    let btn_style = |text: &str, color: egui::Color32| {
+                        egui::Button::new(
+                            egui::RichText::new(text).size(11.0).color(color),
+                        )
+                        .stroke(egui::Stroke::new(1.0, color))
+                        .fill(egui::Color32::TRANSPARENT)
+                    };
+                    if ui.add(btn_style("EXECUTE", COLOR_CRT_GREEN)).clicked() {
+                        let core = self.core.clone();
+                        let intent = state.intent.clone();
+                        tokio::spawn(async move {
+                            let _ = core.process_brain_request(&intent).await;
+                        });
+                    }
+                    if ui.add(btn_style("REFRESH", COLOR_CRT_TEAL)).clicked() {
+                        let core = self.core.clone();
+                        tokio::spawn(async move {
+                            let _ = core.initialize_hive_mind().await;
+                        });
+                    }
+                });
+            });
+
+            // RIGHT: Log Feed
+            let col = &mut cols[2];
+            Self::crt_panel(col, "Log Feed", COLOR_CRT_GREEN, |ui| {
+                let logs = self.core.get_logs();
+                egui::ScrollArea::vertical()
+                    .max_height(240.0)
+                    .id_salt("dash_log_scroll")
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        for log in logs.iter().rev().take(20) {
+                            let color = if log.contains("ERR") || log.contains("WARN") {
+                                COLOR_CRT_ORANGE
+                            } else if log.contains("OK") || log.contains("SUCCESS") {
+                                COLOR_CRT_TEAL
+                            } else {
+                                COLOR_TEXT_SECONDARY
+                            };
+                            ui.label(egui::RichText::new(log).size(9.0).color(color));
+                        }
+                    });
+            });
         });
 
-        if !state.suggestions.is_empty() {
-            ui.add_space(20.0);
-            ui.group(|ui| {
-                ui.heading("💡 Creative Sparks");
-                for suggestion in &state.suggestions {
-                    ui.label(format!("• {}", suggestion));
-                }
-            });
-        }
-
-        // ── Recent Job Activity ─────────────────────────────────────────────
-        ui.add_space(20.0);
+        // ── Job History ──────────────────────────────────────────────────────
+        ui.add_space(10.0);
         self.render_job_history(ui, state);
 
         // ── Human Control Index ──────────────────────────────────────────────
-        ui.add_space(20.0);
+        ui.add_space(8.0);
         self.render_hci_panel(ui);
     }
 
@@ -2289,6 +2525,7 @@ impl eframe::App for SynoidApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.configure_style(ctx);
+        Self::render_crt_overlay(ctx);
 
         // --- BACKGROUND LOGIC ---
         {
@@ -2406,16 +2643,16 @@ impl eframe::App for SynoidApp {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.label(
-                                egui::RichText::new("SYNOID")
-                                    .size(20.0)
-                                    .color(COLOR_ACCENT_ORANGE)
+                                egui::RichText::new("SYNOID_OS")
+                                    .size(16.0)
+                                    .color(COLOR_CRT_GREEN)
                                     .strong(),
                             );
                         });
-                        ui.add_space(4.0);
+                        ui.add_space(2.0);
                         ui.label(
-                            egui::RichText::new("Command Center")
-                                .size(11.0)
+                            egui::RichText::new("// COMMAND CENTER")
+                                .size(10.0)
                                 .color(COLOR_TEXT_SECONDARY),
                         );
 
@@ -2536,26 +2773,27 @@ impl eframe::App for SynoidApp {
                 });
         }
 
-        // Bottom Status Bar
+        // Bottom Status Bar — CRT terminal footer
         egui::TopBottomPanel::bottom("status_bar")
-            .min_height(32.0)
+            .min_height(28.0)
             .frame(
                 egui::Frame::none()
                     .fill(COLOR_BG_DARK)
-                    .inner_margin(egui::Margin::symmetric(12.0, 8.0)),
+                    .stroke(egui::Stroke::new(1.0, COLOR_CRT_GREEN_DIM))
+                    .inner_margin(egui::Margin::symmetric(12.0, 6.0)),
             )
             .show(ctx, |ui| {
                 let status = self.core.get_status();
                 ui.horizontal(|ui| {
                     ui.label(
-                        egui::RichText::new(&status)
-                            .size(12.0)
-                            .color(COLOR_ACCENT_BLUE),
+                        egui::RichText::new(format!("TERMINAL_ID: 0x88F2  |  {}", status))
+                            .size(10.0)
+                            .color(COLOR_CRT_TEAL),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            egui::RichText::new("v0.1.1")
-                                .size(11.0)
+                            egui::RichText::new("v0.1.1  |  RTX_5080_NVENC  |  SENTINEL: SECURE")
+                                .size(10.0)
                                 .color(COLOR_TEXT_SECONDARY),
                         );
                     });

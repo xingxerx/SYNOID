@@ -36,9 +36,9 @@ export function RenderModal({ sessionId, onClose, onDownload }: Props) {
         <div className="render-overlay">
             <div className="render-card">
                 <div className="render-title">
-                    {status.status === 'done' ? '✅ Export Complete' :
-                        status.status === 'error' ? '❌ Export Failed' :
-                            '⏳ Exporting…'}
+                    {status.status === 'done' ? ':: EXPORT_COMPLETE ::' :
+                        status.status === 'error' ? '!! EXPORT_FAILED !!' :
+                            ':: RUNNING_EXPORT...'}
                 </div>
 
                 <div className="progress-bar-bg">
@@ -49,10 +49,10 @@ export function RenderModal({ sessionId, onClose, onDownload }: Props) {
                 </div>
 
                 <div className="render-status-text">
-                    {status.status === 'rendering' && `Processing… ${pct}%`}
-                    {status.status === 'idle' && 'Starting render…'}
-                    {status.status === 'done' && `Output: ${status.outputPath ?? 'Ready'}`}
-                    {status.status === 'error' && (status.error || 'An error occurred')}
+                    {status.status === 'rendering' && `:: PROCESSING... ${pct}%`}
+                    {status.status === 'idle' && ':: INITIALIZING_RENDER...'}
+                    {status.status === 'done' && `:: OUTPUT_PATH: ${status.outputPath ?? 'READY'}`}
+                    {status.status === 'error' && (status.error?.toUpperCase() || 'UNKNOWN_TERMINATION_ERROR')}
                 </div>
 
                 {status.status === 'done' && status.outputPath && (
@@ -61,18 +61,19 @@ export function RenderModal({ sessionId, onClose, onDownload }: Props) {
                         download
                         style={{
                             display: 'block', padding: '8px 16px', textAlign: 'center',
-                            background: 'var(--accent-green)', color: '#fff', borderRadius: 6,
-                            fontWeight: 600, fontSize: 13, textDecoration: 'none',
+                            background: 'var(--crt-green)', color: '#000', border: 'none',
+                            fontWeight: 'bold', fontSize: 13, textDecoration: 'none',
+                            textTransform: 'uppercase'
                         }}
                         onClick={() => onDownload?.(status.outputPath!)}
                     >
-                        ⬇ Download Video
+                        [ ⬇ ] DOWNLOAD_ENTITY_0
                     </a>
                 )}
 
                 {(status.status === 'done' || status.status === 'error') && (
                     <button onClick={onClose} className="render-done-btn" style={{ alignSelf: 'flex-end' }}>
-                        Close
+                        [ CLOSE ]
                     </button>
                 )}
             </div>

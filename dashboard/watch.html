@@ -4,42 +4,119 @@
 <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-    <title>SYNOID Video Player</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-        rel="stylesheet" />
-    <link
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
-        rel="stylesheet" />
+    <title>SYNOID // VIDEO PLAYER</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        'crt-bg': '#050505',
+                        'crt-green': '#00FF41',
+                        'crt-green-dim': '#003B00',
+                        'crt-teal': '#008080',
+                        'crt-amber': '#FFB000',
+                    },
+                    fontFamily: {
+                        'mono': ['"IBM Plex Mono"', 'monospace'],
+                    },
+                },
+            },
+        }
+    </script>
     <style>
+        @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(100%); } }
+        @keyframes flicker { 
+            0% { opacity: 0.98; } 50% { opacity: 0.96; } 100% { opacity: 0.98; } 
+        }
+        
         body {
-            font-family: 'Inter', sans-serif;
+            background-color: #050505;
+            color: #00FF41;
+            font-family: 'IBM Plex Mono', monospace;
+            overflow-x: hidden;
+            animation: flicker 0.15s infinite;
+            position: relative;
+        }
+
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.2) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.05), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.05));
+            z-index: 100;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        .scanline {
+            width: 100%; height: 100px; z-index: 101;
+            background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(0, 255, 65, 0.03) 50%, rgba(0, 0, 0, 0) 100%);
+            position: fixed; bottom: 100%; animation: scanline 12s linear infinite;
+            pointer-events: none;
+        }
+
+        .crt-border { border: 1px solid #00FF41; position: relative; background: rgba(0, 59, 0, 0.05); }
+        .crt-label { position: absolute; top: -10px; left: 10px; background: #050505; padding: 0 5px; font-size: 10px; text-transform: uppercase; font-weight: bold; color: #00FF41; }
+        
+        video {
+            filter: brightness(1.1) contrast(1.1) sepia(0.2) hue-rotate(-10deg);
         }
     </style>
 </head>
 
-<body class="bg-gray-900 text-white h-screen flex flex-col items-center justify-center">
+<body class="p-4 h-screen flex flex-col items-center justify-center">
+    <div class="scanline"></div>
 
-    <div class="w-full max-w-6xl p-4">
-        <div class="flex justify-between items-center mb-4">
-            <h1 class="text-xl font-bold flex items-center gap-2">
-                <span class="material-symbols-outlined text-blue-500">play_circle</span>
-                SYNOID Stream Player
-            </h1>
-            <a href="/" class="text-sm text-gray-400 hover:text-white flex items-center gap-1">
-                <span class="material-symbols-outlined text-sm">arrow_back</span> Back to Dashboard
-            </a>
+    <div class="w-full max-w-6xl flex flex-col h-full">
+        <!-- HEADER -->
+        <header class="flex justify-between items-center mb-6 border-b border-crt-green pb-2">
+            <div class="flex items-center gap-4">
+                <a href="/" class="p-1 border border-crt-green hover:bg-crt-green hover:text-black transition-all">
+                    <span class="text-xs font-bold px-2 uppercase">&lt; KERNEL_DASHBOARD</span>
+                </a>
+                <h1 class="text-xl font-bold tracking-tighter uppercase flex items-center gap-2">
+                    <span class="text-crt-teal">Stream_Monitor</span>
+                    <span class="text-[10px] opacity-50">// V_SYNC_ACTIVE</span>
+                </h1>
+            </div>
+            <div class="text-[10px] font-bold uppercase text-crt-amber">
+                BUFFER: 100% // SIGNAL: OPTIMAL
+            </div>
+        </header>
+
+        <!-- MAIN PLAYER AREA -->
+        <div class="flex-1 flex flex-col gap-6 min-h-0">
+            <div class="crt-border flex-1 bg-black overflow-hidden relative group">
+                <span class="crt-label">Pixel Matrix Output</span>
+                <video id="video-player" class="w-full h-full object-contain" controls autoplay>
+                    Your browser does not support the video tag.
+                </video>
+                <!-- OSD Overlay -->
+                <div class="absolute top-4 right-4 text-[10px] font-bold bg-black bg-opacity-70 p-2 border border-crt-green pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                    <p>TYPE: VIDEO/MP4</p>
+                    <p>CODEC: H264_ACCEL</p>
+                    <p id="video-timer">TIME: 00:00:00</p>
+                </div>
+            </div>
+
+            <!-- TELEMETRY / PATH -->
+            <div class="crt-border p-4 bg-crt-green-dim bg-opacity-10">
+                <span class="crt-label">Source Telemetry</span>
+                <p class="text-xs font-bold text-crt-green tracking-wider break-all leading-relaxed" id="file-path">
+                    [AWAITING_SOURCE_STREAM...]
+                </p>
+            </div>
         </div>
 
-        <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-gray-800">
-            <video id="video-player" class="w-full h-full" controls autoplay>
-                Your browser does not support the video tag.
-            </video>
-        </div>
-
-        <div class="mt-4 p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-            <p class="text-sm text-gray-400 font-mono break-all" id="file-path">No file selected</p>
-        </div>
+        <!-- FOOTER -->
+        <footer class="mt-6 border-t border-crt-green pt-2 text-[9px] font-bold uppercase flex justify-between">
+            <div>SYNOID.Stream_Engine // PID_4922</div>
+            <div class="text-crt-teal">REMOTE_ACCESS: ENABLED</div>
+        </footer>
     </div>
 
     <script>
@@ -47,11 +124,12 @@
         const path = params.get('path');
         const videoPlayer = document.getElementById('video-player');
         const pathDisplay = document.getElementById('file-path');
+        const timerDisplay = document.getElementById('video-timer');
 
         const apiKey = localStorage.getItem('synoid_api_key');
 
         if (path) {
-            pathDisplay.textContent = `Playing: ${path}`;
+            pathDisplay.textContent = `SOURCE: ${path.toUpperCase()}`;
             // Use the streaming endpoint
             let url = `/api/stream?path=${encodeURIComponent(path)}`;
             if (apiKey) {
@@ -59,11 +137,19 @@
             }
             videoPlayer.src = url;
         } else {
-            pathDisplay.textContent = 'Error: No video path provided in URL parameters (?path=...)';
-            pathDisplay.classList.add('text-red-400');
+            pathDisplay.textContent = 'ERROR: NULL_SOURCE_EXCEPTION // No path provided.';
+            pathDisplay.classList.add('text-crt-orange');
         }
-    </script>
 
+        // Update OSD timer
+        videoPlayer.addEventListener('timeupdate', () => {
+            const mins = Math.floor(videoPlayer.currentTime / 60).toString().padStart(2, '0');
+            const secs = Math.floor(videoPlayer.currentTime % 60).toString().padStart(2, '0');
+            const totalMins = Math.floor(videoPlayer.duration / 60 || 0).toString().padStart(2, '0');
+            const totalSecs = Math.floor(videoPlayer.duration % 60 || 0).toString().padStart(2, '0');
+            timerDisplay.textContent = `TIME: ${mins}:${secs} / ${totalMins}:${totalSecs}`;
+        });
+    </script>
 </body>
 
 </html>

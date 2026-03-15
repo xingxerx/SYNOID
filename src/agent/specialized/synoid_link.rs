@@ -364,6 +364,7 @@ impl SynoidLink {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use crate::agent::cuda::cuda_kernel_gen::OptimizationTarget;
 
     #[tokio::test]
     async fn test_frame_creation() {

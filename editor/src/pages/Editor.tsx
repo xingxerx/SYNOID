@@ -105,7 +105,7 @@ export function Editor() {
         <div className="editor-root">
             {/* ── Toolbar ── */}
             <header className="editor-toolbar">
-                <span className="toolbar-logo" title="SYNOID">▶ SYNOID</span>
+                <span className="toolbar-logo" title="SYNOID">▶ SYNOID_KERNEL</span>
                 <div className="toolbar-divider" />
 
                 {/* Undo/Redo */}
@@ -142,7 +142,7 @@ export function Editor() {
                     disabled={p.assets.length === 0}
                     title="Export video"
                 >
-                    🎬 Export
+                    ◈ EXECUTE_RENDER
                 </button>
             </header>
 
@@ -256,13 +256,13 @@ export function Editor() {
             {editRunning && (
                 <div style={{
                     position: 'fixed', bottom: 24, right: 24,
-                    background: 'var(--bg-elevated)', border: '1px solid var(--gold)',
-                    borderRadius: 8, padding: '10px 16px',
+                    background: 'var(--bg-elevated)', border: '1px solid var(--crt-green)',
+                    padding: '10px 16px',
                     display: 'flex', alignItems: 'center', gap: 10,
                     zIndex: 200, fontSize: 12,
                 }}>
                     <span className="spinner" />
-                    AI Edit running…
+                    <span className="animate-pulse">KERNEL_EDIT: PROCESSING_INTENT...</span>
                 </div>
             )}
         </div>

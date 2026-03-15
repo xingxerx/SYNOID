@@ -37,7 +37,7 @@ export function MediaBin({
     return (
         <aside className="media-bin">
             <div className="media-bin-header">
-                <span className="panel-title">Media</span>
+                <span className="panel-title">Asset_Vault</span>
                 {isUploading && <span className="spinner" />}
             </div>
 
@@ -49,9 +49,9 @@ export function MediaBin({
                 onDragLeave={() => setDragging(false)}
                 onDrop={handleDrop}
             >
-                <div className="upload-icon">☁</div>
-                <p>Drop video / audio here</p>
-                <p style={{ marginTop: 2, fontSize: 10, color: 'var(--text-dim)' }}>or click to browse</p>
+                <div className="upload-icon">▣</div>
+                <p>Ingest Stream (Video/Audio)</p>
+                <p style={{ marginTop: 2, fontSize: 10, color: 'var(--text-dim)' }}>DRAG_DROP // CLICK_TO_MOUNT</p>
             </div>
             <input
                 ref={inputRef}

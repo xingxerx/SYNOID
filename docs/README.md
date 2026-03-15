@@ -14,13 +14,21 @@ This directory contains documentation for the SYNOID AI video editing agent.
   - Test output records
   - Development summaries
 
+- **[design/](design/)** - Core design documents and technical specifications
+  - [AGENTS.md](design/AGENTS.md) - Agent system architecture
+  - [AUDIT.md](design/AUDIT.md) - System audit and compliance
+  - [INSTRUCTIONS.md](design/INSTRUCTIONS.md) - Development instructions
+  - [TECHNICAL_DESIGN.md](design/TECHNICAL_DESIGN.md) - Technical design document
+
+- **[roadmap/](roadmap/)** - Project planning and milestones
+  - [SYNOID_ROADMAP.txt](roadmap/SYNOID_ROADMAP.txt) - Future development plans
+
 ## Main Documentation
 
 For the main project documentation, see:
 - [README.md](../README.md) - Main project README
-- [AGENTS.md](../AGENTS.md) - Agent system documentation
-- [AUDIT.md](../AUDIT.md) - System audit and compliance
-- [INSTRUCTIONS.md](../INSTRUCTIONS.md) - Usage instructions
+- [LICENSE.md](../LICENSE.md) - License information
+- [REPRODUCTION.md](REPRODUCTION.md) - Reproduction instructions
 
 ## Code Organization
 
