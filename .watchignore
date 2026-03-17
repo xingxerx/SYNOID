@@ -1,0 +1,64 @@
+# Cargo Watch Ignore Patterns
+# Prevents unnecessary rebuilds when these files/directories change
+
+# Build artifacts
+/target
+/Download
+/output
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Media files (videos, audio, images)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.mp3
+*.wav
+*.flac
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+
+# Documentation (unless you're actively editing docs)
+*.md
+docs/
+
+# Configuration files that don't affect compilation
+.env
+.env.*
+
+# Git files
+.git/
+.gitignore
+
+# Database files
+*.db
+*.sqlite
+
+# Test output
+test_output/
+screenshots/
+
+# Cache directories
+cache/
+.cache/
+
+# Lock files (these change frequently but don't require recompilation)
+# Note: Cargo.lock is important, but cargo-watch handles it intelligently

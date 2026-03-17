@@ -71,6 +71,8 @@ pub enum ActiveCommand {
     // Media
     Clip,
     Compress,
+    Combine,
+    Youtube,
     Editor,
     // Visual
 
@@ -78,7 +80,9 @@ pub enum ActiveCommand {
     Brain,
     Embody,
     Learn,
+    LearnDownloads,
     Suggest,
+    Process,
     // Security
     Guard,
     // Research
@@ -86,6 +90,8 @@ pub enum ActiveCommand {
     // Audio
     AudioMixer,
     Discovery,
+    // System
+    GpuStatus,
 }
 
 impl Default for ActiveCommand {
@@ -557,15 +563,19 @@ impl SynoidApp {
             ActiveCommand::Dashboard => self.render_dashboard(ui, state),
             ActiveCommand::Clip => self.render_clip_panel(ui, state),
             ActiveCommand::Compress => self.render_compress_panel(ui, state),
-
+            ActiveCommand::Combine => self.render_combine_panel(ui, state),
+            ActiveCommand::Youtube => self.render_youtube_panel(ui, state),
             ActiveCommand::Brain => self.render_brain_panel(ui, state),
             ActiveCommand::Embody => self.render_embody_panel(ui, state),
             ActiveCommand::Learn => self.render_learn_panel(ui, state),
+            ActiveCommand::LearnDownloads => self.render_learn_downloads_panel(ui, state),
             ActiveCommand::Suggest => self.render_suggest_panel(ui, state),
+            ActiveCommand::Process => self.render_process_panel(ui, state),
             ActiveCommand::Guard => self.render_guard_panel(ui, state),
             ActiveCommand::Research => self.render_research_panel(ui, state),
             ActiveCommand::AudioMixer => self.render_audio_mixer_panel(ui, state),
             ActiveCommand::Discovery => self.render_discovery_panel(ui, state),
+            ActiveCommand::GpuStatus => self.render_gpu_status_panel(ui, state),
             ActiveCommand::Editor => {
                 // Create/reuse session then open React editor in browser
                 let _core = self.core.clone();
@@ -1791,6 +1801,139 @@ impl SynoidApp {
         });
     }
 
+    fn render_combine_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.heading(egui::RichText::new("🔗 Combine Videos").color(COLOR_ACCENT_PURPLE));
+        ui.separator();
+        ui.add_space(10.0);
+
+        ui.label("This feature combines multiple video files into a single output.");
+        ui.add_space(10.0);
+
+        self.render_input_file_picker(ui, state);
+        ui.add_space(10.0);
+
+        self.render_output_file_picker(ui, state);
+        ui.add_space(20.0);
+
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🔗 Combine").size(16.0))
+                    .fill(COLOR_ACCENT_PURPLE),
+            )
+            .clicked()
+        {
+            ui.label("Combine functionality to be implemented.");
+        }
+    }
+
+    fn render_youtube_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.heading(egui::RichText::new("📥 YouTube Downloader").color(COLOR_ACCENT_RED));
+        ui.separator();
+        ui.add_space(10.0);
+
+        ui.label("Download videos from YouTube:");
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+            ui.label("URL:");
+            ui.add(egui::TextEdit::singleline(&mut state.input_path).desired_width(300.0));
+        });
+        ui.add_space(10.0);
+
+        self.render_output_file_picker(ui, state);
+        ui.add_space(20.0);
+
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("📥 Download").size(16.0))
+                    .fill(COLOR_ACCENT_RED),
+            )
+            .clicked()
+        {
+            ui.label("YouTube download functionality to be implemented.");
+        }
+    }
+
+    fn render_learn_downloads_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.heading(egui::RichText::new("📚 Learn from Downloads").color(COLOR_ACCENT_BLUE));
+        ui.separator();
+        ui.add_space(10.0);
+
+        ui.label("Analyze and learn patterns from downloaded content:");
+        ui.add_space(10.0);
+
+        self.render_input_file_picker(ui, state);
+        ui.add_space(20.0);
+
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("📚 Analyze").size(16.0))
+                    .fill(COLOR_ACCENT_BLUE),
+            )
+            .clicked()
+        {
+            ui.label("Learn downloads functionality to be implemented.");
+        }
+    }
+
+    fn render_process_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        ui.heading(egui::RichText::new("⚙️ Process Video").color(COLOR_ACCENT_ORANGE));
+        ui.separator();
+        ui.add_space(10.0);
+
+        ui.label("Advanced video processing options:");
+        ui.add_space(10.0);
+
+        self.render_input_file_picker(ui, state);
+        ui.add_space(10.0);
+
+        self.render_output_file_picker(ui, state);
+        ui.add_space(20.0);
+
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("⚙️ Process").size(16.0))
+                    .fill(COLOR_ACCENT_ORANGE),
+            )
+            .clicked()
+        {
+            ui.label("Process functionality to be implemented.");
+        }
+    }
+
+    fn render_gpu_status_panel(&self, ui: &mut egui::Ui, _state: &mut UiState) {
+        ui.heading(egui::RichText::new("🖥️ GPU Status").color(COLOR_ACCENT_GREEN));
+        ui.separator();
+        ui.add_space(10.0);
+
+        ui.label("GPU utilization and status information:");
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Status:").strong());
+            ui.label("Monitoring GPU...");
+        });
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Usage:").strong());
+            ui.label("N/A");
+        });
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Memory:").strong());
+            ui.label("N/A");
+        });
+        ui.add_space(10.0);
+
+        ui.label(
+            egui::RichText::new("Full GPU monitoring to be implemented.")
+                .color(COLOR_TEXT_SECONDARY)
+                .italics(),
+        );
+    }
+
     fn render_output_file_picker(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.label("Output File:");
         ui.horizontal(|ui| {
@@ -2563,6 +2706,9 @@ impl SynoidApp {
 
 impl eframe::App for SynoidApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        tracing::info!("[GUI] 🛑 Graceful shutdown initiated...");
+
+        // Save UI state and settings
         if let Ok(state) = self.ui_state.lock() {
             save_settings(
                 &self.core.instance_id,
@@ -2570,8 +2716,14 @@ impl eframe::App for SynoidApp {
                 self.active_command,
                 &self.tree_state,
             );
-            tracing::info!("[GUI] Settings saved on exit.");
+            tracing::info!("[GUI] ✅ Settings saved successfully.");
+        } else {
+            tracing::warn!("[GUI] ⚠️ Failed to lock UI state for saving settings.");
         }
+
+        // Note: Heavy cleanup (waiting for video jobs, stopping background tasks)
+        // is handled in main.rs after GUI closes to avoid blocking the UI thread.
+        tracing::info!("[GUI] 🔄 Shutdown sequence complete. Returning to main cleanup...");
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -2749,6 +2901,8 @@ impl eframe::App for SynoidApp {
                             vec![
                                 ("✂️", "Clip", ActiveCommand::Clip),
                                 ("📦", "Compress", ActiveCommand::Compress),
+                                ("🎵", "Combine", ActiveCommand::Combine),
+                                ("📺", "YouTube", ActiveCommand::Youtube),
                                 ("🎬", "Editor", ActiveCommand::Editor),
                                 ("🔍", "Global Discovery", ActiveCommand::Discovery),
                             ],
@@ -2767,7 +2921,9 @@ impl eframe::App for SynoidApp {
                                 ("💬", "Brain", ActiveCommand::Brain),
                                 ("🤖", "Embody", ActiveCommand::Embody),
                                 ("🎓", "Learn", ActiveCommand::Learn),
+                                ("📚", "Learn Downloads", ActiveCommand::LearnDownloads),
                                 ("💡", "Suggest", ActiveCommand::Suggest),
+                                ("⚡", "Process Pipeline", ActiveCommand::Process),
                             ],
                         ) {
                             new_cmd = Some(cmd);
@@ -2780,7 +2936,10 @@ impl eframe::App for SynoidApp {
                             "🛡️",
                             COLOR_ACCENT_RED,
                             &mut security_exp,
-                            vec![("👁️", "Defense", ActiveCommand::Guard)],
+                            vec![
+                                ("👁️", "Defense", ActiveCommand::Guard),
+                                ("🖥️", "GPU Status", ActiveCommand::GpuStatus),
+                            ],
                         ) {
                             new_cmd = Some(cmd);
                         }

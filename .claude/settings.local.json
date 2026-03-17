@@ -17,7 +17,14 @@
       "Bash(ollama list)",
       "Bash(curl http://localhost:11434/api/tags)",
       "Bash(curl -s http://localhost:11434/api/tags)",
-      "Bash(curl -s http://localhost:11434/api/generate -d \"{\"\"model\"\":\"\"llama3.2:latest\"\",\"\"prompt\"\":\"\"Say hello\"\",\"\"stream\"\":false}\")"
+      "Bash(curl -s http://localhost:11434/api/generate -d \"{\"\"model\"\":\"\"llama3.2:latest\"\",\"\"prompt\"\":\"\"Say hello\"\",\"\"stream\"\":false}\")",
+      "Bash(mkdir -p .cargo)",
+      "Bash(chmod +x watch.sh)",
+      "Bash(where.exe cargo-watch)",
+      "Bash(cargo install --list)",
+      "Bash(Get-Content \"d:\\SYNOID\\src\\window.rs\")",
+      "Bash(Measure-Object -Line)",
+      "Bash(curl -s http://localhost:11434/api/generate -d \"{\"\"model\"\":\"\"llama3.2:latest\"\",\"\"prompt\"\":\"\"Test connection\"\",\"\"stream\"\":false}\")"
     ],
     "deny": [],
     "ask": []

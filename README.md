@@ -14,6 +14,22 @@
 
 ---
 
+## 📑 Table of Contents
+
+- [Overview](#-overview)
+- [Features](#-features)
+- [Quick Start](#-quick-start)
+- [Usage](#-usage)
+- [Advanced Workflows](#-advanced--agentic-workflows)
+- [Architecture](#-architecture)
+- [Configuration](#-configuration)
+- [CLI Commands](#available-cli-commands)
+- [Troubleshooting](#-troubleshooting)
+- [Dependencies](#-dependencies)
+- [License](#-license)
+
+---
+
 ## 🌌 Overview
 
 **SYNOID** is an advanced **Agentic Video Production Kernel** designed to revolutionize content creation through autonomous AI. Unlike traditional tools that require manual frame-by-frame manipulation, SYNOID understands **creative intent**, allowing users to direct complex video production workflows using natural language.
@@ -119,8 +135,20 @@ cargo build --release
 
 ### Run GUI
 
-**With Live-Reloading (Recommended for development):**
-Automatically recompiles on code changes without restarting the terminal.
+**Smart Watch Mode (Recommended for development):**
+Automatically recompiles on **actual code changes only** with graceful shutdown and debouncing.
+
+Windows (PowerShell):
+```powershell
+.\watch.ps1
+```
+
+Linux/macOS/WSL:
+```bash
+./watch.sh
+```
+
+**Manual Cargo Watch (Alternative):**
 ```bash
 cargo watch -x "run --release --bin synoid-core -- gui"
 ```
@@ -130,15 +158,23 @@ cargo watch -x "run --release --bin synoid-core -- gui"
 cargo run --release --bin synoid-core -- gui
 ```
 
+**Smart Watch Features:**
+- ✅ **Intelligent file filtering**: Ignores media files, logs, and build artifacts
+- ✅ **Debouncing**: 2-second delay prevents rapid rebuilds during multiple file saves
+- ✅ **Graceful shutdown**: Waits for video jobs to complete before restart
+- ✅ **Clear feedback**: Shows which file triggered the rebuild
+
 ---
 
 ## 📖 Usage
 
-Launch the **Command Center**:
+### Launch the Command Center GUI
 
 ```bash
 cargo run --release --bin synoid-core -- gui
 ```
+
+Or use the smart watch mode for development (see [Quick Start](#-quick-start)).
 
 ### 🧠 Creative Intent Examples
 
@@ -215,16 +251,27 @@ This allows the agent to essentially "dream" and practice new styles in the back
 ### 👥 Running Multiple Instances
 You can run multiple independent SYNOID agents on the same machine by isolating their memory and ports:
 
-**Instance A (Default):**
+**Instance A (Default - Port 3000):**
 ```bash
 cargo run --release --bin synoid-core -- gui
 ```
 
-**Instance B (Isolated):**
+**Instance B (Isolated - Port 3001):**
 ```bash
-# Providing a different port now automatically isolates the state!
+# Different port automatically creates isolated state/cache
 cargo run --release --bin synoid-core -- gui --port 3001
 ```
+
+**Instance C (Isolated - Port 3002):**
+```bash
+cargo run --release --bin synoid-core -- gui --port 3002
+```
+
+Each instance maintains separate:
+- Memory caches
+- Learning patterns
+- Intent history
+- Dashboard server
 
 
 ### 🎓 Isolated Autonomous Learning
@@ -336,51 +383,159 @@ The codebase is organized into logical subsystems:
 
 ## 🔧 Configuration
 
-Set environment variables in `.env`:
+### Environment Variables
+
+Create a `.env` file in the project root:
+
 ```env
 # Core SYNOID Configuration
 SYNOID_API_URL=http://localhost:11434  # Ollama native API (no /v1 suffix)
 
-# Optional reference-guided editing settings
+# Optional: Gemini Vision API for advanced frame analysis
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# Optional: Reference-guided editing (experimental)
 ENABLE_REFERENCE_EDITING=true
 ENABLE_LATENT_OPTIMIZATION=true
 TEMPORAL_CONSISTENCY_DEFAULT=0.85
+
+# Optional: Custom dashboard port
+SYNOID_DASHBOARD_PORT=3000
+
+# Optional: Instance ID for multi-instance setups
+SYNOID_INSTANCE_ID=default
 ```
 
-### Reference-Guided Editing Examples
+### Development Mode
 
-**Style Transfer:**
+For development with smart reloading, see:
+- **[SMART_WATCH.md](SMART_WATCH.md)** - Comprehensive smart watch documentation
+- **[TEST_SMART_WATCH.md](TEST_SMART_WATCH.md)** - Testing guide
+- **[WATCH_SUMMARY.md](WATCH_SUMMARY.md)** - Implementation details
+
+### Available CLI Commands
+
+**Launch GUI Command Center:**
 ```bash
-cargo run --release -- process \
+cargo run --release --bin synoid-core -- gui [--port PORT]
+```
+
+**GPU-Accelerated Processing Pipeline:**
+```bash
+cargo run --release --bin synoid-core -- process \
   --input gameplay.mp4 \
-  --output cartoon.mp4 \
-  --mode reference \
-  --reference styles/cartoon.jpg \
-  --intent "Make this look like a cartoon animation" \
-  --temporal-consistency 0.9
+  --output enhanced.mp4 \
+  --stages all \
+  --gpu 0 \
+  --intent "enhance audio and add subtitles" \
+  --scale 2.0
 ```
 
-**Background Replacement:**
+**Process YouTube Videos:**
 ```bash
-cargo run --release -- process \
-  --input interview.mp4 \
-  --output cyberpunk.mp4 \
-  --mode reference \
-  --reference backgrounds/cyberpunk_city.jpg \
-  --intent "Replace background with futuristic city" \
-  --blend 0.8
+cargo run --release --bin synoid-core -- youtube \
+  --url "https://youtube.com/watch?v=..." \
+  --intent "make it viral" \
+  --chunk-minutes 10
 ```
 
-**Dual-Mode (Instruction + Reference):**
+**Run Embodied Agent (Creative Intent):**
 ```bash
-cargo run --release -- process \
-  --input vlog.mp4 \
-  --output cinematic.mp4 \
-  --mode dual \
-  --reference grades/film.jpg \
-  --intent "Apply film grain and cinematic color grading" \
-  --blend 0.6
+cargo run --release --bin synoid-core -- embody \
+  --input raw_footage.mp4 \
+  --output final_edit.mp4 \
+  --intent "make it engaging with fast pacing"
+```
+
+**Learn Editing Style from Video:**
+```bash
+cargo run --release --bin synoid-core -- learn \
+  --input reference_video.mp4 \
+  --name "cinematic_style"
+```
+
+**Learn from Downloaded Videos:**
+```bash
+cargo run --release --bin synoid-core -- learn-downloads
+```
+
+**AI-Powered Research:**
+```bash
+cargo run --release --bin synoid-core -- research \
+  --topic "video editing techniques 2026" \
+  --limit 5
+```
+
+**Video Clipping:**
+```bash
+cargo run --release --bin synoid-core -- clip \
+  --input video.mp4 \
+  --start 10.5 \
+  --duration 30.0 \
+  --output clip.mp4
+```
+
+**Video Compression:**
+```bash
+cargo run --release --bin synoid-core -- compress \
+  --input large_video.mp4 \
+  --size 50  # Target size in MB
+  --output compressed.mp4
+```
+
+**Combine Video + Audio:**
+```bash
+cargo run --release --bin synoid-core -- combine \
+  --input video.mp4 \
+  --audio soundtrack.mp3 \
+  --output combined.mp4
+```
+
+**Get Video Editing Suggestions:**
+```bash
+cargo run --release --bin synoid-core -- suggest \
+  --input gameplay.mp4
+```
+
+**Check GPU Status:**
+```bash
+cargo run --release --bin synoid-core -- gpu
+```
+
+**Activate Cyberdefense Sentinel:**
+```bash
+cargo run --release --bin synoid-core -- guard \
+  --mode file \
+  --watch D:\SYNOID\important_files
+```
+
+**Multi-Agent Roles:**
+```bash
+cargo run --release --bin synoid-core -- agent \
+  --role director \
+  --prompt "Plan a video story" \
+  --style cinematic
+```
+
+**Autonomous Learning Loop:**
+```bash
+cargo run --release --bin synoid-core -- autonomous [--port PORT]
+```
+
+**Start Dashboard Server Only:**
+```bash
+cargo run --release --bin synoid-core -- serve [--port 3000]
+```
+
+**Get Command Help:**
+```bash
+# Show all available commands
+cargo run --release --bin synoid-core -- --help
+
+# Get help for a specific command
+cargo run --release --bin synoid-core -- gui --help
+cargo run --release --bin synoid-core -- process --help
+cargo run --release --bin synoid-core -- embody --help
 ```
 
 ---
@@ -435,6 +590,36 @@ SYNOID_DASHBOARD_PORT=3001
    ffmpeg -encoders | findstr nvenc
    ```
 3. For NVIDIA GPUs, ensure CUDA toolkit is installed
+
+### Smart Watch Issues
+
+**Problem:** App keeps reloading constantly
+
+**Solution:**
+1. Check what files are triggering rebuilds:
+   ```bash
+   cargo watch --why
+   ```
+2. Add problematic patterns to `.watchignore`
+3. Use the provided smart watch scripts: `.\watch.ps1` or `./watch.sh`
+
+**Problem:** Changes not triggering reload
+
+**Solution:**
+1. Ensure file is in the `src/` directory or is `Cargo.toml`
+2. Wait for the 2-second debounce delay
+3. Check if the file pattern is ignored in `.watchignore`
+
+For more help, see [SMART_WATCH.md](SMART_WATCH.md) and [TEST_SMART_WATCH.md](TEST_SMART_WATCH.md).
+
+### Cargo Watch Not Installed
+
+**Problem:** `cargo watch` command not found
+
+**Solution:**
+```bash
+cargo install cargo-watch
+```
 
 ---
 

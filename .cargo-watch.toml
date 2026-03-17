@@ -1,0 +1,41 @@
+# Cargo Watch Configuration for SYNOID
+# This file provides default settings for cargo-watch
+# You can override these by using command-line flags
+
+# Watch only these directories
+watch = ["src", "Cargo.toml", "rust-toolchain.toml"]
+
+# Ignore these patterns (glob syntax)
+ignore = [
+    "*.mp4",
+    "*.avi",
+    "*.mov",
+    "*.mkv",
+    "*.mp3",
+    "*.wav",
+    "*.flac",
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.gif",
+    "*.webp",
+    "*.log",
+    "*.tmp",
+    "*.temp",
+    "Download/*",
+    "output/*",
+    "target/*",
+    ".git/*",
+    "*.md",
+    ".vscode/*",
+    ".idea/*",
+]
+
+# Clear the screen before each run
+clear = true
+
+# Wait 2 seconds after file changes before rebuilding (debouncing)
+delay = 2
+
+# Show which file triggered the rebuild
+why = true
