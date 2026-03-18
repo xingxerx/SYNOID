@@ -241,6 +241,42 @@ pub async fn learn_from_downloads(brain: &mut Brain) -> LearnResult {
         };
     }
 
+    // Auto-download new videos if enabled (downloads fresh content before learning)
+    if crate::agent::video_processing::video_downloader::is_auto_download_enabled() {
+        info!("[STYLE_LEARNER] 📥 Auto-download enabled, refreshing video collection...");
+        match crate::agent::video_processing::video_downloader::refresh_videos().await {
+            Ok(download_result) => {
+                if download_result.downloaded_count > 0 || download_result.deleted_count > 0 {
+                    info!(
+                        "[STYLE_LEARNER] ✅ Downloaded: {}, Deleted: {}",
+                        download_result.downloaded_count,
+                        download_result.deleted_count
+                    );
+                }
+                if !download_result.errors.is_empty() {
+                    warn!(
+                        "[STYLE_LEARNER] ⚠️  Download errors: {:?}",
+                        download_result.errors
+                    );
+                }
+            }
+            Err(e) => {
+                warn!("[STYLE_LEARNER] Auto-download failed: {}", e);
+            }
+        }
+    }
+
+    // Auto-archive old videos if enabled (keeps folder at MAX_VIDEOS limit)
+    if let Ok(archive_result) = crate::agent::video_processing::video_refresh::archive_old_videos() {
+        if archive_result.archived_count > 0 {
+            info!(
+                "[STYLE_LEARNER] 📦 Auto-archived {} old video(s): {:?}",
+                archive_result.archived_count,
+                archive_result.archived_files
+            );
+        }
+    }
+
     // Collect MP4 files up to MAX_VIDEOS
     let mut videos: Vec<PathBuf> = std::fs::read_dir(download_dir)
         .map(|rd| {

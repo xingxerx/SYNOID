@@ -211,13 +211,14 @@ pub async fn enhance_audio(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("[PROD] Enhancing audio: {:?}", input);
 
-    // Filter Chain:
-    // 1. afftdn=nf=-25: FFT Noise Reduction (Voice cleanup)
-    // 2. highpass=f=100: Remove rumble (voice is usually > 100Hz)
-    // 3. lowpass=f=8000: Remove high-freq hiss
-    // 4. acompressor: Even out dynamics
-    // 5. loudnorm: target -16 LUFS
-    let filter_complex = "afftdn=nf=-25,highpass=f=100,lowpass=f=8000,acompressor=ratio=4:attack=200:threshold=-12dB,loudnorm=I=-16:TP=-1.5:LRA=11";
+    // Filter Chain (Enhanced for better vocal clarity and comment placement):
+    // 1. afftdn=nf=-20: FFT Noise Reduction (less aggressive for natural voice)
+    // 2. highpass=f=80: Remove low rumble but preserve chest voice
+    // 3. lowpass=f=12000: Keep more vocal clarity (extended from 8000)
+    // 4. equalizer: Boost vocal presence frequencies (2-4kHz for clarity)
+    // 5. acompressor: Even out dynamics with gentler settings
+    // 6. loudnorm: target -14 LUFS (slightly louder for better audibility)
+    let filter_complex = "afftdn=nf=-20,highpass=f=80,lowpass=f=12000,equalizer=f=3000:width_type=o:width=2:g=3,acompressor=ratio=3:attack=150:release=300:threshold=-16dB:makeup=2dB,loudnorm=I=-14:TP=-1.0:LRA=13";
 
     let safe_input = safe_arg_path(input);
     let safe_output = safe_arg_path(output);

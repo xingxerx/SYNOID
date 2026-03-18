@@ -289,9 +289,9 @@ pub async fn smart_edit(
                 let text_lower = seg.text.to_lowercase();
                 for bad_word in &profanity_words {
                     if word_boundary_match(&text_lower, bad_word) {
-                        // Use word-level timestamp (narrow to ~0.5s window around the word)
-                        let (ws, we) = estimate_word_timestamps(seg, bad_word);
-                        censor_timestamps.push((ws, we));
+                        // Use word-level timestamp (can have multiple occurrences in one segment)
+                        let word_timestamps = estimate_word_timestamps(seg, bad_word);
+                        censor_timestamps.extend(word_timestamps);
                     }
                 }
             }
@@ -1429,7 +1429,9 @@ mod tests {
             end: 4.0,
             text: "hello world".to_string(),
         };
-        let (s, e) = estimate_word_timestamps(&seg, "world");
+        let timestamps = estimate_word_timestamps(&seg, "world");
+        assert_eq!(timestamps.len(), 1, "should find exactly one occurrence");
+        let (s, e) = timestamps[0];
         assert!(
             s >= 1.5 && s <= 2.5,
             "start should be in second half of segment, got {}",

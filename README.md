@@ -279,7 +279,10 @@ To run a dedicated, isolated learning instance (e.g., to "teach" the agent while
 
 ```powershell
 # Run an isolated learning instance on port 3001 (Recommended)
-.\teach.ps1 3001
+.\scripts\teach.ps1 3001
+
+# Or from PowerShell with execution policy bypass:
+powershell -ExecutionPolicy Bypass -File .\scripts\teach.ps1 3001
 ```
 
 This script automatically:
@@ -287,6 +290,121 @@ This script automatically:
 - Configures **Watch Ignores** for `target`, `Download`, and `cortex_cache` to prevent restart loops.
 - Launches the `autonomous` mode on the specified port.
 
+### 📥 Auto-Downloading Reference Videos
+
+SYNOID can **automatically download** new reference videos from configured sources to continuously learn new editing patterns. This feature uses **yt-dlp** to download legal, Creative Commons content.
+
+**Prerequisites:**
+```powershell
+# Install yt-dlp (Windows)
+winget install yt-dlp
+# OR
+scoop install yt-dlp
+
+# Verify installation
+yt-dlp --version
+```
+
+**How to Enable (Two-Step Safety):**
+
+1. **Configure Download Sources:**
+```powershell
+# Copy the template and customize it
+Copy-Item "Download\download_sources.json.template" "Download\download_sources.json"
+
+# Edit Download\download_sources.json and set "enabled": true for trusted sources
+```
+
+2. **Enable Auto-Download with Sentinel File:**
+```powershell
+# Copy and review the instructions
+Copy-Item "Download\AUTO_DOWNLOAD_ENABLED.txt.template" "Download\AUTO_DOWNLOAD_ENABLED.txt"
+```
+
+**How It Works:**
+
+Once enabled, every learning cycle SYNOID will:
+1. 📥 **Download** new videos from enabled sources (Creative Commons, public domain)
+2. 🗑️  **Delete** oldest videos when collection exceeds 10 videos
+3. 🧠 **Learn** editing patterns from all videos in Download folder
+4. 💾 **Cache** learned patterns to avoid reprocessing
+5. ✨ **Apply** learned patterns to your video edits automatically
+
+**Safety Features:**
+- ⚠️  **Requires sentinel file** - won't download without explicit enablement
+- 🔒 **Source configuration** - only downloads from sources you explicitly enable
+- 📊 **Maintains exactly 10 videos** - automatically manages disk space
+- 🎯 **Content filtering** - enforces video duration/size limits
+- 📝 **Comprehensive logging** - monitor all download activity
+
+**Recommended Sources (Legal & Safe):**
+- YouTube Creative Commons videos (`search_query: "creative commons gaming"`)
+- Internet Archive public domain content
+- Pexels/Pixabay stock footage (configure direct URLs)
+
+**Configuration Example:**
+```json
+{
+  "sources": [
+    {
+      "url": "https://www.youtube.com/results?search_query=creative+commons+gaming+montage",
+      "max_downloads": 3,
+      "search_query": "creative commons gaming montage",
+      "enabled": true
+    }
+  ],
+  "max_duration_secs": 600,
+  "quality": "720p"
+}
+```
+
+**To Disable:**
+```powershell
+# Remove sentinel file
+Remove-Item "Download\AUTO_DOWNLOAD_ENABLED.txt"
+
+# OR disable all sources in download_sources.json
+# Set "enabled": false for all sources
+```
+
+**Monitoring:**
+Watch SYNOID logs for download activity:
+```
+[DOWNLOADER] 📥 Downloading from: <url>
+[DOWNLOADER] ✅ Downloaded: filename.mp4 (145 MB)
+[DOWNLOADER] 🗑️  Deleted old video: old_video.mp4
+[STYLE_LEARNER] ✅ Downloaded: 3, Deleted: 2
+```
+
+---
+
+### 📦 Auto-Archiving Reference Videos
+
+SYNOID can automatically manage the `Download` folder to keep only the **10 most recent** reference videos. Older videos are **safely moved** (never deleted) to `Download\_Archive`.
+
+**How to Enable (Sentinel Pattern for Safety):**
+
+```powershell
+# Create the sentinel file to enable auto-archiving
+New-Item -Path "D:\SYNOID\Download\AUTO_ARCHIVE_ENABLED.txt" -ItemType File -Force
+```
+
+**Or manually create** a file named `AUTO_ARCHIVE_ENABLED.txt` in `D:\SYNOID\Download\`.
+
+Once enabled, every time SYNOID learns from videos:
+- ✅ Keeps the **10 newest** videos for learning
+- 📦 **Archives older videos** to `Download\_Archive` (never deleted!)
+- 🔒 **Safe**: Uses sentinel pattern - won't run without explicit enablement
+
+**To Disable:**
+```powershell
+Remove-Item "D:\SYNOID\Download\AUTO_ARCHIVE_ENABLED.txt"
+```
+
+**To Restore an Archived Video:**
+Simply move it from `Download\_Archive` back to `Download` folder.
+
+**Note:** Auto-archiving and auto-downloading can be used together. Downloads happen first, then archiving manages overflow.
 
 ---
 

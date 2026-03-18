@@ -194,8 +194,8 @@ pub fn generate_srt_for_kept_scenes(
     transcript: &[crate::agent::transcription::TranscriptSegment],
     kept_scenes: &[Scene],
 ) -> String {
-    const MIN_DISPLAY_SECS: f64 = 1.0; // Minimum subtitle display time
-    const MERGE_THRESHOLD_SECS: f64 = 0.8; // Merge entries shorter than this into prev
+    const MIN_DISPLAY_SECS: f64 = 2.5; // Minimum subtitle display time (increased for readability)
+    const MERGE_THRESHOLD_SECS: f64 = 1.2; // Merge entries shorter than this into prev (adjusted)
 
     // Build a time remapping: for each kept scene, compute its start position in the output video.
     // Output start = sum of durations of all previous kept scenes.
@@ -279,30 +279,87 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         // Common profanity (explicit forms + root for substring matching)
         "fucking",
         "fuck",
+        "fucked",
+        "fucker",
+        "fucks",
+        "fuckhead",
+        "fuckface",
         "shit",
+        "shitty",
+        "shitting",
+        "shithead",
+        "shitface",
         "bitch",
+        "bitches",
+        "bitching",
+        "bitchy",
         "cunt",
+        "cunts",
         "dick",
+        "dicks",
+        "dickhead",
         "cock",
+        "cocks",
+        "cocksucker",
         "pussy",
+        "pussies",
         "asshole",
+        "assholes",
         "bastard",
+        "bastards",
         "damn",
+        "damned",
+        "damnit",
         "ass",
+        "arse",
+        "arsehole",
         "motherfucker",
         "motherfucking",
+        "motherfuckers",
         "bullshit",
         "bullshitting",
         "goddamn",
         "goddamnit",
         "dammit",
         "whore",
+        "whores",
         "slut",
+        "sluts",
+        "slutty",
         "piss",
         "pissed",
+        "pissing",
+        "pisses",
         "wtf",
         "stfu",
         "hell",
+        "hells",
+        "douche",
+        "douchebag",
+        "jackass",
+        "jackasses",
+        "twat",
+        "prick",
+        "pricks",
+        "wanker",
+        "wank",
+        "bollocks",
+        "bollocks",
+        "bugger",
+        "crap",
+        "crappy",
+        "shag",
+        "shagging",
+        "tits",
+        "tit",
+        "titties",
+        "boobs",
+        "boob",
+        "balls",
+        "ballsack",
+        "screw",
+        "screwed",
+        "screwing",
         // Racial slurs — n-word and variants
         "niggers",
         "nigger",
@@ -314,59 +371,125 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "negroes",
         // Other racial/ethnic slurs
         "chink",
+        "chinks",
         "gook",
+        "gooks",
         "spic",
+        "spics",
         "wetback",
+        "wetbacks",
         "kike",
+        "kikes",
         "cracker",
+        "crackers",
         "beaner",
+        "beaners",
         "raghead",
+        "ragheads",
         "towelhead",
+        "towelheads",
         "sandnigger",
+        "sandniggers",
         "zipperhead",
+        "zipperheads",
         "coon",
+        "coons",
         "jigaboo",
+        "jigaboos",
         "porch monkey",
         "jungle bunny",
         // Homophobic / transphobic slurs
         "faggot",
+        "faggots",
         "fag",
+        "fags",
+        "faggy",
         "dyke",
+        "dykes",
         "tranny",
+        "trannies",
         "shemale",
+        "shemales",
+        "homo",
+        "homos",
+        "queer",
+        "queers",
         // Ableist slurs
         "retard",
         "retarded",
+        "retards",
+        "retardation",
+        "spastic",
+        "spaz",
+        "midget",
+        "midgets",
+        "cripple",
+        "crippled",
+        "mongoloid",
+        "george floyd",
+        "georgefloyd",
+        "floyd",
     ]
 }
 
 pub fn word_boundary_match(text: &str, bad_word: &str) -> bool {
-    text.split(|c: char| !c.is_alphanumeric()).any(|token| {
-        let t = token.to_lowercase();
-        t == bad_word || t.starts_with(bad_word)
-    })
+    let escaped = regex::escape(bad_word);
+    // For single words without spaces, we allow them to be a prefix of a longer word (e.g., "fuck" matches "fucking").
+    // For phrases with spaces, we require word boundaries.
+    let pattern = if bad_word.contains(' ') {
+        format!(r"(?i)\b{}\b", escaped)
+    } else {
+        format!(r"(?i)\b{}\w*", escaped)
+    };
+
+    if let Ok(re) = regex::Regex::new(&pattern) {
+        re.is_match(text)
+    } else {
+        // Fallback to simple contains if regex fails
+        text.to_lowercase().contains(&bad_word.to_lowercase())
+    }
 }
 
 /// Estimate a narrow (word-level) timestamp within a transcript segment for a
 /// given bad word. Uses linear interpolation across the words in the segment.
-/// Returns `(start_secs, end_secs)` clamped to the segment bounds.
+/// Returns a list of `(start_secs, end_secs)` pairs for all occurrences.
+///
+/// TIMING FIX: Beep starts slightly BEFORE the word to ensure it covers the
+/// entire spoken word, with extended padding to handle speech recognition delays.
 pub fn estimate_word_timestamps(
     seg: &crate::agent::transcription::TranscriptSegment,
     bad_word: &str,
-) -> (f64, f64) {
+) -> Vec<(f64, f64)> {
+    let mut occurrences = Vec::new();
     let words: Vec<&str> = seg.text.split_whitespace().collect();
     let n = words.len().max(1) as f64;
     let seg_dur = (seg.end - seg.start).max(0.001);
-    let pad = 0.08_f64; // 80 ms padding on each side
+
+    // Extended padding: start beep 150ms BEFORE estimated word position
+    // and extend 100ms after to ensure complete coverage
+    let pre_pad = 0.15_f64;  // 150 ms lead time
+    let post_pad = 0.10_f64; // 100 ms trail time
 
     for (i, word) in words.iter().enumerate() {
         if word_boundary_match(word, bad_word) {
-            let word_start = seg.start + (i as f64 / n) * seg_dur - pad;
-            let word_end = seg.start + ((i + 1) as f64 / n) * seg_dur + pad;
-            return (word_start.max(seg.start), word_end.min(seg.end));
+            // Calculate word boundaries with extended padding
+            let estimated_word_start = seg.start + (i as f64 / n) * seg_dur;
+            let estimated_word_end = seg.start + ((i + 1) as f64 / n) * seg_dur;
+
+            // Start beep BEFORE the word, end AFTER the word
+            let beep_start = (estimated_word_start - pre_pad).max(seg.start);
+            let beep_end = (estimated_word_end + post_pad).min(seg.end);
+
+            occurrences.push((beep_start, beep_end));
         }
     }
-    // Fallback: mute entire segment (bad word found but exact position unclear)
-    (seg.start, seg.end)
+
+    // Fallback: if individual words didn't match (e.g. multi-word phrase)
+    // but the whole segment does, return the whole segment.
+    if occurrences.is_empty() && word_boundary_match(&seg.text, bad_word) {
+        occurrences.push((seg.start, seg.end));
+    }
+
+    occurrences
 }
 

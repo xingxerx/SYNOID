@@ -31,6 +31,8 @@ pub mod video_processing {
     pub mod video_player;
     pub mod video_stitcher;
     pub mod video_style_learner;
+    pub mod video_refresh;
+    pub mod video_downloader;
     pub mod multicam;
     pub mod animator;
     pub mod upscale_engine;
