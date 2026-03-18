@@ -21,6 +21,11 @@ export function PreviewPanel({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const seekingRef = useRef(false);
 
+    // Debug: Log video source changes
+    useEffect(() => {
+        console.log('[PreviewPanel] videoSrc changed:', videoSrc);
+    }, [videoSrc]);
+
     // Sync play/pause with external state
     useEffect(() => {
         const vid = videoRef.current;
@@ -167,9 +172,21 @@ export function PreviewPanel({
                             onTimeUpdate={handleTimeUpdate}
                             onDurationChange={handleDurationChange}
                             onEnded={() => seekingRef.current = false}
+                            onError={(e) => {
+                                console.error('[PreviewPanel] Video error:', e);
+                                const vid = e.currentTarget;
+                                if (vid.error) {
+                                    console.error('[PreviewPanel] Video error code:', vid.error.code);
+                                    console.error('[PreviewPanel] Video error message:', vid.error.message);
+                                }
+                            }}
+                            onLoadedMetadata={() => console.log('[PreviewPanel] Video metadata loaded')}
+                            onLoadedData={() => console.log('[PreviewPanel] Video data loaded')}
+                            onCanPlay={() => console.log('[PreviewPanel] Video can play')}
                             preload="metadata"
                             playsInline
-                            style={{ 
+                            crossOrigin="anonymous"
+                            style={{
                                 cursor: 'pointer',
                                 filter: 'brightness(1.1) contrast(1.1) sepia(0.2) hue-rotate(-10deg)',
                                 border: '1px solid var(--crt-green)'
