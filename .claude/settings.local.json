@@ -28,7 +28,11 @@
       "Bash(powershell.exe -ExecutionPolicy Bypass -File ./scripts/teach.ps1 3001)",
       "Bash(cargo test profanity_test --lib -- --nocapture)",
       "Bash(npm run dev)",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "Bash(where ffmpeg)",
+      "Bash(cargo build --release --bin synoid-core)",
+      "Bash($env:RUST_LOG=\"synoid_core=debug\")",
+      "Bash(cargo run --release --bin synoid-core -- gui)"
     ],
     "deny": [],
     "ask": []

@@ -32,15 +32,15 @@ impl VideoPlayer {
             .arg("-i")
             .arg(path)
             .arg("-f")
-            .arg("image2pipe")
+            .arg("rawvideo")
             .arg("-pix_fmt")
             .arg("rgb24")
-            .arg("-vcodec")
-            .arg("rawvideo")
             .arg("-s")
             .arg(format!("{}x{}", width, height))
             .arg("-r")
             .arg(fps.to_string())
+            .arg("-an") // Disable audio since we handle it separately
+            .arg("-sn") // Disable subtitles
             .arg("-")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -48,11 +48,12 @@ impl VideoPlayer {
 
         let mut stdout = child.stdout.take().expect("Failed to grab stdout");
         let stderr = child.stderr.take().expect("Failed to grab stderr");
-        let (tx, rx) = sync_channel(5);
+        // Increase buffer to prevent frame drops if GUI is slow
+        let (tx, rx) = sync_channel(60); // ~2 seconds buffer at 30fps
 
         let frame_size = width * height * 3;
 
-        // Thread to read stderr for logging
+        // Thread to read stderr - only log errors
         thread::spawn(move || {
             use std::io::BufRead;
             let mut err_reader = std::io::BufReader::new(stderr);
@@ -61,8 +62,12 @@ impl VideoPlayer {
                 if n == 0 {
                     break;
                 }
-                if line.contains("Error") || line.contains("fatal") || line.contains("Can't") {
-                    tracing::error!("[ffmpeg] {}", line.trim());
+                let trimmed = line.trim();
+                if !trimmed.is_empty() {
+                    // Only log actual errors
+                    if trimmed.contains("Error") || trimmed.contains("fatal") || trimmed.contains("Can't") || trimmed.contains("Invalid") {
+                        tracing::error!("[ffmpeg] {}", trimmed);
+                    }
                 }
                 line.clear();
             }
@@ -70,23 +75,33 @@ impl VideoPlayer {
 
         thread::spawn(move || {
             let mut buffer = vec![0u8; frame_size];
+            let mut frame_count = 0;
             loop {
                 match stdout.read_exact(&mut buffer) {
                     Ok(_) => {
+                        frame_count += 1;
                         if tx.send(buffer.clone()).is_err() {
                             break; // receiver dropped
                         }
                     }
-                    Err(_) => break, // EOF or error
+                    Err(e) => {
+                        if frame_count == 0 {
+                            tracing::error!("[VideoPlayer] Failed to read first frame: {} - ffmpeg may have failed", e);
+                        }
+                        break; // EOF or error
+                    }
                 }
             }
         });
 
         // Also spawn a detatched audio player
+        // Note: -vn disables video stream entirely, -sn disables subtitle processing
         let _audio_process = Command::new("ffplay")
             .stealth()
             .arg("-nodisp")
             .arg("-autoexit")
+            .arg("-vn")        // Disable video stream (audio only)
+            .arg("-sn")        // Disable subtitle processing to prevent console spam
             .arg("-ss")
             .arg(format!("{:.3}", timestamp))
             .arg(path)
@@ -130,26 +145,38 @@ impl VideoPlayer {
         let now = Instant::now();
         let frame_duration = Duration::from_secs_f64(1.0 / self.fps);
 
-        if let Some(last) = self.last_frame_time {
-            if now.duration_since(last) < frame_duration {
-                return self.current_frame.as_ref().map(|f| (false, f));
+        // Always try to drain the receiver to prevent buffer buildup
+        let mut got_new_frame = false;
+
+        // Drain all available frames (keep the latest one)
+        loop {
+            match self.receiver.try_recv() {
+                Ok(frame) => {
+                    self.current_frame = Some(frame);
+                    got_new_frame = true;
+                }
+                Err(TryRecvError::Empty) => {
+                    break;
+                }
+                Err(TryRecvError::Disconnected) => {
+                    self.playing = false;
+                    break;
+                }
             }
         }
 
-        match self.receiver.try_recv() {
-            Ok(frame) => {
-                self.current_frame = Some(frame);
-                self.last_frame_time = Some(now);
-                self.current_frame.as_ref().map(|f| (true, f))
+        if got_new_frame {
+            self.last_frame_time = Some(now);
+            self.current_frame.as_ref().map(|f| (true, f))
+        } else {
+            // Check if we should wait based on frame timing
+            if let Some(last) = self.last_frame_time {
+                if now.duration_since(last) < frame_duration {
+                    return self.current_frame.as_ref().map(|f| (false, f));
+                }
             }
-            Err(TryRecvError::Empty) => {
-                // Wait for ffmpeg to catch up
-                self.current_frame.as_ref().map(|f| (false, f))
-            }
-            Err(TryRecvError::Disconnected) => {
-                self.playing = false;
-                self.current_frame.as_ref().map(|f| (false, f))
-            }
+            // Return current frame even if no new frame (prevents black screen)
+            self.current_frame.as_ref().map(|f| (false, f))
         }
     }
 }
