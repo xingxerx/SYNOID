@@ -213,6 +213,21 @@ enum Commands {
     /// Learn editing style from videos already in D:\SYNOID\Download (up to 10)
     LearnDownloads,
 
+    /// Autonomous academic research pipeline (AutoResearchClaw-powered)
+    AutoResearch {
+        /// Research topic or question
+        #[arg(short, long)]
+        topic: String,
+
+        /// Maximum number of papers to retrieve
+        #[arg(short, long, default_value = "15")]
+        limit: usize,
+
+        /// Save full results to JSON file
+        #[arg(long)]
+        save: bool,
+    },
+
     /// Start Autonomous Learning Loop
     Autonomous {
         /// Optional port for instance isolation (e.g., 3001)
@@ -526,6 +541,11 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             info!("🎓 Learning editing style from downloaded reference videos...");
             core.learn_from_downloads().await;
             info!("✅ Style learning complete.");
+        }
+
+        Commands::AutoResearch { topic, limit, save } => {
+            info!("🔬 Launching AutoResearch pipeline for: {}", topic);
+            core.process_auto_research(&topic, limit, save).await?;
         }
 
         Commands::Autonomous { port } => {
