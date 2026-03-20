@@ -32,7 +32,8 @@
       "Bash(where ffmpeg)",
       "Bash(cargo build --release --bin synoid-core)",
       "Bash($env:RUST_LOG=\"synoid_core=debug\")",
-      "Bash(cargo run --release --bin synoid-core -- gui)"
+      "Bash(cargo run --release --bin synoid-core -- gui)",
+      "Bash(Select-Object -First 100)"
     ],
     "deny": [],
     "ask": []

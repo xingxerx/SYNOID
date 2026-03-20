@@ -465,10 +465,10 @@ pub fn estimate_word_timestamps(
     let n = words.len().max(1) as f64;
     let seg_dur = (seg.end - seg.start).max(0.001);
 
-    // Minimal padding: start beep slightly before (20ms) to catch word onset,
-    // no post-padding to match actual word duration
-    let pre_pad = 0.02_f64;  // 20 ms lead time (minimal, just to catch onset)
-    let post_pad = 0.0_f64;  // No trail padding - match word duration exactly
+    // Aggressive padding: start beep well before word is spoken to ensure it's caught,
+    // and extend slightly after to cover the full word even if timing is slightly off
+    let pre_pad = 0.20_f64;  // 200 ms lead time (ensures we catch the word BEFORE it starts)
+    let post_pad = 0.15_f64;  // 150 ms trail padding to cover the full word duration
 
     for (i, word) in words.iter().enumerate() {
         if word_boundary_match(word, bad_word) {

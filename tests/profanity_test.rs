@@ -45,23 +45,23 @@ fn test_estimate_word_timestamps_multiple_occurrences() {
     assert_eq!(fuck_timestamps.len(), 2, "Should find two 'fuck's");
 
     // "fuck" is word 0 and word 4 of 7 words total.
-    // Index 0: estimated at 0.0 + (0/7)*10 = 0.0, with 150ms pre-pad → starts at 0.0 (clamped)
-    // Index 4: estimated at 0.0 + (4/7)*10 = 5.71, with 150ms pre-pad → starts around 5.56
+    // Index 0: estimated at 0.0 + (0/7)*10 = 0.0, with 200ms pre-pad → starts at 0.0 (clamped)
+    // Index 4: estimated at 0.0 + (4/7)*10 = 5.71, with 200ms pre-pad → starts around 5.51
 
-    // Beep should start AT or BEFORE the word (with pre-padding)
-    assert!(fuck_timestamps[0].0 <= 0.15, "First beep should start at or near 0.0 (segment start)");
-    assert!(fuck_timestamps[1].0 < 5.71 && fuck_timestamps[1].0 > 5.4, "Second beep should start before word at ~5.56");
+    // Beep should start WELL BEFORE the word (with aggressive 200ms pre-padding)
+    assert!(fuck_timestamps[0].0 <= 0.0, "First beep should start at segment start (clamped)");
+    assert!(fuck_timestamps[1].0 < 5.71 && fuck_timestamps[1].0 > 5.3, "Second beep should start 200ms before word at ~5.51");
 
-    // Beep should extend AFTER the word (with post-padding)
-    assert!(fuck_timestamps[0].1 > 1.4, "First beep should cover the word");
-    assert!(fuck_timestamps[1].1 > 8.1, "Second beep should cover the word");
+    // Beep should extend AFTER the word (with 150ms post-padding)
+    assert!(fuck_timestamps[0].1 > 1.55, "First beep should cover the word plus padding");
+    assert!(fuck_timestamps[1].1 > 8.4, "Second beep should cover the word plus padding");
 
     // Test single occurrence of another bad word
     let shit_timestamps = estimate_word_timestamps(&seg, "shit");
     assert_eq!(shit_timestamps.len(), 1, "Should find one 'shit'");
-    // "shit" is word 2: estimated at 0.0 + (2/7)*10 = 2.857, with 150ms pre-pad → starts around 2.707
+    // "shit" is word 2: estimated at 0.0 + (2/7)*10 = 2.857, with 200ms pre-pad → starts around 2.657
     assert!(shit_timestamps[0].0 < 2.857, "Beep should start BEFORE the estimated word position");
-    assert!(shit_timestamps[0].0 > 2.5, "Beep should be close to word position");
+    assert!(shit_timestamps[0].0 > 2.4, "Beep should start ~200ms before word position");
 }
 
 #[test]
