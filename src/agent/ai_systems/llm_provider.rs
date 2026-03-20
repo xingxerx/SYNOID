@@ -16,13 +16,19 @@ use tracing::{info, warn};
 /// Which provider to route a request to.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LlmProvider {
-    /// Local Ollama server (primary)
+    /// Groq cloud API (fast, free tier)
+    Groq,
+    /// Google AI Studio — Gemini (vision/multimodal)
+    Google,
+    /// Local Ollama server (fallback)
     Ollama,
 }
 
 impl std::fmt::Display for LlmProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Groq => write!(f, "Groq"),
+            Self::Google => write!(f, "Google"),
             Self::Ollama => write!(f, "Ollama"),
         }
     }
@@ -63,9 +69,35 @@ impl Default for ProviderConfig {
 }
 
 impl ProviderConfig {
-    /// Check which cloud providers are configured with API keys.
+    /// Load config from environment variables.
+    pub fn from_env() -> Self {
+        Self {
+            groq_api_key: std::env::var("GROQ_API_KEY").ok(),
+            groq_reasoning_model: std::env::var("GROQ_REASONING_MODEL")
+                .unwrap_or_else(|_| "llama-3.3-70b-versatile".to_string()),
+            groq_fast_model: std::env::var("GROQ_FAST_MODEL")
+                .unwrap_or_else(|_| "llama-3.1-8b-instant".to_string()),
+            google_ai_key: std::env::var("GOOGLE_AI_KEY").ok(),
+            google_vision_model: std::env::var("GOOGLE_VISION_MODEL")
+                .unwrap_or_else(|_| "gemini-1.5-flash".to_string()),
+            ollama_url: std::env::var("SYNOID_API_URL")
+                .unwrap_or_else(|_| "http://localhost:11434".to_string()),
+            ollama_model: std::env::var("SYNOID_MODEL")
+                .unwrap_or_else(|_| "llama3.2:latest".to_string()),
+        }
+    }
+
+    /// Check which providers are configured with API keys.
     pub fn available_providers(&self) -> Vec<LlmProvider> {
-        vec![LlmProvider::Ollama]
+        let mut providers = Vec::new();
+        if self.groq_api_key.is_some() {
+            providers.push(LlmProvider::Groq);
+        }
+        if self.google_ai_key.is_some() {
+            providers.push(LlmProvider::Google);
+        }
+        providers.push(LlmProvider::Ollama);
+        providers
     }
 }
 
@@ -95,27 +127,60 @@ impl MultiProviderLlm {
         }
     }
 
-    /// Send a reasoning request (text-only) to the local Ollama provider.
+    /// Send a reasoning request — routes to Groq if available, else Ollama.
     pub async fn reason(&self, request: &str) -> Result<String, String> {
+        if self.config.groq_api_key.is_some() {
+            match self
+                .call_groq(request, &self.config.groq_reasoning_model.clone())
+                .await
+            {
+                Ok((text, _)) => return Ok(text),
+                Err(e) => warn!("[LLM] Groq reason failed ({}), falling back to Ollama", e),
+            }
+        }
         self.call_ollama(request).await
     }
 
-    /// Send a fast/simple request (JSON parsing, classification) to the local Ollama provider.
+    /// Send a fast/simple request — routes to Groq fast model if available, else Ollama.
     pub async fn fast_request(&self, request: &str) -> Result<String, String> {
+        if self.config.groq_api_key.is_some() {
+            match self
+                .call_groq(request, &self.config.groq_fast_model.clone())
+                .await
+            {
+                Ok((text, _)) => return Ok(text),
+                Err(e) => warn!("[LLM] Groq fast failed ({}), falling back to Ollama", e),
+            }
+        }
         self.call_ollama(request).await
     }
 
-    /// Send a vision request (frame analysis) to Ollama VLM.
+    /// Send a vision request — routes to Google Gemini if available, else Ollama VLM.
     pub async fn vision_request(&self, prompt: &str, image_b64: &str) -> Result<String, String> {
+        if self.config.google_ai_key.is_some() {
+            match self.call_google_vision(prompt, image_b64).await {
+                Ok((text, _)) => return Ok(text),
+                Err(e) => warn!(
+                    "[LLM] Google Vision failed ({}), falling back to Ollama VLM",
+                    e
+                ),
+            }
+        }
         self.call_ollama_vision(prompt, image_b64).await
     }
 
-    /// Audio Transcription (Local fallback stub as Groq is disabled)
+    /// Audio Transcription stub — Groq Whisper endpoint when key is available.
     pub async fn audio_transcription(
         &self,
         _audio_path: &std::path::Path,
     ) -> Result<String, String> {
-        Err("Local Audio Transcription not yet implemented (Groq disabled)".into())
+        if self.config.groq_api_key.is_some() {
+            // Groq Whisper endpoint: POST https://api.groq.com/openai/v1/audio/transcriptions
+            // Requires multipart/form-data with the audio file — not yet wired to file I/O here.
+            Err("Groq Whisper transcription: file I/O integration pending".into())
+        } else {
+            Err("No transcription provider configured (set GROQ_API_KEY)".into())
+        }
     }
 
     /// Get token usage status for all providers.
@@ -126,7 +191,6 @@ impl MultiProviderLlm {
     // ─── Provider Implementations ───────────────────────────────────────────
 
     /// Call Groq's OpenAI-compatible API.
-    #[allow(dead_code)]
     async fn call_groq(&self, request: &str, model: &str) -> Result<(String, u64), String> {
         let api_key = self.config.groq_api_key.as_ref().ok_or("No Groq API key")?;
 
@@ -175,7 +239,6 @@ impl MultiProviderLlm {
     }
 
     /// Call Google AI Studio's Gemini API for vision tasks.
-    #[allow(dead_code)]
     async fn call_google_vision(
         &self,
         prompt: &str,

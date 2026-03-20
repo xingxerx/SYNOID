@@ -3,6 +3,7 @@
 // Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Web research capabilities for finding AI editing tips, tutorials, and techniques.
+// Extended with academic paper search via arXiv, Semantic Scholar, and OpenAlex.
 
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -209,6 +210,58 @@ pub async fn research_for_intent(intent: &str) -> Vec<ResearchFinding> {
     };
 
     research_tips(topic).await
+}
+
+// ── Academic Paper Search ────────────────────────────────────────────────────
+
+/// A trimmed paper record returned by quick academic searches.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcademicPaper {
+    pub title: String,
+    pub authors: Vec<String>,
+    pub year: Option<u32>,
+    pub abstract_snippet: String,
+    pub source: String,
+    pub url: Option<String>,
+    pub doi: Option<String>,
+}
+
+/// Quick arXiv search — returns up to `limit` papers matching `query`.
+pub async fn search_arxiv(query: &str, limit: usize) -> Vec<AcademicPaper> {
+    use crate::agent::specialized::auto_research::AutoResearchPipeline;
+    let pipeline = AutoResearchPipeline::new();
+    let papers = pipeline.search_arxiv_pub(query, limit).await;
+    papers
+        .into_iter()
+        .map(|p| AcademicPaper {
+            title: p.title,
+            authors: p.authors,
+            year: p.year,
+            abstract_snippet: p.abstract_text.chars().take(200).collect(),
+            source: "arxiv".to_string(),
+            url: p.url,
+            doi: p.doi,
+        })
+        .collect()
+}
+
+/// Quick Semantic Scholar search — returns up to `limit` papers matching `query`.
+pub async fn search_semantic_scholar(query: &str, limit: usize) -> Vec<AcademicPaper> {
+    use crate::agent::specialized::auto_research::AutoResearchPipeline;
+    let pipeline = AutoResearchPipeline::new();
+    let papers = pipeline.search_semantic_scholar_pub(query, limit).await;
+    papers
+        .into_iter()
+        .map(|p| AcademicPaper {
+            title: p.title,
+            authors: p.authors,
+            year: p.year,
+            abstract_snippet: p.abstract_text.chars().take(200).collect(),
+            source: "semantic_scholar".to_string(),
+            url: p.url,
+            doi: p.doi,
+        })
+        .collect()
 }
 
 /// Scout GitHub for open-source repositories related to video editing (simulated for now)

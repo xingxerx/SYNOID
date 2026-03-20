@@ -81,6 +81,8 @@ pub mod specialized {
     pub mod global_discovery;
     pub mod smart_editor;
     pub mod academy;
+    /// AutoResearch pipeline (AutoResearchClaw integration)
+    pub mod auto_research;
 }
 
 // Re-export commonly used modules at the root level for backwards compatibility
@@ -91,4 +93,4 @@ pub use tools::{audio_tools, vision_tools, transcription, source_tools, research
 pub use engines::{super_engine, unified_pipeline, motor_cortex, editor_queue, process_utils};
 pub use cuda::{cuda_kernel_gen, cuda_pipeline, latent_optimizer};
 pub use security::{io_shield, validation_gate, download_guard, recovery, defense};
-pub use specialized::{reference_editor, synoid_link, global_discovery, smart_editor, academy};
+pub use specialized::{reference_editor, synoid_link, global_discovery, smart_editor, academy, auto_research};

@@ -741,6 +741,46 @@ impl AgentCore {
         Ok(())
     }
 
+    /// Run the full AutoResearch pipeline (inspired by AutoResearchClaw).
+    /// Queries arXiv, Semantic Scholar, and OpenAlex, then synthesises gaps and hypotheses.
+    pub async fn process_auto_research(
+        &self,
+        topic: &str,
+        limit: usize,
+        save_json: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        use crate::agent::specialized::auto_research::{AutoResearchPipeline, print_research_result};
+
+        self.set_status(&format!("🔬 AutoResearch: {}", topic));
+        self.log(&format!("[CORE] Starting AutoResearch pipeline for: {}", topic));
+
+        let pipeline = AutoResearchPipeline::new();
+        let result = pipeline.run(topic, limit).await;
+
+        print_research_result(&result);
+
+        if save_json {
+            let filename = format!(
+                "autoresearch_{}.json",
+                topic.to_lowercase().replace(' ', "_").chars().take(40).collect::<String>()
+            );
+            match serde_json::to_string_pretty(&result) {
+                Ok(json) => {
+                    if let Err(e) = std::fs::write(&filename, &json) {
+                        self.log(&format!("[CORE] ⚠️ Could not save JSON: {}", e));
+                    } else {
+                        self.log(&format!("[CORE] 💾 Results saved to {}", filename));
+                        println!("💾 Saved to {}", filename);
+                    }
+                }
+                Err(e) => self.log(&format!("[CORE] ⚠️ JSON serialisation failed: {}", e)),
+            }
+        }
+
+        self.set_status("⚡ Ready");
+        Ok(())
+    }
+
     pub async fn clip_video(
         &self,
         input: &Path,
