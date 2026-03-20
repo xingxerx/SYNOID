@@ -454,8 +454,8 @@ pub fn word_boundary_match(text: &str, bad_word: &str) -> bool {
 /// given bad word. Uses linear interpolation across the words in the segment.
 /// Returns a list of `(start_secs, end_secs)` pairs for all occurrences.
 ///
-/// TIMING FIX: Beep starts slightly BEFORE the word to ensure it covers the
-/// entire spoken word, with extended padding to handle speech recognition delays.
+/// TIMING: Beep starts 20ms before the word (minimal onset catchment) and ends
+/// exactly at the estimated word boundary for precise duration matching.
 pub fn estimate_word_timestamps(
     seg: &crate::agent::transcription::TranscriptSegment,
     bad_word: &str,
@@ -465,18 +465,18 @@ pub fn estimate_word_timestamps(
     let n = words.len().max(1) as f64;
     let seg_dur = (seg.end - seg.start).max(0.001);
 
-    // Extended padding: start beep 150ms BEFORE estimated word position
-    // and extend 100ms after to ensure complete coverage
-    let pre_pad = 0.15_f64;  // 150 ms lead time
-    let post_pad = 0.10_f64; // 100 ms trail time
+    // Minimal padding: start beep slightly before (20ms) to catch word onset,
+    // no post-padding to match actual word duration
+    let pre_pad = 0.02_f64;  // 20 ms lead time (minimal, just to catch onset)
+    let post_pad = 0.0_f64;  // No trail padding - match word duration exactly
 
     for (i, word) in words.iter().enumerate() {
         if word_boundary_match(word, bad_word) {
-            // Calculate word boundaries with extended padding
+            // Calculate word boundaries with minimal padding
             let estimated_word_start = seg.start + (i as f64 / n) * seg_dur;
             let estimated_word_end = seg.start + ((i + 1) as f64 / n) * seg_dur;
 
-            // Start beep BEFORE the word, end AFTER the word
+            // Start beep just before the word, end exactly at word end
             let beep_start = (estimated_word_start - pre_pad).max(seg.start);
             let beep_end = (estimated_word_end + post_pad).min(seg.end);
 

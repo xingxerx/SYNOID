@@ -209,9 +209,9 @@ pub async fn smart_edit(
         false
     };
 
-    // Transcribe — always attempt, even if audio enhancement failed.
+    // Transcribe — Check for existing SRT files first, then attempt transcription
     // Fall back to extracting audio directly from the raw input if needed.
-    log("[SMART] 📝 Transcribing audio for semantic understanding...");
+    log("[SMART] 📝 Checking for existing transcript/SRT files...");
     let transcript = if let Some(t) = pre_scanned_transcript {
         log(&format!(
             "[SMART] Using pre-scanned transcript ({} segments)",
@@ -219,7 +219,45 @@ pub async fn smart_edit(
         ));
         Some(t)
     } else {
-        let whisper_audio_path = work_dir.join(format!("synoid_{}_audio_whisper.wav", job_prefix));
+        // Try to find and reuse existing SRT file (saves massive time!)
+        let possible_srt_paths = vec![
+            input.with_extension("srt"),  // e.g., video/output.srt
+            output.with_extension("srt"),  // e.g., video/output_edited.srt
+            work_dir.join("synoid_subtitles.srt"),  // temp working directory
+        ];
+
+        let mut found_srt = None;
+        for srt_path in &possible_srt_paths {
+            if srt_path.exists() {
+                log(&format!("[SMART] 📄 Found existing SRT file: {:?}", srt_path));
+                match fs::read_to_string(srt_path) {
+                    Ok(srt_content) => {
+                        match crate::agent::tools::transcription::parse_srt(&srt_content) {
+                            Ok(segments) => {
+                                log(&format!(
+                                    "[SMART] ✅ Successfully loaded {} segments from SRT (skipping transcription!)",
+                                    segments.len()
+                                ));
+                                found_srt = Some(segments);
+                                break;
+                            }
+                            Err(e) => {
+                                warn!("[SMART] Failed to parse SRT file: {}, will re-transcribe", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("[SMART] Failed to read SRT file: {}, will re-transcribe", e);
+                    }
+                }
+            }
+        }
+
+        if found_srt.is_some() {
+            found_srt
+        } else {
+            log("[SMART] 🎤 No existing SRT found, transcribing audio for semantic understanding...");
+            let whisper_audio_path = work_dir.join(format!("synoid_{}_audio_whisper.wav", job_prefix));
 
         // Prefer the enhanced WAV; fall back to extracting directly from raw input.
         let audio_source = if use_enhanced_audio {
@@ -266,6 +304,7 @@ pub async fn smart_edit(
                     }
                 }
             }
+        }
         }
     };
 

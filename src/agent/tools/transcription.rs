@@ -257,6 +257,72 @@ pub fn generate_srt(segments: &[TranscriptSegment]) -> String {
     srt_out
 }
 
+/// Parse an SRT file into TranscriptSegments
+/// This allows reusing existing SRT files instead of re-transcribing
+pub fn parse_srt(srt_content: &str) -> Result<Vec<TranscriptSegment>> {
+    let mut segments = Vec::new();
+
+    // Split by double newlines to get individual subtitle blocks
+    let separator = if srt_content.contains("\r\n\r\n") {
+        "\r\n\r\n"
+    } else {
+        "\n\n"
+    };
+
+    for block in srt_content.trim().split(separator) {
+        let lines: Vec<&str> = block.trim().lines().collect();
+        if lines.len() < 3 {
+            continue; // Skip malformed blocks
+        }
+
+        // Line 0: index (skip)
+        // Line 1: timestamp "HH:MM:SS,mmm --> HH:MM:SS,mmm"
+        // Lines 2+: text content
+
+        let timestamp_line = lines[1];
+        let parts: Vec<&str> = timestamp_line.split(" --> ").collect();
+        if parts.len() != 2 {
+            continue; // Skip malformed timestamp
+        }
+
+        let start = parse_srt_timestamp(parts[0].trim())?;
+        let end = parse_srt_timestamp(parts[1].trim())?;
+        let text = lines[2..].join("\n");
+
+        segments.push(TranscriptSegment {
+            start,
+            end,
+            text,
+        });
+    }
+
+    if segments.is_empty() {
+        anyhow::bail!("No valid segments found in SRT file");
+    }
+
+    Ok(segments)
+}
+
+/// Parse SRT timestamp "HH:MM:SS,mmm" into seconds
+fn parse_srt_timestamp(timestamp: &str) -> Result<f64> {
+    let parts: Vec<&str> = timestamp.split(',').collect();
+    if parts.len() != 2 {
+        anyhow::bail!("Invalid timestamp format: {}", timestamp);
+    }
+
+    let time_parts: Vec<&str> = parts[0].split(':').collect();
+    if time_parts.len() != 3 {
+        anyhow::bail!("Invalid time format: {}", parts[0]);
+    }
+
+    let hours: f64 = time_parts[0].parse().context("Parse hours")?;
+    let minutes: f64 = time_parts[1].parse().context("Parse minutes")?;
+    let seconds: f64 = time_parts[2].parse().context("Parse seconds")?;
+    let millis: f64 = parts[1].parse().context("Parse milliseconds")?;
+
+    Ok(hours * 3600.0 + minutes * 60.0 + seconds + millis / 1000.0)
+}
+
 fn format_srt_time(seconds: f64) -> String {
     let hours = (seconds / 3600.0) as u32;
     let mins = ((seconds % 3600.0) / 60.0) as u32;
