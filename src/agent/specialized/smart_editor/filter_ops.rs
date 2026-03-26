@@ -450,35 +450,66 @@ pub fn word_boundary_match(text: &str, bad_word: &str) -> bool {
     }
 }
 
-/// Estimate a narrow (word-level) timestamp within a transcript segment for a
-/// given bad word. Uses linear interpolation across the words in the segment.
+/// Get precise word-level timestamps for profanity censoring.
+/// First tries to use word-level timestamps from the transcript (if available from Groq API),
+/// then falls back to estimation using linear interpolation across the words in the segment.
 /// Returns a list of `(start_secs, end_secs)` pairs for all occurrences.
-///
-/// TIMING: Beep starts 20ms before the word (minimal onset catchment) and ends
-/// exactly at the estimated word boundary for precise duration matching.
 pub fn estimate_word_timestamps(
     seg: &crate::agent::transcription::TranscriptSegment,
     bad_word: &str,
 ) -> Vec<(f64, f64)> {
     let mut occurrences = Vec::new();
+
+    // Strategy 1: Use word-level timestamps if available (from Groq API)
+    if !seg.words.is_empty() {
+        info!("[CENSOR] Using word-level timestamps for segment {:.2}s-{:.2}s", seg.start, seg.end);
+        for word_ts in &seg.words {
+            if word_boundary_match(&word_ts.word, bad_word) {
+                // Use actual word timestamps with minimal padding
+                let pre_pad = 0.05_f64;  // 50ms lead (precise timing)
+                let post_pad = 0.05_f64; // 50ms trail
+
+                let beep_start = (word_ts.start - pre_pad).max(seg.start);
+                let beep_end = (word_ts.end + post_pad).min(seg.end);
+
+                info!(
+                    "[CENSOR] ✓ Exact match '{}' → beep {:.2}s-{:.2}s (word: {:.2}s-{:.2}s, lead: {:.2}s)",
+                    bad_word, beep_start, beep_end, word_ts.start, word_ts.end, word_ts.start - beep_start
+                );
+
+                occurrences.push((beep_start, beep_end));
+            }
+        }
+        if !occurrences.is_empty() {
+            return occurrences;
+        }
+    }
+
+    // Strategy 2: Fall back to estimation (for local Whisper or SRT files)
+    info!("[CENSOR] No word-level timestamps, using estimation for segment {:.2}s-{:.2}s", seg.start, seg.end);
     let words: Vec<&str> = seg.text.split_whitespace().collect();
     let n = words.len().max(1) as f64;
     let seg_dur = (seg.end - seg.start).max(0.001);
 
-    // Aggressive padding: start beep well before word is spoken to ensure it's caught,
-    // and extend slightly after to cover the full word even if timing is slightly off
-    let pre_pad = 0.20_f64;  // 200 ms lead time (ensures we catch the word BEFORE it starts)
-    let post_pad = 0.15_f64;  // 150 ms trail padding to cover the full word duration
+    // VERY Aggressive padding: Without word-level timestamps, we can only
+    // estimate based on segment position. Start beep MUCH earlier to ensure coverage.
+    let pre_pad = 0.70_f64;  // 700 ms lead time (catches word well before it starts)
+    let post_pad = 0.30_f64;  // 300 ms trail padding to cover full word + any lag
 
     for (i, word) in words.iter().enumerate() {
         if word_boundary_match(word, bad_word) {
-            // Calculate word boundaries with minimal padding
+            // Calculate word boundaries with estimation
             let estimated_word_start = seg.start + (i as f64 / n) * seg_dur;
             let estimated_word_end = seg.start + ((i + 1) as f64 / n) * seg_dur;
 
-            // Start beep just before the word, end exactly at word end
+            // Start beep well before the word to account for estimation error
             let beep_start = (estimated_word_start - pre_pad).max(seg.start);
             let beep_end = (estimated_word_end + post_pad).min(seg.end);
+
+            info!(
+                "[CENSOR] ~ Estimated '{}' in segment {:.2}s-{:.2}s → beep {:.2}s-{:.2}s (lead: {:.2}s)",
+                bad_word, seg.start, seg.end, beep_start, beep_end, estimated_word_start - beep_start
+            );
 
             occurrences.push((beep_start, beep_end));
         }

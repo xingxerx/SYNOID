@@ -211,7 +211,7 @@ pub async fn smart_edit(
 
     // Transcribe — Check for existing SRT files first, then attempt transcription
     // Fall back to extracting audio directly from the raw input if needed.
-    log("[SMART] 📝 Checking for existing transcript/SRT files...");
+    log("[SMART] 📝 Checking for existing transcript/SRT files (this saves ~2-5 minutes!)...");
     let transcript = if let Some(t) = pre_scanned_transcript {
         log(&format!(
             "[SMART] Using pre-scanned transcript ({} segments)",
@@ -220,11 +220,23 @@ pub async fn smart_edit(
         Some(t)
     } else {
         // Try to find and reuse existing SRT file (saves massive time!)
-        let possible_srt_paths = vec![
-            input.with_extension("srt"),  // e.g., video/output.srt
-            output.with_extension("srt"),  // e.g., video/output_edited.srt
+        let mut possible_srt_paths = vec![
+            input.with_extension("srt"),  // e.g., video/input.srt
+            output.with_extension("srt"),  // e.g., video/output.srt
             work_dir.join("synoid_subtitles.srt"),  // temp working directory
+            work_dir.join("output.srt"),  // Common name in the same directory
         ];
+
+        // Also check for any .srt file in the work directory
+        if let Ok(entries) = std::fs::read_dir(work_dir) {
+            for entry in entries.flatten() {
+                if let Ok(path) = entry.path().canonicalize() {
+                    if path.extension().and_then(|e| e.to_str()) == Some("srt") {
+                        possible_srt_paths.push(path);
+                    }
+                }
+            }
+        }
 
         let mut found_srt = None;
         for srt_path in &possible_srt_paths {
@@ -328,6 +340,10 @@ pub async fn smart_edit(
                 let text_lower = seg.text.to_lowercase();
                 for bad_word in &profanity_words {
                     if word_boundary_match(&text_lower, bad_word) {
+                        info!(
+                            "[SMART] 🤬 Found profanity '{}' in segment: \"{}\" ({:.2}s-{:.2}s)",
+                            bad_word, seg.text, seg.start, seg.end
+                        );
                         // Use word-level timestamp (can have multiple occurrences in one segment)
                         let word_timestamps = estimate_word_timestamps(seg, bad_word);
                         censor_timestamps.extend(word_timestamps);

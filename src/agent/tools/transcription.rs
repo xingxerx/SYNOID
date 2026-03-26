@@ -16,6 +16,15 @@ pub struct TranscriptSegment {
     pub start: f64,
     pub end: f64,
     pub text: String,
+    #[serde(default)]
+    pub words: Vec<WordTimestamp>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WordTimestamp {
+    pub word: String,
+    pub start: f64,
+    pub end: f64,
 }
 
 pub struct TranscriptionEngine {
@@ -90,16 +99,36 @@ impl TranscriptionEngine {
                             seg.get("end").and_then(|v| v.as_f64()),
                             seg.get("text").and_then(|v| v.as_str()),
                         ) {
+                            // Extract word-level timestamps if available
+                            let mut words = Vec::new();
+                            if let Some(words_arr) = seg.get("words").and_then(|v| v.as_array()) {
+                                for word_obj in words_arr {
+                                    if let (Some(word), Some(w_start), Some(w_end)) = (
+                                        word_obj.get("word").and_then(|v| v.as_str()),
+                                        word_obj.get("start").and_then(|v| v.as_f64()),
+                                        word_obj.get("end").and_then(|v| v.as_f64()),
+                                    ) {
+                                        words.push(WordTimestamp {
+                                            word: word.to_string(),
+                                            start: w_start,
+                                            end: w_end,
+                                        });
+                                    }
+                                }
+                            }
+
                             segments.push(TranscriptSegment {
                                 start,
                                 end,
                                 text: text.to_string(),
+                                words,
                             });
                         }
                     }
 
                     if !segments.is_empty() {
-                        info!("[SOVEREIGN] ☁️ Cloud Transcription Complete: {} segments (via Groq Whisper). Subtitles enhanced.", segments.len());
+                        let word_count: usize = segments.iter().map(|s| s.words.len()).sum();
+                        info!("[SOVEREIGN] ☁️ Cloud Transcription Complete: {} segments, {} word-level timestamps (via Groq Whisper). Subtitles enhanced.", segments.len(), word_count);
                         return Ok(segments);
                     }
                 }
@@ -234,6 +263,7 @@ impl TranscriptionEngine {
                 start,
                 end,
                 text: text.to_string(),
+                words: Vec::new(), // Local Whisper doesn't provide word-level timestamps
             });
         }
 
@@ -293,6 +323,7 @@ pub fn parse_srt(srt_content: &str) -> Result<Vec<TranscriptSegment>> {
             start,
             end,
             text,
+            words: Vec::new(), // SRT files don't contain word-level timestamps
         });
     }
 
