@@ -284,11 +284,16 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "fucks",
         "fuckhead",
         "fuckface",
+        "fuk",      // Common misspelling/phonetic
+        "fck",      // Abbreviation
+        "f*ck",     // Censored version
         "shit",
         "shitty",
         "shitting",
         "shithead",
         "shitface",
+        "sht",      // Phonetic
+        "sh*t",     // Censored
         "bitch",
         "bitches",
         "bitching",
@@ -367,8 +372,10 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "nigga",
         "nigg",
         "n-word",
+        "nig",       // Abbreviated
         "negro",
         "negroes",
+        "negros",    // Common misspelling
         // Other racial/ethnic slurs
         "chink",
         "chinks",
@@ -412,8 +419,29 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "shemales",
         "homo",
         "homos",
+        "homosexual",
+        "homosexuals",
+        "gay",
+        "gays",
+        "gayest",
         "queer",
         "queers",
+        "lesbian",
+        "lesbians",
+        "lesbo",
+        "lesbos",
+        // Violent/threatening language
+        "kill",
+        "kills",
+        "killed",
+        "killing",
+        "murder",
+        "murdering",
+        "murdered",
+        "die",
+        "death",
+        "kys",        // "kill yourself"
+        "suicide",
         // Ableist slurs
         "retard",
         "retarded",
@@ -433,9 +461,11 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
 }
 
 pub fn word_boundary_match(text: &str, bad_word: &str) -> bool {
+    let text_lower = text.to_lowercase();
+    let bad_lower = bad_word.to_lowercase();
+
+    // First, try exact regex matching
     let escaped = regex::escape(bad_word);
-    // For single words without spaces, we allow them to be a prefix of a longer word (e.g., "fuck" matches "fucking").
-    // For phrases with spaces, we require word boundaries.
     let pattern = if bad_word.contains(' ') {
         format!(r"(?i)\b{}\b", escaped)
     } else {
@@ -443,11 +473,31 @@ pub fn word_boundary_match(text: &str, bad_word: &str) -> bool {
     };
 
     if let Ok(re) = regex::Regex::new(&pattern) {
-        re.is_match(text)
-    } else {
-        // Fallback to simple contains if regex fails
-        text.to_lowercase().contains(&bad_word.to_lowercase())
+        if re.is_match(text) {
+            return true;
+        }
     }
+
+    // Enhanced: Also check for asterisk-censored versions (e.g., "f***", "sh*t")
+    // Whisper sometimes transcribes censored audio as asterisks
+    if bad_lower.len() >= 3 {
+        let first_char = bad_lower.chars().next().unwrap();
+        let last_char = bad_lower.chars().last().unwrap();
+
+        // Match patterns like "f***" or "f**k" for "fuck"
+        let asterisk_pattern = format!(r"(?i)\b{}[\*]+{}?\b",
+            regex::escape(&first_char.to_string()),
+            regex::escape(&last_char.to_string()));
+
+        if let Ok(re) = regex::Regex::new(&asterisk_pattern) {
+            if re.is_match(text) {
+                return true;
+            }
+        }
+    }
+
+    // Fallback to fuzzy contains matching
+    text_lower.contains(&bad_lower)
 }
 
 /// Get precise word-level timestamps for profanity censoring.
@@ -491,10 +541,10 @@ pub fn estimate_word_timestamps(
     let n = words.len().max(1) as f64;
     let seg_dur = (seg.end - seg.start).max(0.001);
 
-    // VERY Aggressive padding: Without word-level timestamps, we can only
-    // estimate based on segment position. Start beep MUCH earlier to ensure coverage.
-    let pre_pad = 0.70_f64;  // 700 ms lead time (catches word well before it starts)
-    let post_pad = 0.30_f64;  // 300 ms trail padding to cover full word + any lag
+    // Balanced padding: Enough to cover timing errors but not excessive
+    // Average curse word is 0.3-0.5s, so 200ms pre + 150ms post = ~0.6s total beep
+    let pre_pad = 0.20_f64;  // 200ms lead time (accounts for estimation error)
+    let post_pad = 0.15_f64;  // 150ms trail padding to cover full word
 
     for (i, word) in words.iter().enumerate() {
         if word_boundary_match(word, bad_word) {

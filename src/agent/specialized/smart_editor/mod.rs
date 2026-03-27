@@ -328,28 +328,40 @@ pub async fn smart_edit(
     // 1.5. Apply Audio Censorship if requested
     let mut final_enhanced_audio_path = enhanced_audio_path.clone();
     if intent.censor_profanity {
+        log(&format!("[SMART] 🤬 Profanity censorship enabled: {}", intent.censor_profanity));
         if let Some(t) = &transcript {
-            log("[SMART] 🤬 Applying audio censorship pass based on transcript...");
+            log(&format!("[SMART] 🤬 Applying audio censorship pass based on transcript ({} segments)...", t.len()));
             let censored_path = work_dir.join(format!("synoid_{}_audio_censored.wav", job_prefix));
 
             // Comprehensive list of words to bleep — racial slurs, hate speech, and profanity
             let profanity_words = get_profanity_word_list();
             let mut censor_timestamps: Vec<(f64, f64)> = Vec::new();
+            let mut segments_with_profanity = 0;
 
             for seg in t {
                 let text_lower = seg.text.to_lowercase();
+                let mut found_in_segment = false;
+
                 for bad_word in &profanity_words {
                     if word_boundary_match(&text_lower, bad_word) {
                         info!(
                             "[SMART] 🤬 Found profanity '{}' in segment: \"{}\" ({:.2}s-{:.2}s)",
                             bad_word, seg.text, seg.start, seg.end
                         );
+                        found_in_segment = true;
                         // Use word-level timestamp (can have multiple occurrences in one segment)
                         let word_timestamps = estimate_word_timestamps(seg, bad_word);
                         censor_timestamps.extend(word_timestamps);
                     }
                 }
+
+                if found_in_segment {
+                    segments_with_profanity += 1;
+                }
             }
+
+            log(&format!("[SMART] 📊 Profanity scan complete: found in {}/{} segments",
+                segments_with_profanity, t.len()));
             // Merge overlapping/adjacent timestamp ranges (in case a segment has multiple hits)
             censor_timestamps
                 .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -400,8 +412,10 @@ pub async fn smart_edit(
                     ),
                 }
             } else {
-                log("[SMART] No profanity detected in transcript.");
+                log("[SMART] ℹ️ No profanity detected in transcript.");
             }
+        } else {
+            warn!("[SMART] ⚠️ Profanity censorship requested but no transcript available!");
         }
     }
 
@@ -762,10 +776,20 @@ pub async fn smart_edit(
     // Commentary Generator removed (funny_engine deprecated)
 
     let total_segments = scenes_to_keep.len();
-    let max_concurrency = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4)
-        .clamp(2, 6);
+
+    // NVENC hardware encoder session limits:
+    // - GeForce consumer GPUs: max 2-3 concurrent sessions (driver enforced)
+    // - Quadro/Tesla: higher limits (8+)
+    // Use conservative limit to prevent "incompatible client key" and OOM errors
+    let gpu_ctx = crate::gpu_backend::get_gpu_context().await;
+    let max_concurrency = if gpu_ctx.has_gpu() {
+        2  // Conservative limit for NVENC consumer GPUs
+    } else {
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+            .clamp(2, 6)
+    };
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrency));
     let mut tasks = Vec::with_capacity(total_segments);
 
@@ -823,8 +847,13 @@ pub async fn smart_edit(
                 cmd.arg(flag);
             }
 
+            // Ensure frame dimensions are even, which NVENC requires.
+            cmd.arg("-vf").arg("scale=trunc(iw/2)*2:trunc(ih/2)*2");
+
             // High quality fixed quantization for intermediate clips if encoding supports it
             if gpu_ctx.has_gpu() {
+                cmd.arg("-rc").arg("vbr"); // Required for NVENC -cq to work properly
+                cmd.arg("-b:v").arg("0");
                 cmd.arg("-cq").arg("23"); // NVENC constant quality
             } else {
                 cmd.arg("-crf").arg("23"); // CPU
@@ -836,13 +865,21 @@ pub async fn smart_edit(
             cmd.arg("-avoid_negative_ts").arg("make_zero");
             cmd.arg(production_tools::safe_arg_path(&seg_path));
 
-            let status = cmd.status().await;
+            let output_res = cmd.output().await;
             drop(permit); // Release concurrency slot
 
-            if let Ok(s) = status {
-                if s.success() {
+            if let Ok(s) = output_res {
+                if s.status.success() {
                     return Some((seg_path, scene_duration));
+                } else {
+                    tracing::error!(
+                        "[SMART] Segment extraction failed for {}: {}",
+                        seg_path.display(),
+                        String::from_utf8_lossy(&s.stderr)
+                    );
                 }
+            } else if let Err(e) = output_res {
+                tracing::error!("[SMART] Failed to spawn ffmpeg: {}", e);
             }
             None
         });
@@ -1193,10 +1230,12 @@ async fn fallback_extract_and_concat(
     }
 
     let mut segment_files = Vec::new();
+
+    // Use CPU encoding in fallback mode to avoid NVENC issues entirely
     let max_concurrency = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
-        .clamp(2, 6);
+        .clamp(2, 4);  // Reduced from 6 to 4
     let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrency));
     let mut tasks = Vec::with_capacity(scenes_to_keep.len());
 

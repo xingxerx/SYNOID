@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(Select-Object ProcessName, Id, CPU)"
+      "Bash(Select-Object ProcessName, Id, CPU)",
+      "Bash(nvidia-smi --query-gpu=name,driver_version,memory.total,encoder.stats.sessionCount,encoder.stats.averageFps --format=csv)",
+      "Bash(while read f)",
+      "Bash(do if [ ! -s \"$f\" ])",
+      "Bash(then echo \"$f\")",
+      "Bash(fi)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
