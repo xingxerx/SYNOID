@@ -276,6 +276,10 @@ pub struct AgentCore {
 
     // Human Control Index tracker
     pub hci: Arc<HciTracker>,
+
+    // AutoImprove loop state
+    pub improve_running: Arc<AtomicBool>,
+    pub improve_shutdown: Arc<Mutex<Option<tokio::sync::watch::Sender<bool>>>>,
 }
 
 impl AgentCore {
@@ -326,6 +330,8 @@ impl AgentCore {
             video_editing_agent: Arc::new(Mutex::new(None)), // Lazy init
             animator,
             hci: Arc::new(HciTracker::new()),
+            improve_running: Arc::new(AtomicBool::new(false)),
+            improve_shutdown: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -1197,6 +1203,70 @@ impl AgentCore {
 
         self.set_status("⚡ Ready");
         Ok(())
+    }
+
+    // --- AutoImprove ---
+
+    /// Start the self-recursing strategy improvement loop in a background task.
+    pub fn start_auto_improve(
+        &self,
+        benchmark: PathBuf,
+        candidates: usize,
+        iterations: Option<u64>,
+    ) {
+        if self.improve_running.load(Ordering::Relaxed) {
+            self.log("[IMPROVE] Loop already running.");
+            return;
+        }
+
+        use crate::agent::specialized::auto_improve::AutoImprove;
+
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        if let Ok(mut slot) = self.improve_shutdown.lock() {
+            *slot = Some(tx);
+        }
+
+        self.improve_running.store(true, Ordering::Relaxed);
+        self.log(&format!(
+            "[IMPROVE] 🚀 Starting AutoImprove loop | benchmark: {:?} | {} candidates/iter",
+            benchmark, candidates
+        ));
+
+        let running_flag = self.improve_running.clone();
+        let log_fn = {
+            let logs = self.logs.clone();
+            move |msg: &str| {
+                if let Ok(mut l) = logs.lock() {
+                    l.push(msg.to_string());
+                    if l.len() > 500 {
+                        l.remove(0);
+                    }
+                }
+            }
+        };
+
+        tokio::spawn(async move {
+            let mut improver = AutoImprove::new(benchmark);
+            improver.candidates_per_iter = candidates;
+            improver.max_iterations = iterations;
+
+            match improver.run(rx).await {
+                Ok(()) => log_fn("[IMPROVE] ✅ Loop finished."),
+                Err(e) => log_fn(&format!("[IMPROVE] ❌ Error: {}", e)),
+            }
+            running_flag.store(false, Ordering::Relaxed);
+        });
+    }
+
+    /// Signal the running AutoImprove loop to stop.
+    pub fn stop_auto_improve(&self) {
+        if let Ok(mut slot) = self.improve_shutdown.lock() {
+            if let Some(tx) = slot.take() {
+                let _ = tx.send(true);
+                self.log("[IMPROVE] 🛑 Stop signal sent.");
+            }
+        }
+        // Flag will be cleared by the background task when it exits.
     }
 
     // --- Sentinel ---

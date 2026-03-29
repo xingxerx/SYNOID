@@ -17,6 +17,7 @@ pub use transition_ops::*;
 use std::sync::Arc;
 use crate::agent::engines::process_utils::CommandExt;
 use crate::agent::tools::production_tools;
+use crate::agent::tools::source_tools;
 use crate::agent::tools::transcription::{TranscriptSegment, TranscriptionEngine};
 use crate::agent::ai_systems::gpt_oss_bridge::SynoidAgent;
 use crate::agent::video_processing::animator::Animator;
@@ -203,7 +204,7 @@ pub async fn smart_edit(
         }
     }
 
-    let use_enhanced_audio = if let Ok(metadata) = fs::metadata(&enhanced_audio_path) {
+    let mut use_enhanced_audio = if let Ok(metadata) = fs::metadata(&enhanced_audio_path) {
         metadata.len() > 0
     } else {
         false
@@ -326,7 +327,14 @@ pub async fn smart_edit(
     ));
 
     // 1.5. Apply Audio Censorship if requested
-    let mut final_enhanced_audio_path = enhanced_audio_path.clone();
+    // Use the enhanced audio if available; otherwise fall back to the raw input so
+    // censoring is always applied to an existing file regardless of whether the
+    // audio-enhancement step succeeded.
+    let mut final_enhanced_audio_path = if use_enhanced_audio {
+        enhanced_audio_path.clone()
+    } else {
+        input.to_path_buf()
+    };
     if intent.censor_profanity {
         log(&format!("[SMART] 🤬 Profanity censorship enabled: {}", intent.censor_profanity));
         if let Some(t) = &transcript {
@@ -405,9 +413,10 @@ pub async fn smart_edit(
                             censor_timestamps.len()
                         ));
                         final_enhanced_audio_path = censored_path;
+                        use_enhanced_audio = true; // ensure censored track is used in segments
                     }
                     Err(e) => warn!(
-                        "[SMART] Audio censorship failed: {}, using original enhanced audio.",
+                        "[SMART] Audio censorship failed: {}, using original audio.",
                         e
                     ),
                 }
@@ -1178,13 +1187,30 @@ pub async fn smart_edit(
                             .await
                         {
                             Ok(_) => {
-                                // Use copy + remove instead of rename to handle cross-device moves on WSL mounts.
-                                match fs::copy(&sub_output, &abs_output) {
-                                    Ok(_) => {
-                                        let _ = fs::remove_file(&sub_output);
-                                        log("[SMART] ✅ Subtitles burned into final video.");
+                                // Validate the subtitled output was successfully created and is not corrupted
+                                match fs::metadata(&sub_output) {
+                                    Ok(metadata) if metadata.len() > 1_000_000 => {
+                                        // File exists and is at least 1MB - likely valid
+                                        // Verify it's a valid video by checking duration
+                                        let sub_duration = source_tools::get_video_duration(&sub_output).await.unwrap_or(0.0);
+                                        if sub_duration > 1.0 {
+                                            // Use copy + remove instead of rename to handle cross-device moves on WSL mounts.
+                                            match fs::copy(&sub_output, &abs_output) {
+                                                Ok(_) => {
+                                                    let _ = fs::remove_file(&sub_output);
+                                                    log("[SMART] ✅ Subtitles burned into final video.");
+                                                }
+                                                Err(e) => warn!("[SMART] Could not replace output with subtitled version: {}", e),
+                                            }
+                                        } else {
+                                            warn!("[SMART] Subtitled video appears corrupted (duration: {:.2}s), keeping original", sub_duration);
+                                            let _ = fs::remove_file(&sub_output);
+                                        }
                                     }
-                                    Err(e) => warn!("[SMART] Could not replace output with subtitled version: {}", e),
+                                    _ => {
+                                        warn!("[SMART] Subtitled output file is missing or too small, keeping original");
+                                        let _ = fs::remove_file(&sub_output);
+                                    }
                                 }
                             }
                             Err(e) => warn!("[SMART] Subtitle burning failed (non-fatal): {}", e),

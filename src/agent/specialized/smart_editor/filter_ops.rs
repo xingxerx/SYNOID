@@ -315,7 +315,8 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "damn",
         "damned",
         "damnit",
-        "ass",
+        // NOTE: "ass" removed - causes too many false positives (class, pass, passionate)
+        // "asshole" and "assholes" above are sufficient for actual profanity
         "arse",
         "arsehole",
         "motherfucker",
@@ -337,8 +338,10 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "pisses",
         "wtf",
         "stfu",
-        "hell",
-        "hells",
+        // NOTE: "hell" causes false positives (shell, hello, etc.) - only match specific phrases
+        "what the hell",
+        "go to hell",
+        "hell yeah",
         "douche",
         "douchebag",
         "jackass",
@@ -405,7 +408,7 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "jigaboos",
         "porch monkey",
         "jungle bunny",
-        // Homophobic / transphobic slurs
+        // Homophobic / transphobic slurs (ONLY actual slurs, NOT identity terms)
         "faggot",
         "faggots",
         "fag",
@@ -417,31 +420,10 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "trannies",
         "shemale",
         "shemales",
-        "homo",
-        "homos",
-        "homosexual",
-        "homosexuals",
-        "gay",
-        "gays",
-        "gayest",
-        "queer",
-        "queers",
-        "lesbian",
-        "lesbians",
-        "lesbo",
-        "lesbos",
-        // Violent/threatening language
-        "kill",
-        "kills",
-        "killed",
-        "killing",
-        "murder",
-        "murdering",
-        "murdered",
-        "die",
-        "death",
-        "kys",        // "kill yourself"
-        "suicide",
+        // NOTE: "gay", "lesbian", "queer", "homo", "homosexual" are identity terms, NOT slurs
+        // They should NOT be censored in normal contexts
+        // Violent/threatening language (REMOVED - too many false positives in gaming context)
+        // "kill", "murder", "die" are common gaming terms and cause too many false positives
         // Ableist slurs
         "retard",
         "retarded",
@@ -454,21 +436,21 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "cripple",
         "crippled",
         "mongoloid",
-        "george floyd",
-        "georgefloyd",
-        "floyd",
+        // NOTE: Proper names like "George Floyd" should NEVER be in a profanity list
+        // These were removed as they are offensive to include
     ]
 }
 
 pub fn word_boundary_match(text: &str, bad_word: &str) -> bool {
-    let text_lower = text.to_lowercase();
     let bad_lower = bad_word.to_lowercase();
 
-    // First, try exact regex matching
+    // First, try exact regex matching with word boundaries
     let escaped = regex::escape(bad_word);
     let pattern = if bad_word.contains(' ') {
+        // Multi-word phrases need exact match with boundaries
         format!(r"(?i)\b{}\b", escaped)
     } else {
+        // Single words can match as prefix (e.g., "fuck" matches "fucking")
         format!(r"(?i)\b{}\w*", escaped)
     };
 
@@ -496,8 +478,10 @@ pub fn word_boundary_match(text: &str, bad_word: &str) -> bool {
         }
     }
 
-    // Fallback to fuzzy contains matching
-    text_lower.contains(&bad_lower)
+    // REMOVED fallback to fuzzy contains matching to prevent false positives
+    // like "hell" matching "shell" or "ass" matching "passionate"
+    // If the regex didn't match, the word isn't there
+    false
 }
 
 /// Get precise word-level timestamps for profanity censoring.

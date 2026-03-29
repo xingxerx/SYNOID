@@ -13,7 +13,7 @@
   "guard_mode": "all",
   "guard_watch_path": "",
   "active_editor_tab": "AI Magic",
-  "active_command": "Editor",
+  "active_command": "AutoImprove",
   "tree_state": {
     "media_expanded": true,
     "visual_expanded": true,
@@ -29,5 +29,8 @@
   "enable_subtitles": true,
   "enable_censoring": true,
   "enable_audio_enhancement": true,
-  "enable_silence_removal": false
+  "enable_silence_removal": false,
+  "improve_benchmark": "D:\\SYNOID\\Download\\How to Edit a Gaming Video _For Beginners_.mp4",
+  "improve_candidates": "4",
+  "improve_iterations": ""
 }

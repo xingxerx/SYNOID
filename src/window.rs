@@ -92,6 +92,8 @@ pub enum ActiveCommand {
     Discovery,
     // System
     GpuStatus,
+    // Self-improvement
+    AutoImprove,
 }
 
 impl Default for ActiveCommand {
@@ -160,6 +162,11 @@ pub struct UiState {
     pub enable_censoring: bool,
     pub enable_audio_enhancement: bool,
     pub enable_silence_removal: bool,
+    // AutoImprove
+    pub improve_benchmark: String,
+    pub improve_candidates: String,
+    pub improve_iterations: String,
+    pub improve_status: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -189,6 +196,9 @@ struct PersistedSettings {
     enable_censoring: bool,
     enable_audio_enhancement: bool,
     enable_silence_removal: bool,
+    improve_benchmark: String,
+    improve_candidates: String,
+    improve_iterations: String,
 }
 
 impl Default for PersistedSettings {
@@ -225,6 +235,9 @@ impl Default for PersistedSettings {
             enable_censoring: false,
             enable_audio_enhancement: true,
             enable_silence_removal: false,
+            improve_benchmark: String::new(),
+            improve_candidates: "4".to_string(),
+            improve_iterations: String::new(),
         }
     }
 }
@@ -275,6 +288,9 @@ fn save_settings(
         enable_censoring: state.enable_censoring,
         enable_audio_enhancement: state.enable_audio_enhancement,
         enable_silence_removal: state.enable_silence_removal,
+        improve_benchmark: state.improve_benchmark.clone(),
+        improve_candidates: state.improve_candidates.clone(),
+        improve_iterations: state.improve_iterations.clone(),
     };
     if let Ok(json) = serde_json::to_string_pretty(&settings) {
         let _ = std::fs::write(filename, json);
@@ -332,6 +348,10 @@ impl SynoidApp {
         ui_state.enable_censoring = settings.enable_censoring;
         ui_state.enable_audio_enhancement = settings.enable_audio_enhancement;
         ui_state.enable_silence_removal = settings.enable_silence_removal;
+        ui_state.improve_benchmark = settings.improve_benchmark.clone();
+        ui_state.improve_candidates = settings.improve_candidates.clone();
+        ui_state.improve_iterations = settings.improve_iterations.clone();
+        ui_state.improve_status = String::new();
 
         let tree_state = settings.tree_state.clone();
         let active_command = settings.active_command;
@@ -576,6 +596,7 @@ impl SynoidApp {
             ActiveCommand::AudioMixer => self.render_audio_mixer_panel(ui, state),
             ActiveCommand::Discovery => self.render_discovery_panel(ui, state),
             ActiveCommand::GpuStatus => self.render_gpu_status_panel(ui, state),
+            ActiveCommand::AutoImprove => self.render_auto_improve_panel(ui, state),
             ActiveCommand::Editor => {
                 // Create/reuse session then open React editor in browser
                 let _core = self.core.clone();
@@ -1876,6 +1897,198 @@ impl SynoidApp {
         }
     }
 
+    fn render_auto_improve_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        use crate::agent::specialized::auto_improve::{AutoImprove, ImproveLog};
+
+        ui.heading(
+            egui::RichText::new("🧬 AutoImprove — Self-Recursing Optimizer")
+                .color(COLOR_ACCENT_PURPLE),
+        );
+        ui.separator();
+        ui.add_space(6.0);
+
+        ui.label(egui::RichText::new(
+            "Autonomously mutates EditingStrategy parameters, evaluates them on a benchmark \
+             video (dry-run: scene detect + scoring, no render), and compounds improvements \
+             over time — like karpathy/autoresearch but for video editing.",
+        ).color(COLOR_TEXT_SECONDARY));
+        ui.add_space(10.0);
+
+        // ── Benchmark video picker ──────────────────────────────────────────
+        ui.label(egui::RichText::new("Benchmark Video").strong());
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut state.improve_benchmark)
+                    .hint_text("Path to a reference MP4…")
+                    .desired_width(340.0),
+            );
+            if ui.button("📂").clicked() {
+                if let Some(p) = rfd::FileDialog::new()
+                    .add_filter("Video", &["mp4", "mkv", "mov", "avi"])
+                    .set_directory(get_default_videos_path())
+                    .pick_file()
+                {
+                    state.improve_benchmark = p.to_string_lossy().to_string();
+                    save_settings(
+                        &self.core.instance_id,
+                        state,
+                        self.active_command,
+                        &self.tree_state,
+                    );
+                }
+            }
+        });
+        ui.add_space(8.0);
+
+        // ── Candidates & iterations ─────────────────────────────────────────
+        ui.horizontal(|ui| {
+            ui.label("Candidates/iter:");
+            ui.add(
+                egui::TextEdit::singleline(&mut state.improve_candidates)
+                    .desired_width(50.0),
+            );
+            ui.add_space(16.0);
+            ui.label("Max iterations:");
+            ui.add(
+                egui::TextEdit::singleline(&mut state.improve_iterations)
+                    .hint_text("∞")
+                    .desired_width(60.0),
+            );
+        });
+        ui.add_space(12.0);
+
+        // ── Start / Stop ────────────────────────────────────────────────────
+        let is_running = self.core.improve_running.load(std::sync::atomic::Ordering::Relaxed);
+
+        ui.horizontal(|ui| {
+            if is_running {
+                if ui
+                    .add(
+                        egui::Button::new(egui::RichText::new("⏹ Stop").size(15.0))
+                            .fill(egui::Color32::from_rgb(100, 100, 100)),
+                    )
+                    .clicked()
+                {
+                    self.core.stop_auto_improve();
+                }
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new("● Running…")
+                        .color(COLOR_ACCENT_GREEN)
+                        .strong(),
+                );
+            } else {
+                let can_start = !state.improve_benchmark.is_empty();
+                let btn = egui::Button::new(egui::RichText::new("🧬 Start AutoImprove").size(15.0))
+                    .fill(if can_start { COLOR_ACCENT_PURPLE } else { egui::Color32::from_rgb(60, 60, 70) });
+                if ui.add_enabled(can_start, btn).clicked() {
+                    let benchmark = std::path::PathBuf::from(&state.improve_benchmark);
+                    let candidates: usize = state.improve_candidates.parse().unwrap_or(4);
+                    let iterations: Option<u64> = state.improve_iterations.trim().parse().ok();
+                    save_settings(
+                        &self.core.instance_id,
+                        state,
+                        self.active_command,
+                        &self.tree_state,
+                    );
+                    self.core.start_auto_improve(benchmark, candidates, iterations);
+                }
+            }
+
+            ui.add_space(16.0);
+            if ui.button("🔄 Refresh Status").clicked() {
+                let log = ImproveLog::load();
+                state.improve_status = format!(
+                    "Iterations: {}  |  Experiments: {}  |  Improvements: {}\nBaseline: {:.4}  |  Best: {:.4}  |  Gain: {:.4}{}",
+                    log.iterations_run,
+                    log.experiments_run,
+                    log.improvements,
+                    log.baseline_quality,
+                    log.best_quality,
+                    log.best_quality - log.baseline_quality,
+                    if let Some(last) = log.recent.last() {
+                        format!("\nLast experiment: quality={:.4}  kept={:.1}%", last.quality_score, last.kept_ratio * 100.0)
+                    } else {
+                        String::new()
+                    }
+                );
+            }
+        });
+        ui.add_space(8.0);
+
+        // ── Status display ──────────────────────────────────────────────────
+        if !state.improve_status.is_empty() {
+            egui::Frame::default()
+                .fill(COLOR_PANEL_BG)
+                .inner_margin(egui::Margin::same(8.0))
+                .rounding(egui::Rounding::same(4.0))
+                .show(ui, |ui| {
+                    ui.label(
+                        egui::RichText::new(&state.improve_status)
+                            .monospace()
+                            .color(COLOR_ACCENT_GREEN),
+                    );
+                });
+            ui.add_space(8.0);
+        }
+
+        // ── Recent experiments table ────────────────────────────────────────
+        let log = ImproveLog::load();
+        if !log.recent.is_empty() {
+            ui.label(egui::RichText::new("Recent Experiments (last 10)").strong());
+            ui.add_space(4.0);
+            egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+                egui::Grid::new("improve_exp_grid")
+                    .striped(true)
+                    .min_col_width(60.0)
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new("Iter").strong());
+                        ui.label(egui::RichText::new("Quality").strong());
+                        ui.label(egui::RichText::new("Kept %").strong());
+                        ui.label(egui::RichText::new("Scenes").strong());
+                        ui.label(egui::RichText::new("Better?").strong());
+                        ui.end_row();
+
+                        for exp in log.recent.iter().rev().take(10) {
+                            ui.label(format!("{}", exp.iteration));
+                            ui.label(
+                                egui::RichText::new(format!("{:.4}", exp.quality_score))
+                                    .color(if exp.improved { COLOR_ACCENT_GREEN } else { COLOR_TEXT_PRIMARY }),
+                            );
+                            ui.label(format!("{:.1}%", exp.kept_ratio * 100.0));
+                            ui.label(format!("{}", exp.scene_count));
+                            ui.label(if exp.improved {
+                                egui::RichText::new("✓").color(COLOR_ACCENT_GREEN)
+                            } else {
+                                egui::RichText::new("–").color(COLOR_TEXT_SECONDARY)
+                            });
+                            ui.end_row();
+                        }
+                    });
+            });
+            ui.add_space(8.0);
+        }
+
+        // ── Program guidance hint ───────────────────────────────────────────
+        ui.separator();
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(
+                "Steer the optimizer by editing  cortex_cache/improve_program.md  \
+                 (re-read every iteration while running).",
+            )
+            .color(COLOR_TEXT_SECONDARY)
+            .italics(),
+        );
+        ui.label(
+            egui::RichText::new(
+                "Directives: increase <param> | decrease <param> | preserve <param>",
+            )
+            .color(COLOR_TEXT_SECONDARY)
+            .small(),
+        );
+    }
+
     fn render_process_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("⚙️ Process Video").color(COLOR_ACCENT_ORANGE));
         ui.separator();
@@ -2924,6 +3137,7 @@ impl eframe::App for SynoidApp {
                                 ("📚", "Learn Downloads", ActiveCommand::LearnDownloads),
                                 ("💡", "Suggest", ActiveCommand::Suggest),
                                 ("⚡", "Process Pipeline", ActiveCommand::Process),
+                                ("🧬", "AutoImprove", ActiveCommand::AutoImprove),
                             ],
                         ) {
                             new_cmd = Some(cmd);

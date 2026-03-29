@@ -122,7 +122,7 @@ pub struct EditIntent {
 }
 
 fn default_show_cut_markers() -> bool {
-    false
+    true
 }
 fn default_censor_profanity() -> bool {
     true
@@ -153,6 +153,7 @@ The JSON must strictly follow this structure and include nothing else:
     "target_duration": null or [min_secs_float, max_secs_float],
     "censor_profanity": bool,
     "profanity_replacement": null or string (e.g. "boing.wav"),
+    "show_cut_markers": bool,
     "use_remotion": bool,
     "remotion_template": null or "Intro" | "StatsCard" | "StepByStep" | "TitleCard"
 }}

@@ -241,6 +241,25 @@ enum Commands {
         #[arg(short, long, default_value_t = 3000)]
         port: u16,
     },
+
+    /// Self-recursing editing strategy optimizer (karpathy/autoresearch-style)
+    AutoImprove {
+        /// Path to a benchmark video used for all experiments
+        #[arg(short, long)]
+        benchmark: PathBuf,
+
+        /// Number of strategy mutations to evaluate per iteration (default: 4)
+        #[arg(short, long, default_value_t = 4)]
+        candidates: usize,
+
+        /// Stop after N iterations (omit for infinite loop)
+        #[arg(short, long)]
+        iterations: Option<u64>,
+
+        /// Print status of past runs and exit
+        #[arg(long)]
+        status: bool,
+    },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -546,6 +565,39 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Commands::AutoResearch { topic, limit, save } => {
             info!("🔬 Launching AutoResearch pipeline for: {}", topic);
             core.process_auto_research(&topic, limit, save).await?;
+        }
+
+        Commands::AutoImprove {
+            benchmark,
+            candidates,
+            iterations,
+            status,
+        } => {
+            use synoid_core::agent::auto_improve::AutoImprove;
+
+            if status {
+                AutoImprove::print_status();
+            } else {
+                info!("🧬 AutoImprove: self-recursing strategy optimizer starting...");
+                let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+                // Ctrl-C handler
+                tokio::spawn(async move {
+                    if tokio::signal::ctrl_c().await.is_ok() {
+                        info!("[IMPROVE] Ctrl-C received — signalling shutdown");
+                        let _ = shutdown_tx.send(true);
+                    }
+                });
+
+                let mut improver = AutoImprove::new(benchmark);
+                improver.candidates_per_iter = candidates;
+                improver.max_iterations = iterations;
+
+                match improver.run(shutdown_rx).await {
+                    Ok(()) => info!("✅ AutoImprove finished."),
+                    Err(e) => error!("AutoImprove error: {}", e),
+                }
+            }
         }
 
         Commands::Autonomous { port } => {
