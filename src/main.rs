@@ -260,6 +260,29 @@ enum Commands {
         #[arg(long)]
         status: bool,
     },
+
+    /// GEPA self-improvement loop (Goal-Experience-Policy-Agent)
+    ///
+    /// Runs the background GEPA cycle that replays trajectory episodes,
+    /// distils the best editing patterns, and writes improved policies to
+    /// the LearningKernel — making every subsequent intelligent_edit better.
+    Gepa {
+        /// Print trajectory insights report and exit (no loop)
+        #[arg(long)]
+        insights: bool,
+
+        /// Run a one-shot policy update from stored trajectories and exit
+        #[arg(long)]
+        update: bool,
+
+        /// Optional port for instance isolation (e.g. 3001)
+        #[arg(short, long)]
+        port: Option<u16>,
+
+        /// Interval in seconds between background policy update cycles (default: 120)
+        #[arg(long, default_value_t = 120)]
+        interval: u64,
+    },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -626,6 +649,48 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             signal::ctrl_c().await?;
             learner.stop();
             info!("🛑 Autonomous Loop Stopped.");
+        }
+
+        Commands::Gepa { insights, update, port, interval } => {
+            use agent::brain::Brain;
+            use agent::core_systems::gepa::GepaLoop;
+            use tokio::signal;
+            use tokio::sync::Mutex;
+
+            if let Some(p) = port {
+                if p != 3000 {
+                    let instance_id = format!("_{}", p);
+                    std::env::set_var("SYNOID_INSTANCE_ID", &instance_id);
+                    info!("🔷 GEPA Instance: '{}' (port {})", instance_id, p);
+                }
+            }
+
+            let instance_id = std::env::var("SYNOID_INSTANCE_ID")
+                .unwrap_or_else(|_| "default".to_string());
+            let brain = Arc::new(Mutex::new(Brain::new(&api_url, "llama3:latest", None)));
+            let gepa = Arc::new(GepaLoop::new(brain, &instance_id));
+
+            if insights {
+                // Print insights report and exit
+                gepa.generate_insights();
+                return Ok(());
+            }
+
+            if update {
+                // One-shot policy update and exit
+                info!("[GEPA] Running one-shot policy update...");
+                gepa.run_policy_update().await;
+                info!("[GEPA] Done.");
+                return Ok(());
+            }
+
+            // Default: run background improvement loop until Ctrl+C
+            info!("🧠 Starting GEPA background loop (interval: {}s)...", interval);
+            gepa.clone().start_background_loop(interval);
+            info!("Press Ctrl+C to stop.");
+            signal::ctrl_c().await?;
+            gepa.stop_background_loop();
+            info!("🛑 GEPA Loop Stopped.");
         }
     }
 
