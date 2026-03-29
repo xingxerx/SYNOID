@@ -11,6 +11,9 @@ pub mod core_systems {
     pub mod core;
     pub mod body;
     pub mod health;
+    // GEPA: Goal-Experience-Policy-Agent self-improvement loop
+    pub mod trajectory;
+    pub mod gepa;
 }
 
 // AI Systems - LLM providers, reasoning, multi-agent orchestration
