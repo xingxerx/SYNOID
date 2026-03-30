@@ -80,7 +80,6 @@ pub enum ActiveCommand {
     Brain,
     Embody,
     Learn,
-    LearnDownloads,
     Suggest,
     Process,
     // Security
@@ -588,7 +587,6 @@ impl SynoidApp {
             ActiveCommand::Brain => self.render_brain_panel(ui, state),
             ActiveCommand::Embody => self.render_embody_panel(ui, state),
             ActiveCommand::Learn => self.render_learn_panel(ui, state),
-            ActiveCommand::LearnDownloads => self.render_learn_downloads_panel(ui, state),
             ActiveCommand::Suggest => self.render_suggest_panel(ui, state),
             ActiveCommand::Process => self.render_process_panel(ui, state),
             ActiveCommand::Guard => self.render_guard_panel(ui, state),
@@ -1391,9 +1389,177 @@ impl SynoidApp {
     }
 
     fn render_learn_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
-        ui.heading(egui::RichText::new("🎓 Learn Style").color(COLOR_ACCENT_GREEN));
+        use crate::agent::video_style_learner::get_download_dir;
+
+        ui.heading(egui::RichText::new("🎓 Learn").color(COLOR_ACCENT_GREEN));
         ui.separator();
         ui.add_space(10.0);
+
+        // ── Section 1: Learn from Downloads ─────────────────────────────────
+        ui.label(egui::RichText::new("FROM DOWNLOADS").size(10.0).color(COLOR_TEXT_SECONDARY).strong());
+        ui.add_space(6.0);
+
+        let dl_dir = get_download_dir();
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Folder:").strong());
+            ui.label(
+                egui::RichText::new(dl_dir.to_string_lossy().as_ref())
+                    .monospace()
+                    .color(COLOR_ACCENT_ORANGE),
+            );
+        });
+        ui.add_space(4.0);
+
+        let videos: Vec<std::path::PathBuf> = std::fs::read_dir(&dl_dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| matches!(e.to_lowercase().as_str(), "mp4" | "mkv" | "mov" | "avi"))
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if videos.is_empty() {
+            ui.label(
+                egui::RichText::new("⚠ No video files found in Download folder.")
+                    .color(COLOR_ACCENT_ORANGE),
+            );
+        } else {
+            ui.label(format!("{} video(s) ready to learn from:", videos.len()));
+            ui.add_space(4.0);
+            egui::ScrollArea::vertical().max_height(120.0).id_salt("dl_list").show(ui, |ui| {
+                for v in &videos {
+                    let name = v.file_name().unwrap_or_default().to_string_lossy();
+                    let size_mb = v.metadata().map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("▶").color(COLOR_ACCENT_GREEN));
+                        ui.label(format!("{} ({:.1} MB)", name, size_mb));
+                    });
+                }
+            });
+        }
+        ui.add_space(8.0);
+
+        let is_running = self.core.status.lock()
+            .map(|s| s.contains("Learning"))
+            .unwrap_or(false);
+
+        if is_running {
+            ui.add_enabled(
+                false,
+                egui::Button::new(egui::RichText::new("⏳ Learning…").size(15.0))
+                    .fill(egui::Color32::from_rgb(60, 80, 60)),
+            );
+        } else {
+            let btn_enabled = !videos.is_empty();
+            let btn = egui::Button::new(
+                egui::RichText::new("📚 Learn from Downloads").size(15.0),
+            )
+            .fill(if btn_enabled { COLOR_ACCENT_BLUE } else { egui::Color32::from_rgb(50, 50, 60) });
+
+            if ui.add_enabled(btn_enabled, btn).clicked() {
+                let core = self.core.clone();
+                tokio::spawn(async move {
+                    core.learn_from_downloads().await;
+                });
+            }
+        }
+
+        ui.add_space(14.0);
+        ui.separator();
+        ui.add_space(10.0);
+
+        // ── Section 2: Single File / YouTube ────────────────────────────────
+        ui.label(egui::RichText::new("SINGLE FILE / YOUTUBE").size(10.0).color(COLOR_TEXT_SECONDARY).strong());
+        ui.add_space(8.0);
+
+        self.render_input_file_picker(ui, state);
+        ui.add_space(8.0);
+
+        ui.label("Style Name:");
+        ui.text_edit_singleline(&mut state.style_name);
+        ui.add_space(12.0);
+
+        ui.label("YouTube / Reference URL:");
+        ui.text_edit_singleline(&mut state.youtube_url);
+        ui.add_space(6.0);
+
+        let download_enabled = state.youtube_url.starts_with("http");
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("📥 Download & Learn from YouTube").size(14.0),
+                )
+                .fill(if download_enabled {
+                    COLOR_ACCENT_BLUE
+                } else {
+                    egui::Color32::from_rgb(80, 80, 80)
+                }),
+            )
+            .clicked()
+            && download_enabled
+        {
+            let core = self.core.clone();
+            let url = state.youtube_url.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = crate::agent::download_guard::DownloadGuard::validate_url(&url) {
+                    tracing::warn!("[GUI] Download blocked by Sentinel: {}", e);
+                    return;
+                }
+                let academy_dir = std::path::Path::new("D:\\SYNOID\\Academy");
+                let _ = tokio::fs::create_dir_all(academy_dir).await;
+                tracing::info!("[GUI] Fetching reference video for Academy: {}", url);
+                if let Ok(info) =
+                    crate::agent::source_tools::download_youtube(&url, academy_dir, None).await
+                {
+                    let local_path = info.local_path;
+                    if let Err(e) =
+                        crate::agent::download_guard::DownloadGuard::validate_downloaded_file(
+                            &local_path,
+                        )
+                    {
+                        tracing::warn!("[GUI] Downloaded file blocked by Sentinel: {}", e);
+                        let _ = tokio::fs::remove_file(local_path).await;
+                        return;
+                    }
+                    tracing::info!("[GUI] Extracting neural style templates into Brain...");
+                    let _ = core.learn_style(&local_path, &info.title).await;
+                } else {
+                    tracing::error!("[GUI] Failed to fetch video from YouTube.");
+                }
+            });
+        }
+
+        ui.add_space(10.0);
+
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("🎓 Analyze Local File & Learn").size(15.0))
+                    .fill(COLOR_ACCENT_GREEN),
+            )
+            .clicked()
+        {
+            let core = self.core.clone();
+            let input = PathBuf::from(&state.input_path);
+            let name = state.style_name.clone();
+
+            tokio::spawn(async move {
+                let _ = core.learn_style(&input, &name).await;
+            });
+        }
+
+        ui.add_space(14.0);
+        ui.separator();
+        ui.add_space(10.0);
+
+        // ── Section 3: Autonomous Loop ───────────────────────────────────────
+        ui.label(egui::RichText::new("AUTONOMOUS").size(10.0).color(COLOR_TEXT_SECONDARY).strong());
+        ui.add_space(8.0);
 
         if ui
             .checkbox(
@@ -1416,92 +1582,6 @@ impl SynoidApp {
                 } else {
                     core.stop_autonomous_learning();
                 }
-            });
-        }
-        ui.add_space(10.0);
-
-        self.render_input_file_picker(ui, state);
-        ui.add_space(10.0);
-
-        ui.label("Style Name:");
-        ui.text_edit_singleline(&mut state.style_name);
-        ui.add_space(20.0);
-
-        ui.label("YouTube / Reference URL:");
-        ui.text_edit_singleline(&mut state.youtube_url);
-
-        let download_enabled = state.youtube_url.starts_with("http");
-        if ui
-            .add(
-                egui::Button::new(
-                    egui::RichText::new("📥 Download Safe Video to Academy").size(14.0),
-                )
-                .fill(if download_enabled {
-                    COLOR_ACCENT_BLUE
-                } else {
-                    egui::Color32::from_rgb(80, 80, 80)
-                }),
-            )
-            .clicked()
-            && download_enabled
-        {
-            let core = self.core.clone();
-            let url = state.youtube_url.clone();
-
-            tokio::spawn(async move {
-                // 1. Guard check
-                if let Err(e) = crate::agent::download_guard::DownloadGuard::validate_url(&url) {
-                    tracing::warn!("[GUI] Download blocked by Sentinel: {}", e);
-                    return;
-                }
-
-                // 2. Setup Academy dir
-                let academy_dir = std::path::Path::new("D:\\SYNOID\\Academy");
-                let _ = tokio::fs::create_dir_all(academy_dir).await;
-
-                // 3. Download
-                tracing::info!("[GUI] Fetching reference video for Academy: {}", url);
-                if let Ok(info) =
-                    crate::agent::source_tools::download_youtube(&url, academy_dir, None).await
-                {
-                    // 4. Validate downloaded file
-                    let local_path = info.local_path;
-                    if let Err(e) =
-                        crate::agent::download_guard::DownloadGuard::validate_downloaded_file(
-                            &local_path,
-                        )
-                    {
-                        tracing::warn!("[GUI] Downloaded file blocked by Sentinel: {}", e);
-                        let _ = tokio::fs::remove_file(local_path).await;
-                        return;
-                    }
-
-                    // 5. Learn immediately
-                    tracing::info!(
-                        "[GUI] Download complete! Extracting neural style templates into Brain..."
-                    );
-                    let _ = core.learn_style(&local_path, &info.title).await;
-                } else {
-                    tracing::error!("[GUI] Failed to fetch video from YouTube.");
-                }
-            });
-        }
-
-        ui.add_space(20.0);
-
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("🎓 Analyze Local File & Learn").size(16.0))
-                    .fill(COLOR_ACCENT_GREEN),
-            )
-            .clicked()
-        {
-            let core = self.core.clone();
-            let input = PathBuf::from(&state.input_path);
-            let name = state.style_name.clone();
-
-            tokio::spawn(async move {
-                let _ = core.learn_style(&input, &name).await;
             });
         }
     }
@@ -1873,111 +1953,6 @@ impl SynoidApp {
         {
             ui.label("YouTube download functionality to be implemented.");
         }
-    }
-
-    fn render_learn_downloads_panel(&self, ui: &mut egui::Ui, _state: &mut UiState) {
-        use crate::agent::video_style_learner::get_download_dir;
-
-        ui.heading(egui::RichText::new("📚 Learn from Downloads").color(COLOR_ACCENT_BLUE));
-        ui.separator();
-        ui.add_space(8.0);
-
-        let dl_dir = get_download_dir();
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Download folder:").strong());
-            ui.label(
-                egui::RichText::new(dl_dir.to_string_lossy().as_ref())
-                    .monospace()
-                    .color(COLOR_ACCENT_ORANGE),
-            );
-        });
-        ui.add_space(6.0);
-
-        // List MP4s in the Download folder
-        let videos: Vec<std::path::PathBuf> = std::fs::read_dir(&dl_dir)
-            .into_iter()
-            .flatten()
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| {
-                p.extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| matches!(e.to_lowercase().as_str(), "mp4" | "mkv" | "mov" | "avi"))
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        if videos.is_empty() {
-            ui.label(
-                egui::RichText::new("⚠ No video files found in Download folder.")
-                    .color(COLOR_ACCENT_ORANGE),
-            );
-        } else {
-            ui.label(format!(
-                "{} video(s) ready to learn from:",
-                videos.len()
-            ));
-            ui.add_space(4.0);
-            egui::ScrollArea::vertical().max_height(140.0).id_salt("dl_list").show(ui, |ui| {
-                for v in &videos {
-                    let name = v.file_name().unwrap_or_default().to_string_lossy();
-                    let size_mb = v.metadata().map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("▶").color(COLOR_ACCENT_GREEN));
-                        ui.label(format!("{} ({:.1} MB)", name, size_mb));
-                    });
-                }
-            });
-        }
-        ui.add_space(12.0);
-
-        // Learn button
-        let is_running = self.core.status.lock()
-            .map(|s| s.contains("Learning"))
-            .unwrap_or(false);
-
-        if is_running {
-            ui.add_enabled(
-                false,
-                egui::Button::new(egui::RichText::new("⏳ Learning…").size(16.0))
-                    .fill(egui::Color32::from_rgb(60, 80, 60)),
-            );
-        } else {
-            let btn_enabled = !videos.is_empty();
-            let btn = egui::Button::new(egui::RichText::new("🎓 Learn Editing Style from Downloads").size(15.0))
-                .fill(if btn_enabled { COLOR_ACCENT_BLUE } else { egui::Color32::from_rgb(50, 50, 60) });
-
-            if ui.add_enabled(btn_enabled, btn).clicked() {
-                let core = self.core.clone();
-                tokio::spawn(async move {
-                    core.learn_from_downloads().await;
-                });
-            }
-        }
-        ui.add_space(6.0);
-
-        ui.label(
-            egui::RichText::new(
-                "Scans every video in the Download folder, extracts shot pacing, \
-                 scene duration, and style cues, then saves them to brain_memory.json. \
-                 Results are also used by AutoImprove as the editing benchmark.",
-            )
-            .color(COLOR_TEXT_SECONDARY)
-            .italics(),
-        );
-        ui.add_space(8.0);
-
-        // Shortcut to AutoImprove panel
-        ui.separator();
-        ui.add_space(4.0);
-        ui.label(
-            egui::RichText::new(
-                "Tip: After learning, use 🧬 AutoImprove to recursively refine the \
-                 editing strategy using one of these videos as the benchmark.",
-            )
-            .color(COLOR_TEXT_SECONDARY)
-            .small(),
-        );
     }
 
     fn render_auto_improve_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
@@ -3258,7 +3233,6 @@ impl eframe::App for SynoidApp {
                                 ("💬", "Brain", ActiveCommand::Brain),
                                 ("🤖", "Embody", ActiveCommand::Embody),
                                 ("🎓", "Learn", ActiveCommand::Learn),
-                                ("📚", "Learn Downloads", ActiveCommand::LearnDownloads),
                                 ("💡", "Suggest", ActiveCommand::Suggest),
                                 ("⚡", "Process Pipeline", ActiveCommand::Process),
                                 ("🧬", "AutoImprove", ActiveCommand::AutoImprove),
@@ -3340,7 +3314,7 @@ impl eframe::App for SynoidApp {
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            egui::RichText::new("v0.1.1  |  RTX_5080_NVENC  |  SENTINEL: SECURE")
+                            egui::RichText::new("v2.0.0  |  RTX_5080_NVENC  |  SENTINEL: SECURE")
                                 .size(10.0)
                                 .color(COLOR_TEXT_SECONDARY),
                         );

@@ -144,8 +144,8 @@ impl Brain {
             );
         }
 
-        // 3. Learning Heuristics
-        if req_lower.contains("learn") {
+        // 3. Learning Heuristics (short commands only — avoids matching "learn" in large markdown prompts)
+        if req_lower.len() < 300 && req_lower.contains("learn") {
             let name = Self::extract_quoted_value(request, "style")
                 .unwrap_or_else(|| "new_style".to_string());
             return Intent::LearnStyle(
@@ -246,8 +246,8 @@ impl Brain {
 
         // 2. Try to find an unquoted path by looking for file extensions
         for word in request.split_whitespace() {
-            // Strip surrounding punctuation
-            let clean = word.trim_matches(|c: char| c == ',' || c == ';' || c == ')' || c == '(');
+            // Strip surrounding punctuation and markdown code-span backticks
+            let clean = word.trim_matches(|c: char| c == ',' || c == ';' || c == ')' || c == '(' || c == '`');
             if Self::looks_like_path(clean) {
                 return Some(clean.to_string());
             }
