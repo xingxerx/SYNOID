@@ -1974,69 +1974,7 @@ impl SynoidApp {
 
         // ── Quick-pick from Download folder ────────────────────────────────
         let dl_dir = get_download_dir();
-        let dl_videos: Vec<std::path::PathBuf> = std::fs::read_dir(&dl_dir)
-            .into_iter()
-            .flatten()
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| {
-                p.extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| matches!(e.to_lowercase().as_str(), "mp4" | "mkv" | "mov" | "avi"))
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        if !dl_videos.is_empty() {
-            ui.label(egui::RichText::new("Pick benchmark from Download folder:").strong());
-            ui.add_space(4.0);
-            egui::ScrollArea::vertical()
-                .max_height(100.0)
-                .id_salt("improve_dl_pick")
-                .show(ui, |ui| {
-                    for v in &dl_videos {
-                        let name = v.file_name().unwrap_or_default().to_string_lossy().to_string();
-                        let selected = state.improve_benchmark == v.to_string_lossy().as_ref();
-                        let label = egui::RichText::new(format!("▶ {}", name))
-                            .color(if selected { COLOR_ACCENT_GREEN } else { COLOR_TREE_ITEM });
-                        if ui.selectable_label(selected, label).clicked() {
-                            state.improve_benchmark = v.to_string_lossy().to_string();
-                            save_settings(
-                                &self.core.instance_id,
-                                state,
-                                self.active_command,
-                                &self.tree_state,
-                            );
-                        }
-                    }
-                });
-            ui.add_space(6.0);
-        }
-
-        // ── Benchmark video picker ──────────────────────────────────────────
-        ui.label(egui::RichText::new("Benchmark Video").strong());
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut state.improve_benchmark)
-                    .hint_text("Select from list above or browse…")
-                    .desired_width(310.0),
-            );
-            if ui.button("📂").clicked() {
-                if let Some(p) = rfd::FileDialog::new()
-                    .add_filter("Video", &["mp4", "mkv", "mov", "avi"])
-                    .set_directory(&dl_dir)
-                    .pick_file()
-                {
-                    state.improve_benchmark = p.to_string_lossy().to_string();
-                    save_settings(
-                        &self.core.instance_id,
-                        state,
-                        self.active_command,
-                        &self.tree_state,
-                    );
-                }
-            }
-        });
+        ui.label(egui::RichText::new(format!("Analyzing folder: {}", dl_dir.to_string_lossy())).color(COLOR_ACCENT_GREEN));
         ui.add_space(8.0);
 
         // ── Candidates & iterations ─────────────────────────────────────────
@@ -2077,11 +2015,9 @@ impl SynoidApp {
                         .strong(),
                 );
             } else {
-                let can_start = !state.improve_benchmark.is_empty();
                 let btn = egui::Button::new(egui::RichText::new("🧬 Start AutoImprove").size(15.0))
-                    .fill(if can_start { COLOR_ACCENT_PURPLE } else { egui::Color32::from_rgb(60, 60, 70) });
-                if ui.add_enabled(can_start, btn).clicked() {
-                    let benchmark = std::path::PathBuf::from(&state.improve_benchmark);
+                    .fill(COLOR_ACCENT_PURPLE);
+                if ui.add(btn).clicked() {
                     let candidates: usize = state.improve_candidates.parse().unwrap_or(4);
                     let iterations: Option<u64> = state.improve_iterations.trim().parse().ok();
                     save_settings(
@@ -2090,7 +2026,7 @@ impl SynoidApp {
                         self.active_command,
                         &self.tree_state,
                     );
-                    self.core.start_auto_improve(benchmark, candidates, iterations);
+                    self.core.start_auto_improve(candidates, iterations);
                 }
             }
 

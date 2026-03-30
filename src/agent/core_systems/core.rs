@@ -1210,7 +1210,6 @@ impl AgentCore {
     /// Start the self-recursing strategy improvement loop in a background task.
     pub fn start_auto_improve(
         &self,
-        benchmark: PathBuf,
         candidates: usize,
         iterations: Option<u64>,
     ) {
@@ -1228,8 +1227,8 @@ impl AgentCore {
 
         self.improve_running.store(true, Ordering::Relaxed);
         self.log(&format!(
-            "[IMPROVE] 🚀 Starting AutoImprove loop | benchmark: {:?} | {} candidates/iter",
-            benchmark, candidates
+            "[IMPROVE] 🚀 Starting AutoImprove loop | {} candidates/iter",
+            candidates
         ));
 
         let running_flag = self.improve_running.clone();
@@ -1246,7 +1245,7 @@ impl AgentCore {
         };
 
         tokio::spawn(async move {
-            let mut improver = AutoImprove::new(benchmark);
+            let mut improver = AutoImprove::new();
             improver.candidates_per_iter = candidates;
             improver.max_iterations = iterations;
 

@@ -244,10 +244,6 @@ enum Commands {
 
     /// Self-recursing editing strategy optimizer (karpathy/autoresearch-style)
     AutoImprove {
-        /// Path to a benchmark video used for all experiments
-        #[arg(short, long)]
-        benchmark: PathBuf,
-
         /// Number of strategy mutations to evaluate per iteration (default: 4)
         #[arg(short, long, default_value_t = 4)]
         candidates: usize,
@@ -591,7 +587,6 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
 
         Commands::AutoImprove {
-            benchmark,
             candidates,
             iterations,
             status,
@@ -612,7 +607,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     }
                 });
 
-                let mut improver = AutoImprove::new(benchmark);
+                let mut improver = AutoImprove::new();
                 improver.candidates_per_iter = candidates;
                 improver.max_iterations = iterations;
 

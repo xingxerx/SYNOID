@@ -372,10 +372,114 @@ impl ImproveLog {
 
 // ─── AutoImprove public API ───────────────────────────────────────────────────
 
+fn get_videos_in_dir(path: &Path) -> Vec<PathBuf> {
+    let mut videos = Vec::new();
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() {
+                if let Some(ext) = p.extension() {
+                    let ext_str = ext.to_string_lossy();
+                    if ext_str.eq_ignore_ascii_case("mp4") || ext_str.eq_ignore_ascii_case("mkv") || ext_str.eq_ignore_ascii_case("mov") {
+                        videos.push(p);
+                    }
+                }
+            }
+        }
+    }
+    videos
+}
+
+async fn fetch_and_replace_video(download_dir: &Path, current_videos: &mut Vec<PathBuf>) {
+    info!("[IMPROVE] 📥 Fetching a new reference video for further improvement...");
+    use crate::agent::tools::source_tools;
+    
+    let topics = [
+        "cinematic travel video",
+        "gaming montage fast paced",
+        "documentary style editing",
+        "vlog editing tricks",
+        "music video visual effects"
+    ];
+    let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let topic = topics[(seed as usize) % topics.len()];
+
+    if let Ok(results) = source_tools::search_youtube(topic, 5).await {
+        for source in results {
+            if source.duration > 30.0 && source.duration < 1200.0 {
+                if let Some(url) = source.original_url {
+                    let browser = source_tools::detect_browser();
+                    if let Ok(downloaded) = source_tools::download_youtube(&url, download_dir, browser.as_deref()).await {
+                        info!("[IMPROVE] ✅ Acquired new video: {}", downloaded.title);
+                        if !current_videos.contains(&downloaded.local_path) {
+                            current_videos.push(downloaded.local_path.clone());
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Evict oldest videos if > 10
+    if current_videos.len() > 10 {
+        current_videos.sort_by(|a, b| {
+            std::fs::metadata(a).and_then(|m| m.modified()).ok()
+              .cmp(&std::fs::metadata(b).and_then(|m| m.modified()).ok())
+        });
+        
+        while current_videos.len() > 10 {
+            let stale = current_videos.remove(0);
+            info!("[IMPROVE] 🧹 Evicting old reference video: {:?}", stale.file_name().unwrap_or_default());
+            let _ = std::fs::remove_file(stale);
+        }
+    }
+}
+
+async fn run_dry_eval_all(
+    videos: &[PathBuf],
+    strategy: &EditingStrategy,
+    iteration: u64,
+    candidate_id: usize,
+) -> Option<ExperimentResult> {
+    if videos.is_empty() {
+        return None;
+    }
+
+    let mut total_quality = 0.0;
+    let mut total_kept = 0.0;
+    let mut total_scenes = 0;
+    let mut successful_evals = 0;
+
+    for video in videos {
+        if let Some(res) = run_dry_eval(video, strategy, iteration, candidate_id).await {
+            total_quality += res.quality_score;
+            total_kept += res.kept_ratio;
+            total_scenes += res.scene_count;
+            successful_evals += 1;
+        }
+    }
+
+    if successful_evals == 0 {
+        return None;
+    }
+
+    Some(ExperimentResult {
+        iteration,
+        candidate_id,
+        quality_score: total_quality / successful_evals as f64,
+        kept_ratio: total_kept / successful_evals as f64,
+        scene_count: total_scenes, // Sum of all scenes evaluated
+        improved: false,
+        timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+        strategy: strategy.clone(),
+    })
+}
+
 /// Configuration for the self-improvement loop.
 pub struct AutoImprove {
-    /// Video used as the fixed benchmark for all experiments.
-    pub benchmark_video: PathBuf,
+    /// Directory to read reference videos from.
+    pub download_dir: PathBuf,
     /// How many strategy mutations to evaluate per iteration.
     pub candidates_per_iter: usize,
     /// Stop after this many iterations (None = run until Ctrl-C).
@@ -385,10 +489,10 @@ pub struct AutoImprove {
 }
 
 impl AutoImprove {
-    pub fn new(benchmark_video: PathBuf) -> Self {
+    pub fn new() -> Self {
         let suffix = std::env::var("SYNOID_INSTANCE_ID").unwrap_or_default();
         Self {
-            benchmark_video,
+            download_dir: crate::agent::video_style_learner::get_download_dir(),
             candidates_per_iter: 4,
             max_iterations: None,
             program_path: PathBuf::from(format!("cortex_cache{}", suffix))
@@ -403,8 +507,8 @@ impl AutoImprove {
         shutdown: tokio::sync::watch::Receiver<bool>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!(
-            "[IMPROVE] 🚀 AutoImprove loop starting | benchmark: {:?} | {} candidates/iter",
-            self.benchmark_video, self.candidates_per_iter
+            "[IMPROVE] 🚀 AutoImprove loop starting | dir: {:?} | {} candidates/iter",
+            self.download_dir, self.candidates_per_iter
         );
 
         let mut log = ImproveLog::load();
@@ -414,8 +518,17 @@ impl AutoImprove {
         let baseline = EditingStrategy::load();
         info!("[IMPROVE] 📐 Loaded baseline EditingStrategy");
 
-        let baseline_quality = match run_dry_eval(
-            &self.benchmark_video,
+        let mut videos = get_videos_in_dir(&self.download_dir);
+        if videos.is_empty() {
+            // Fetch one immediately if empty
+            fetch_and_replace_video(&self.download_dir, &mut videos).await;
+            if videos.is_empty() {
+                return Err("No videos found in Download directory and failed to fetch new ones".into());
+            }
+        }
+
+        let baseline_quality = match run_dry_eval_all(
+            &videos,
             &baseline,
             0,
             0,
@@ -424,16 +537,17 @@ impl AutoImprove {
         {
             Some(r) => {
                 info!(
-                    "[IMPROVE] 📊 Baseline quality: {:.4} | kept {:.1}% of {} scenes",
+                    "[IMPROVE] 📊 Baseline quality: {:.4} | kept {:.1}% of {} scenes across {} videos",
                     r.quality_score,
                     r.kept_ratio * 100.0,
-                    r.scene_count
+                    r.scene_count,
+                    videos.len()
                 );
                 r.quality_score
             }
             None => {
                 return Err(
-                    "Baseline evaluation failed — check that benchmark video is readable by ffprobe"
+                    "Baseline evaluation failed — check that videos are readable by ffprobe"
                         .into(),
                 )
             }
@@ -494,7 +608,7 @@ impl AutoImprove {
                 );
 
                 if let Some(result) =
-                    run_dry_eval(&self.benchmark_video, &candidate, iteration, cid).await
+                    run_dry_eval_all(&videos, &candidate, iteration, cid).await
                 {
                     info!(
                         "[IMPROVE]   → quality {:.4} | kept {:.1}% | {} scenes",
@@ -553,6 +667,9 @@ impl AutoImprove {
                     }
 
                     log.push(best);
+
+                    // Fetch new videos and replace old ones up to a limit of 10
+                    fetch_and_replace_video(&self.download_dir, &mut videos).await;
                 } else {
                     info!(
                         "[IMPROVE] ↔ No improvement this iteration (best candidate: {:.4} ≤ current: {:.4})",
