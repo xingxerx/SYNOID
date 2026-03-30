@@ -94,6 +94,7 @@ pub fn create_router(state: Arc<KernelState>) -> Router {
         .route("/api/tasks", get(get_tasks))
         .route("/api/chat", post(handle_chat))
         .route("/api/stream", get(stream_video))
+        .route("/api/gepa/insights", get(get_gepa_insights))
         .layer(middleware::from_fn(auth_middleware))
         .with_state(state);
 
@@ -262,6 +263,17 @@ async fn stream_video(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+/// GET /api/gepa/insights
+///
+/// Returns the GEPA self-improvement report as JSON. The response mirrors
+/// `GepaInsights` and reflects all trajectory episodes recorded since the
+/// agent started. An empty store returns zeroed-out fields.
+async fn get_gepa_insights(
+    State(state): State<AppState>,
+) -> Json<synoid_core::agent::core_systems::gepa::GepaInsights> {
+    Json(state.core.get_gepa_insights())
 }
 
 #[cfg(test)]

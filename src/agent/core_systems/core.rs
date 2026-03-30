@@ -347,6 +347,23 @@ impl AgentCore {
         }
     }
 
+    /// Return GEPA insights computed from the stored trajectory history.
+    /// Initialises the VideoEditingAgent if it hasn't been set up yet.
+    pub fn get_gepa_insights(
+        &self,
+    ) -> crate::agent::core_systems::gepa::GepaInsights {
+        use crate::agent::core_systems::gepa::GepaInsights;
+
+        self.ensure_video_editing_agent();
+        let vea = self.video_editing_agent.lock().unwrap();
+        if let Some(agent) = vea.as_ref() {
+            let trajs = agent.gepa.store.load_all();
+            GepaInsights::compute(&trajs)
+        } else {
+            GepaInsights::compute(&[])
+        }
+    }
+
     /// Learn editing style from videos already present in the Download directory.
     ///
     /// Analyses up to 10 MP4s, stores patterns in the LearningKernel, awards

@@ -8,7 +8,7 @@
 
 use crate::agent::core_systems::autonomous_learner::AutonomousLearner;
 use crate::agent::core_systems::brain::Brain;
-use crate::agent::core_systems::gepa::GepaLoop;
+use crate::agent::core_systems::gepa::{GepaInsights, GepaLoop};
 use crate::agent::specialized::smart_editor;
 use std::path::Path;
 use std::sync::Arc;
@@ -73,7 +73,31 @@ impl VideoEditingAgent {
 
         // 1. Recall best pattern for this instruction
         let kernel = self.brain.lock().await.learning_kernel.clone();
-        let pattern = kernel.lock().await.recall_pattern(instruction);
+        let mut pattern = kernel.lock().await.recall_pattern(instruction);
+
+        // 1a. GEPA policy injection: once we have ≥5 recorded episodes, use the
+        //     distilled optimal_kept_ratio to tune music_sync_strictness so the
+        //     smart-editor cuts closer to what history says produces the best edits.
+        //
+        //     Mapping:  kept_ratio 0.3 (aggressive) → strictness 1.0
+        //               kept_ratio 0.7 (mild)       → strictness 0.0
+        //     Clamps to [0.0, 1.0] for values outside the ideal window.
+        let ep_count = self.gepa.store.episode_count();
+        if ep_count >= 5 {
+            let all_trajs = self.gepa.store.load_all();
+            let insights = GepaInsights::compute(&all_trajs);
+            if insights.optimal_kept_ratio > 0.0 {
+                let derived = ((0.7 - insights.optimal_kept_ratio) / 0.4)
+                    .max(0.0)
+                    .min(1.0);
+                info!(
+                    "[VEA] GEPA policy injection: optimal_kept_ratio={:.2} → music_sync_strictness={:.2} (was {:.2})",
+                    insights.optimal_kept_ratio, derived, pattern.music_sync_strictness
+                );
+                pattern.music_sync_strictness = derived;
+                pattern.kept_ratio = insights.optimal_kept_ratio;
+            }
+        }
 
         // 2. Smart edit with the recalled pattern
         let result = smart_editor::smart_edit(
@@ -162,14 +186,7 @@ impl VideoEditingAgent {
             .map(|s| s.len())
             .unwrap_or(0);
 
-        // Estimate duration via metadata (file size proxy) — replace with ffprobe if available
-        let duration_secs = std::fs::metadata(probe_path)
-            .map(|m| {
-                // Very rough: ~1 MB/s for compressed video, capped for sanity
-                let mb = m.len() as f64 / 1_048_576.0;
-                (mb * 1.0).max(5.0).min(3600.0)
-            })
-            .unwrap_or(30.0);
+        let duration_secs = probe_duration_secs(probe_path).await;
 
         // kept_ratio: if we have both input and output scene counts, compare them
         let input_scenes = if success && output != input {
@@ -210,4 +227,44 @@ impl VideoEditingAgent {
     pub fn stop_gepa_loop(&self) {
         self.gepa.stop_background_loop();
     }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Extract the actual duration of a media file using `ffprobe`.
+/// Falls back to a file-size heuristic (~1 MB/s compressed) when ffprobe is
+/// unavailable or returns an error.
+async fn probe_duration_secs(path: &Path) -> f64 {
+    let out = tokio::process::Command::new("ffprobe")
+        .args([
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
+            &path.to_string_lossy(),
+        ])
+        .output()
+        .await;
+
+    if let Ok(o) = out {
+        if o.status.success() {
+            if let Ok(s) = std::str::from_utf8(&o.stdout) {
+                if let Ok(secs) = s.trim().parse::<f64>() {
+                    if secs > 0.0 {
+                        return secs;
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: rough file-size proxy (~1 MB/s for compressed video)
+    std::fs::metadata(path)
+        .map(|m| {
+            let mb = m.len() as f64 / 1_048_576.0;
+            mb.max(5.0).min(3600.0)
+        })
+        .unwrap_or(30.0)
 }
