@@ -26,39 +26,184 @@ use crate::agent::specialized::smart_editor::{
 };
 use crate::agent::core_systems::neuroplasticity::Neuroplasticity;
 
-// ─── Simple LCG RNG (no external dep needed) ────────────────────────────────
+// ─── AI Strategy Advisor ──────────────────────────────────────────────────────
 
-struct Lcg(u64);
+use crate::agent::ai_systems::gpt_oss_bridge::SynoidAgent;
 
-impl Lcg {
-    fn seeded() -> Self {
-        let seed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos() as u64;
-        // Mix seed bits to avoid clustering on low-resolution clocks
-        let seed = seed
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        Self(seed)
+pub struct LlmStrategyAdvisor {
+    agent: SynoidAgent,
+}
+
+impl LlmStrategyAdvisor {
+    pub fn new() -> Self {
+        let api_url = std::env::var("OLLAMA_API_URL")
+            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        // Use a reasoning model for strategy generation
+        Self {
+            agent: SynoidAgent::new(&api_url, "llama-3.3-70b-versatile"), // Groq default if available
+        }
     }
 
-    fn next_f64(&mut self) -> f64 {
-        self.0 = self
-            .0
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-        (self.0 >> 11) as f64 / (1u64 << 53) as f64
+    /// Ask the LLM to generate 4 improved strategies based on history and hints.
+    async fn generate_candidates(
+        &self,
+        baseline: &EditingStrategy,
+        history: &[ExperimentResult],
+        hints: &MutationHints,
+    ) -> Result<Vec<EditingStrategy>, String> {
+        let history_json = serde_json::to_string_pretty(&history.iter().take(5).collect::<Vec<_>>()).unwrap_or_default();
+        let baseline_json = serde_json::to_string_pretty(baseline).unwrap_or_default();
+
+        // 🧠 Compounding Learning: List existing skills for the LLM to consider
+        let skills_dir = ".agent/skills";
+        let mut skill_list = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(skills_dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.ends_with(".json") {
+                        skill_list.push(name.replace(".json", ""));
+                    }
+                }
+            }
+        }
+        let available_skills = if skill_list.is_empty() {
+            "None yet.".to_string()
+        } else {
+            skill_list.join(", ")
+        };
+
+        let prompt = format!(
+            r#"You are the SYNOID Strategy Optimizer. Your goal is to improve video editing quality scores.
+
+### PERFORMANCE HISTORY (Last 5 Experiments)
+{}
+
+### CURRENT PROJECT BASELINE
+{}
+
+### SKILLS LIBRARY (Already discovered high-performing strategies)
+{}
+
+### HUMAN GUIDANCE / HINTS
+- Increase: {:?}
+- Decrease: {:?}
+- Preserve: {:?}
+- Notes: {:?}
+
+### YOUR TASK
+Analyze the history. You may either:
+1. Mutate the current BASELINE into a better version.
+2. Adapt a known SKILL to this project's requirements.
+3. Combine a SKILL with the BASELINE.
+
+Propose 4 NEW and DISTINCT EditingStrategy variations.
+- Variation 1: Optimization of the baseline.
+- Variation 2: Aggression based on human hints.
+- Variation 3: Deep adaptation of a SKILL (if any seem relevant).
+- Variation 4: "World Class" - total synthesis of best practices.
+
+Respond ONLY with a JSON array of 4 EditingStrategy objects. No prose.
+Example:
+[
+  {{ "scene_threshold": 0.3, ... }},
+  ...
+]"#,
+            history_json,
+            baseline_json,
+            available_skills,
+            hints.increase,
+            hints.decrease,
+            hints.preserve,
+            hints.notes
+        );
+
+        match self.agent.reason(&prompt).await {
+            Ok(response) => {
+                let extracted = if let Some(mat) = regex::Regex::new(r"(?s)\[.*\]")
+                    .ok()
+                    .and_then(|re| re.find(response.trim()))
+                {
+                    mat.as_str()
+                } else {
+                    response.trim()
+                };
+
+                let clean_json = extracted
+                    .trim_start_matches("```json")
+                    .trim_start_matches("```")
+                    .trim_end_matches("```")
+                    .trim();
+
+                match serde_json::from_str::<Vec<EditingStrategy>>(clean_json) {
+                    Ok(variants) => {
+                        if variants.len() >= 4 {
+                            Ok(variants.into_iter().take(4).collect())
+                        } else {
+                            Err("LLM returned fewer than 4 variants".into())
+                        }
+                    }
+                    Err(e) => Err(format!("Failed to parse LLM variants: {}. Raw: {}", e, clean_json)),
+                }
+            }
+            Err(e) => Err(format!("LLM reasoning failed: {}", e)),
+        }
     }
 
-    /// Return a value in `[low, high)`.
-    fn range(&mut self, low: f64, high: f64) -> f64 {
-        low + self.next_f64() * (high - low)
-    }
+    /// Archive a high-performing strategy as a persistent "Skill".
+    async fn archive_skill(
+        &self,
+        strategy: &EditingStrategy,
+        result: &ExperimentResult,
+    ) -> Result<String, String> {
+        let strategy_json = serde_json::to_string_pretty(strategy).unwrap_or_default();
+        let prompt = format!(
+            r#"You just discovered a HIGH-PERFORMING video editing strategy.
+            
+### QUALITY SCORE
+{:.4}
 
-    /// Return a signed delta in `[-magnitude, +magnitude]`.
-    fn delta(&mut self, magnitude: f64) -> f64 {
-        self.range(-magnitude, magnitude)
+### STRATEGY PARAMS
+{}
+
+### YOUR TASK
+Generate a descriptive, short name (2-4 words) and a 1-sentence summary of why this works.
+Respond ONLY in JSON.
+Example:
+{{ "name": "Dynamic High-Speech Cut", "summary": "Aggressively minimizes silence while boosting overlapping dialogue." }}"#,
+            result.quality_score,
+            strategy_json
+        );
+
+        match self.agent.reason(&prompt).await {
+            Ok(response) => {
+                let clean_json = response.trim_start_matches("```json")
+                    .trim_start_matches("```")
+                    .trim_end_matches("```")
+                    .trim();
+
+                let metadata: serde_json::Value = serde_json::from_str(clean_json).unwrap_or_default();
+                let skill_name = metadata["name"].as_str().unwrap_or("Unnamed Skill").replace(" ", "_").to_lowercase();
+                let summary = metadata["summary"].as_str().unwrap_or("No summary provided.");
+
+                let skill_content = serde_json::json!({
+                    "name": skill_name,
+                    "summary": summary,
+                    "quality_score": result.quality_score,
+                    "strategy": strategy,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                });
+
+                let skills_dir = ".agent/skills";
+                std::fs::create_dir_all(skills_dir).ok();
+                let path = format!("{}/{}.json", skills_dir, skill_name);
+
+                match std::fs::write(&path, serde_json::to_string_pretty(&skill_content).unwrap()) {
+                    Ok(_) => Ok(path),
+                    Err(e) => Err(format!("IO Error saving skill: {}", e)),
+                }
+            }
+            Err(e) => Err(format!("LLM skill naming failed: {}", e)),
+        }
     }
 }
 
@@ -170,53 +315,26 @@ fn parse_improve_program(path: &Path) -> MutationHints {
     hints
 }
 
-// ─── Mutation ─────────────────────────────────────────────────────────────
-
-/// Apply a stochastic perturbation to every parameter, guided by program hints.
-fn mutate_strategy(baseline: &EditingStrategy, hints: &MutationHints, rng: &mut Lcg) -> EditingStrategy {
-    let base_mag = 0.12; // ±12% relative perturbation as base magnitude
-
-    let perturb = |rng: &mut Lcg, value: f64, param: &str, min: f64, max: f64| -> f64 {
-        let mag = hints.magnitude_for(param, base_mag);
-        let bias = hints.bias_for(param);
-        let noise = rng.delta(mag);
-        (value * (1.0 + bias + noise)).clamp(min, max)
+/// Fallback mutation logic if LLM fails or is offline.
+fn mutate_strategy_fallback(baseline: &EditingStrategy, _hints: &MutationHints) -> EditingStrategy {
+    // Basic ±10% jitter as safety fallback
+    let mut rng = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as f64;
+    let mut jitter = |val: f64| -> f64 {
+        let n = (rng % 1000.0) / 1000.0;
+        rng += 1.0;
+        val * (0.9 + n * 0.2)
     };
 
     EditingStrategy {
-        scene_threshold: perturb(rng, baseline.scene_threshold, "scene_threshold", 0.05, 0.90),
-        min_scene_score: perturb(rng, baseline.min_scene_score, "min_scene_score", 0.05, 0.85),
-        boring_penalty_threshold: perturb(
-            rng,
-            baseline.boring_penalty_threshold,
-            "boring_penalty_threshold",
-            5.0,
-            120.0,
-        ),
-        speech_boost: perturb(rng, baseline.speech_boost, "speech_boost", 0.0, 1.5),
-        silence_penalty: perturb(rng, baseline.silence_penalty, "silence_penalty", -1.5, 0.0),
-        continuity_boost: perturb(rng, baseline.continuity_boost, "continuity_boost", 0.0, 1.5),
-        speech_ratio_threshold: perturb(
-            rng,
-            baseline.speech_ratio_threshold,
-            "speech_ratio_threshold",
-            0.01,
-            0.8,
-        ),
-        action_duration_threshold: perturb(
-            rng,
-            baseline.action_duration_threshold,
-            "action_duration_threshold",
-            0.5,
-            15.0,
-        ),
-        max_jump_gap_secs: perturb(
-            rng,
-            baseline.max_jump_gap_secs,
-            "max_jump_gap_secs",
-            10.0,
-            180.0,
-        ),
+        scene_threshold: (jitter(baseline.scene_threshold)).clamp(0.05, 0.9),
+        min_scene_score: (jitter(baseline.min_scene_score)).clamp(0.05, 0.85),
+        boring_penalty_threshold: (jitter(baseline.boring_penalty_threshold)).clamp(5.0, 120.0),
+        speech_boost: (jitter(baseline.speech_boost)).clamp(0.0, 2.0),
+        silence_penalty: (jitter(baseline.silence_penalty)).clamp(-2.0, 0.0),
+        continuity_boost: (jitter(baseline.continuity_boost)).clamp(0.0, 2.0),
+        speech_ratio_threshold: (jitter(baseline.speech_ratio_threshold)).clamp(0.01, 0.8),
+        action_duration_threshold: (jitter(baseline.action_duration_threshold)).clamp(0.5, 15.0),
+        max_jump_gap_secs: (jitter(baseline.max_jump_gap_secs)).clamp(10.0, 180.0),
     }
 }
 
@@ -592,12 +710,28 @@ impl AutoImprove {
                 info!("[IMPROVE] 📋 Program notes: {:?}", hints.notes);
             }
 
-            // Generate & evaluate candidates ─────────────────────────────
-            let mut rng = Lcg::seeded();
+            // Generate & evaluate candidates via LLM ─────────────────────
+            let advisor = LlmStrategyAdvisor::new();
             let mut best_candidate: Option<ExperimentResult> = None;
 
-            for cid in 0..self.candidates_per_iter {
-                let candidate = mutate_strategy(&current_strategy, &hints, &mut rng);
+            info!("[IMPROVE] 🧠 Querying LLM for {} strategy variants...", self.candidates_per_iter);
+            
+            // Get history slice for the prompt
+            let history_context = &log.recent;
+            
+            let candidates = match advisor.generate_candidates(&current_strategy, history_context, &hints).await {
+                Ok(cands) => cands,
+                Err(e) => {
+                    warn!("[IMPROVE] LLM Advisor failed: {}. Falling back to random mutation.", e);
+                    let mut fallback_cands = Vec::new();
+                    for _ in 0..self.candidates_per_iter {
+                        fallback_cands.push(mutate_strategy_fallback(&current_strategy, &hints));
+                    }
+                    fallback_cands
+                }
+            };
+
+            for (cid, candidate) in candidates.into_iter().enumerate() {
                 info!(
                     "[IMPROVE]   Candidate {}/{}: scene_thr={:.3} min_score={:.3} speech_boost={:.3}",
                     cid + 1,
@@ -636,6 +770,16 @@ impl AutoImprove {
 
             // Promote best candidate if it beats current ─────────────────
             if let Some(mut best) = best_candidate {
+                // 🔥 ARCHIVE TO SKILLS IF EXTREMELY GOOD (Independent of current_quality)
+                if best.quality_score > 0.65 {
+                    info!("[IMPROVE] ✨ Quality {:.4} exceeds threshold (0.65). Crystallizing as persistent Skill...", best.quality_score);
+                    let advisor = LlmStrategyAdvisor::new(); // Re-init or use existing
+                    match advisor.archive_skill(&best.strategy, &best).await {
+                        Ok(p) => info!("[IMPROVE] 💾 Skill crystallized at: {}", p),
+                        Err(e) => warn!("[IMPROVE] ⚠️ Failed to crystallize skill: {}", e),
+                    }
+                }
+
                 if best.quality_score > current_quality {
                     let gain = best.quality_score - current_quality;
                     info!(
