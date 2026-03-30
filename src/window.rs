@@ -1875,30 +1875,114 @@ impl SynoidApp {
         }
     }
 
-    fn render_learn_downloads_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+    fn render_learn_downloads_panel(&self, ui: &mut egui::Ui, _state: &mut UiState) {
+        use crate::agent::video_style_learner::get_download_dir;
+
         ui.heading(egui::RichText::new("📚 Learn from Downloads").color(COLOR_ACCENT_BLUE));
         ui.separator();
-        ui.add_space(10.0);
+        ui.add_space(8.0);
 
-        ui.label("Analyze and learn patterns from downloaded content:");
-        ui.add_space(10.0);
+        let dl_dir = get_download_dir();
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Download folder:").strong());
+            ui.label(
+                egui::RichText::new(dl_dir.to_string_lossy().as_ref())
+                    .monospace()
+                    .color(COLOR_ACCENT_ORANGE),
+            );
+        });
+        ui.add_space(6.0);
 
-        self.render_input_file_picker(ui, state);
-        ui.add_space(20.0);
+        // List MP4s in the Download folder
+        let videos: Vec<std::path::PathBuf> = std::fs::read_dir(&dl_dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| matches!(e.to_lowercase().as_str(), "mp4" | "mkv" | "mov" | "avi"))
+                    .unwrap_or(false)
+            })
+            .collect();
 
-        if ui
-            .add(
-                egui::Button::new(egui::RichText::new("📚 Analyze").size(16.0))
-                    .fill(COLOR_ACCENT_BLUE),
-            )
-            .clicked()
-        {
-            ui.label("Learn downloads functionality to be implemented.");
+        if videos.is_empty() {
+            ui.label(
+                egui::RichText::new("⚠ No video files found in Download folder.")
+                    .color(COLOR_ACCENT_ORANGE),
+            );
+        } else {
+            ui.label(format!(
+                "{} video(s) ready to learn from:",
+                videos.len()
+            ));
+            ui.add_space(4.0);
+            egui::ScrollArea::vertical().max_height(140.0).id_salt("dl_list").show(ui, |ui| {
+                for v in &videos {
+                    let name = v.file_name().unwrap_or_default().to_string_lossy();
+                    let size_mb = v.metadata().map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("▶").color(COLOR_ACCENT_GREEN));
+                        ui.label(format!("{} ({:.1} MB)", name, size_mb));
+                    });
+                }
+            });
         }
+        ui.add_space(12.0);
+
+        // Learn button
+        let is_running = self.core.status.lock()
+            .map(|s| s.contains("Learning"))
+            .unwrap_or(false);
+
+        if is_running {
+            ui.add_enabled(
+                false,
+                egui::Button::new(egui::RichText::new("⏳ Learning…").size(16.0))
+                    .fill(egui::Color32::from_rgb(60, 80, 60)),
+            );
+        } else {
+            let btn_enabled = !videos.is_empty();
+            let btn = egui::Button::new(egui::RichText::new("🎓 Learn Editing Style from Downloads").size(15.0))
+                .fill(if btn_enabled { COLOR_ACCENT_BLUE } else { egui::Color32::from_rgb(50, 50, 60) });
+
+            if ui.add_enabled(btn_enabled, btn).clicked() {
+                let core = self.core.clone();
+                tokio::spawn(async move {
+                    core.learn_from_downloads().await;
+                });
+            }
+        }
+        ui.add_space(6.0);
+
+        ui.label(
+            egui::RichText::new(
+                "Scans every video in the Download folder, extracts shot pacing, \
+                 scene duration, and style cues, then saves them to brain_memory.json. \
+                 Results are also used by AutoImprove as the editing benchmark.",
+            )
+            .color(COLOR_TEXT_SECONDARY)
+            .italics(),
+        );
+        ui.add_space(8.0);
+
+        // Shortcut to AutoImprove panel
+        ui.separator();
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(
+                "Tip: After learning, use 🧬 AutoImprove to recursively refine the \
+                 editing strategy using one of these videos as the benchmark.",
+            )
+            .color(COLOR_TEXT_SECONDARY)
+            .small(),
+        );
     }
 
     fn render_auto_improve_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
-        use crate::agent::specialized::auto_improve::{AutoImprove, ImproveLog};
+        use crate::agent::specialized::auto_improve::ImproveLog;
+        use crate::agent::video_style_learner::get_download_dir;
 
         ui.heading(
             egui::RichText::new("🧬 AutoImprove — Self-Recursing Optimizer")
@@ -1908,24 +1992,64 @@ impl SynoidApp {
         ui.add_space(6.0);
 
         ui.label(egui::RichText::new(
-            "Autonomously mutates EditingStrategy parameters, evaluates them on a benchmark \
-             video (dry-run: scene detect + scoring, no render), and compounds improvements \
-             over time — like karpathy/autoresearch but for video editing.",
+            "Picks a benchmark video from your Download folder, then autonomously \
+             mutates EditingStrategy parameters and compounds improvements over time.",
         ).color(COLOR_TEXT_SECONDARY));
         ui.add_space(10.0);
+
+        // ── Quick-pick from Download folder ────────────────────────────────
+        let dl_dir = get_download_dir();
+        let dl_videos: Vec<std::path::PathBuf> = std::fs::read_dir(&dl_dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| matches!(e.to_lowercase().as_str(), "mp4" | "mkv" | "mov" | "avi"))
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        if !dl_videos.is_empty() {
+            ui.label(egui::RichText::new("Pick benchmark from Download folder:").strong());
+            ui.add_space(4.0);
+            egui::ScrollArea::vertical()
+                .max_height(100.0)
+                .id_salt("improve_dl_pick")
+                .show(ui, |ui| {
+                    for v in &dl_videos {
+                        let name = v.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        let selected = state.improve_benchmark == v.to_string_lossy().as_ref();
+                        let label = egui::RichText::new(format!("▶ {}", name))
+                            .color(if selected { COLOR_ACCENT_GREEN } else { COLOR_TREE_ITEM });
+                        if ui.selectable_label(selected, label).clicked() {
+                            state.improve_benchmark = v.to_string_lossy().to_string();
+                            save_settings(
+                                &self.core.instance_id,
+                                state,
+                                self.active_command,
+                                &self.tree_state,
+                            );
+                        }
+                    }
+                });
+            ui.add_space(6.0);
+        }
 
         // ── Benchmark video picker ──────────────────────────────────────────
         ui.label(egui::RichText::new("Benchmark Video").strong());
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut state.improve_benchmark)
-                    .hint_text("Path to a reference MP4…")
-                    .desired_width(340.0),
+                    .hint_text("Select from list above or browse…")
+                    .desired_width(310.0),
             );
             if ui.button("📂").clicked() {
                 if let Some(p) = rfd::FileDialog::new()
                     .add_filter("Video", &["mp4", "mkv", "mov", "avi"])
-                    .set_directory(get_default_videos_path())
+                    .set_directory(&dl_dir)
                     .pick_file()
                 {
                     state.improve_benchmark = p.to_string_lossy().to_string();

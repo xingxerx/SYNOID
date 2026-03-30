@@ -15,7 +15,8 @@
       "Bash(npm audit:*)",
       "Bash(wait)",
       "WebFetch(domain:github.com)",
-      "Bash(wc -l /d/SYNOID/src/agent/specialized/smart_editor/*.rs)"
+      "Bash(wc -l /d/SYNOID/src/agent/specialized/smart_editor/*.rs)",
+      "Bash(cargo check:*)"
     ],
     "deny": [],
     "ask": []

@@ -491,7 +491,9 @@ pub async fn burn_subtitles(
     }
 
     if gpu_ctx.has_gpu() {
-        cmd.arg("-cq").arg("23"); // NVENC
+        cmd.arg("-rc").arg("vbr"); // Required for NVENC -cq to work
+        cmd.arg("-b:v").arg("0");
+        cmd.arg("-cq").arg("23"); // NVENC constant quality
     } else {
         cmd.arg("-crf").arg("23"); // CPU
     }

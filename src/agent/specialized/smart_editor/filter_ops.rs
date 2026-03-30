@@ -315,8 +315,14 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "damn",
         "damned",
         "damnit",
-        // NOTE: "ass" removed - causes too many false positives (class, pass, passionate)
-        // "asshole" and "assholes" above are sufficient for actual profanity
+        // "ass" as a standalone word — matched with exact boundaries in word_boundary_match
+        // to prevent false positives (class, pass, passionate, etc.)
+        "ass",
+        "dumbass",
+        "smartass",
+        "asshat",
+        "shithole",
+        "clusterfuck",
         "arse",
         "arsehole",
         "motherfucker",
@@ -441,13 +447,19 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
     ]
 }
 
+/// Words that must use exact word-boundary matching to avoid false positives.
+/// e.g. "ass" would match "assign"/"assets" with prefix matching.
+fn needs_exact_match(word: &str) -> bool {
+    matches!(word.to_lowercase().as_str(), "ass" | "tit" | "crap" | "balls" | "prick" | "cock")
+}
+
 pub fn word_boundary_match(text: &str, bad_word: &str) -> bool {
     let bad_lower = bad_word.to_lowercase();
 
     // First, try exact regex matching with word boundaries
     let escaped = regex::escape(bad_word);
-    let pattern = if bad_word.contains(' ') {
-        // Multi-word phrases need exact match with boundaries
+    let pattern = if bad_word.contains(' ') || needs_exact_match(bad_word) {
+        // Multi-word phrases and exact-match words need strict word boundaries
         format!(r"(?i)\b{}\b", escaped)
     } else {
         // Single words can match as prefix (e.g., "fuck" matches "fucking")
@@ -525,10 +537,10 @@ pub fn estimate_word_timestamps(
     let n = words.len().max(1) as f64;
     let seg_dur = (seg.end - seg.start).max(0.001);
 
-    // Balanced padding: Enough to cover timing errors but not excessive
-    // Average curse word is 0.3-0.5s, so 200ms pre + 150ms post = ~0.6s total beep
-    let pre_pad = 0.20_f64;  // 200ms lead time (accounts for estimation error)
-    let post_pad = 0.15_f64;  // 150ms trail padding to cover full word
+    // Tight padding: curse words are 0.2-0.5s; keep beep short and precise.
+    let pre_pad = 0.10_f64;   // 100ms lead
+    let post_pad = 0.08_f64;  // 80ms trail
+    const MAX_BEEP_SECS: f64 = 0.75; // Never beep longer than 0.75s per word
 
     for (i, word) in words.iter().enumerate() {
         if word_boundary_match(word, bad_word) {
@@ -536,9 +548,11 @@ pub fn estimate_word_timestamps(
             let estimated_word_start = seg.start + (i as f64 / n) * seg_dur;
             let estimated_word_end = seg.start + ((i + 1) as f64 / n) * seg_dur;
 
-            // Start beep well before the word to account for estimation error
             let beep_start = (estimated_word_start - pre_pad).max(seg.start);
-            let beep_end = (estimated_word_end + post_pad).min(seg.end);
+            // Cap beep at 0.75s so a single word never kills multiple seconds of audio
+            let beep_end = (estimated_word_end + post_pad)
+                .min(beep_start + MAX_BEEP_SECS)
+                .min(seg.end);
 
             info!(
                 "[CENSOR] ~ Estimated '{}' in segment {:.2}s-{:.2}s → beep {:.2}s-{:.2}s (lead: {:.2}s)",
@@ -549,10 +563,27 @@ pub fn estimate_word_timestamps(
         }
     }
 
-    // Fallback: if individual words didn't match (e.g. multi-word phrase)
-    // but the whole segment does, return the whole segment.
+    // Fallback: multi-word phrase matched segment text but no individual word matched.
+    // Estimate phrase position via character offset ratio instead of beeping the whole segment.
     if occurrences.is_empty() && word_boundary_match(&seg.text, bad_word) {
-        occurrences.push((seg.start, seg.end));
+        let text_lower = seg.text.to_lowercase();
+        let phrase_lower = bad_word.to_lowercase();
+        let char_pos = text_lower.find(&phrase_lower).unwrap_or(0);
+        let text_len = seg.text.len().max(1);
+        let phrase_len = bad_word.len();
+        let start_ratio = char_pos as f64 / text_len as f64;
+        let end_ratio = (char_pos + phrase_len) as f64 / text_len as f64;
+        let phrase_start = seg.start + start_ratio * seg_dur;
+        let phrase_end = seg.start + end_ratio * seg_dur;
+        let beep_start = (phrase_start - 0.10).max(seg.start);
+        let beep_end = (phrase_end + 0.10)
+            .min(beep_start + MAX_BEEP_SECS)
+            .min(seg.end);
+        info!(
+            "[CENSOR] ~ Phrase '{}' in segment {:.2}s-{:.2}s → beep {:.2}s-{:.2}s (char offset estimate)",
+            bad_word, seg.start, seg.end, beep_start, beep_end
+        );
+        occurrences.push((beep_start, beep_end));
     }
 
     occurrences

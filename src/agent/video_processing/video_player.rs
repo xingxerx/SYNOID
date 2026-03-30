@@ -39,8 +39,10 @@ impl VideoPlayer {
             .arg(format!("{}x{}", width, height))
             .arg("-r")
             .arg(fps.to_string())
-            .arg("-an") // Disable audio since we handle it separately
-            .arg("-sn") // Disable subtitles
+            .arg("-vsync")
+            .arg("cfr")   // constant frame rate — avoids VFR decode stalls
+            .arg("-an")   // disable audio (handled by ffplay)
+            .arg("-sn")   // disable subtitles
             .arg("-")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -64,9 +66,12 @@ impl VideoPlayer {
                 }
                 let trimmed = line.trim();
                 if !trimmed.is_empty() {
-                    // Only log actual errors
-                    if trimmed.contains("Error") || trimmed.contains("fatal") || trimmed.contains("Can't") || trimmed.contains("Invalid") {
-                        tracing::error!("[ffmpeg] {}", trimmed);
+                    let lower = trimmed.to_lowercase();
+                    // Log any error/warning from ffmpeg (case-insensitive)
+                    if lower.contains("error") || lower.contains("fatal") || lower.contains("invalid")
+                        || lower.contains("no such file") || lower.contains("permission denied")
+                    {
+                        tracing::error!("[VideoPlayer ffmpeg] {}", trimmed);
                     }
                 }
                 line.clear();
