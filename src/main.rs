@@ -257,6 +257,21 @@ enum Commands {
         status: bool,
     },
 
+    /// Run the ReAct (Reason+Act) agentic loop for a multi-step goal.
+    ///
+    /// The agent iterates Thought → Action → Observation until it reaches an
+    /// answer or hits max_iterations. Tools: analyze_video, search_youtube,
+    /// learn_style, query_brain, edit_video, run_command (whitelisted).
+    React {
+        /// Multi-step goal for the agent (e.g. "analyze my latest video and suggest a grade")
+        #[arg(short, long)]
+        goal: String,
+
+        /// Maximum reasoning iterations (default: 8, scales with neuroplasticity)
+        #[arg(long, default_value_t = 8)]
+        max_iterations: usize,
+    },
+
     /// GEPA self-improvement loop (Goal-Experience-Policy-Agent)
     ///
     /// Runs the background GEPA cycle that replays trajectory episodes,
@@ -644,6 +659,17 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             signal::ctrl_c().await?;
             learner.stop();
             info!("🛑 Autonomous Loop Stopped.");
+        }
+
+        Commands::React { goal, max_iterations } => {
+            info!("🤖 ReAct Agent starting. Goal: {}", goal);
+            let brain = core.brain.lock().await;
+            match brain.run_react_goal(&goal, max_iterations).await {
+                Ok(answer) => {
+                    println!("\n✅ ReAct Answer:\n{}", answer);
+                }
+                Err(e) => error!("❌ ReAct Agent Error: {}", e),
+            }
         }
 
         Commands::Gepa { insights, update, port, interval } => {

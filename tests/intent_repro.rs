@@ -56,6 +56,7 @@ fn test_continuity_synchronization() {
         start: 0.5,
         end: 3.5,
         text: "Wait for it... YES!".to_string(),
+        words: Vec::new(),
     }];
 
     let config = EditingStrategy::default();

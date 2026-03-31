@@ -27,6 +27,7 @@ async fn test_smart_edit_fallback() {
         show_cut_markers: true,
         use_remotion: false,
         remotion_template: None,
+        enable_subtitles: true,
     };
 
     let config = EditingStrategy::default();
@@ -68,6 +69,7 @@ async fn test_speech_protection_ruthless() {
         start: 1.0,
         end: 4.0,
         text: "Hello world".to_string(),
+        words: Vec::new(),
     }];
     let intent = EditIntent {
         remove_boring: true,
@@ -83,6 +85,7 @@ async fn test_speech_protection_ruthless() {
         show_cut_markers: true,
         use_remotion: false,
         remotion_template: None,
+        enable_subtitles: true,
     };
 
     let config = EditingStrategy::default();

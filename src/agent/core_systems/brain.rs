@@ -10,6 +10,7 @@ use crate::agent::ai_systems::gpt_oss_bridge::SynoidAgent;
 use crate::agent::ai_systems::hive_mind::HiveMind;
 use crate::agent::engines::motor_cortex::MotorCortex;
 use crate::agent::ai_systems::moe::MoeRouter;
+use crate::agent::ai_systems::react_agent::{ReActAgent, ReActConfig};
 use crate::gpu_backend::GpuContext;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -267,6 +268,33 @@ impl Brain {
             || s.contains('/')
     }
 
+    /// Run the ReAct agent loop for a complex multi-step goal.
+    ///
+    /// This is the entry point for goals that require iterative Thought→Action→Observe
+    /// cycles (e.g. "find the longest video in Download, analyze it, then apply cinematic grade").
+    /// The Brain's neuroplasticity speed multiplier is applied to max_iterations.
+    pub async fn run_react_goal(&self, goal: &str, max_iterations: usize) -> Result<String, String> {
+        // Scale iterations by neuroplasticity speed (faster brain = more iterations allowed)
+        let speed = self.neuroplasticity.current_speed().round() as usize;
+        let effective_iterations = (max_iterations + speed.saturating_sub(1)).min(24);
+        info!(
+            "[BRAIN] ReAct goal (iter_cap={}, speed={:.0}x): {}",
+            effective_iterations,
+            self.neuroplasticity.current_speed(),
+            &goal[..goal.len().min(100)]
+        );
+
+        let react = ReActAgent::with_config(
+            self._agent.clone(),
+            ReActConfig {
+                max_iterations: effective_iterations,
+                use_fast_model: false,
+            },
+        );
+
+        react.run(goal).await
+    }
+
     /// Extract a value after a keyword, possibly quoted.
     /// e.g. for "learn style 'cinematic' from video" with key="style" → "cinematic"
     fn extract_quoted_value(request: &str, key: &str) -> Option<String> {
@@ -400,23 +428,46 @@ impl Brain {
                     Err(e) => Err(format!("Research failed: {}", e)),
                 }
             }
+            Intent::CreateEdit(request, path) => {
+                info!("[BRAIN] Creating edit via smart MoE: {}", request);
+                let task = if !path.is_empty() {
+                    format!("{} (source: {})", request, path)
+                } else {
+                    request.to_string()
+                };
+                match self.moe_router.smart_execute(&task).await {
+                    Ok(resp) => {
+                        self.neuroplasticity.record_success();
+                        Ok(resp)
+                    }
+                    Err(e) => Err(format!("Edit creation failed: {}", e)),
+                }
+            }
+            Intent::DiscoverFile(query) => {
+                info!("[BRAIN] Discovery mode for: {}", query);
+                // Signal to AgentCore to run the global file scanner
+                Ok(format!("DISCOVERY_MODE:{}", query))
+            }
             Intent::Orchestrate(request, _input_path) => {
-                info!("[BRAIN] Orchestrating complex task via MoE: {}", request);
-                let role = self.moe_router.route(&request).await;
-                match self.moe_router.execute(role, &request).await {
-                    Ok(resp) => Ok(resp),
+                info!("[BRAIN] Orchestrating complex task via smart MoE+ensemble: {}", request);
+                match self.moe_router.smart_execute(&request).await {
+                    Ok(resp) => {
+                        self.neuroplasticity.record_success();
+                        Ok(resp)
+                    }
                     Err(e) => Err(format!("Orchestration failed: {}", e)),
                 }
             }
             Intent::Unknown(request) => {
-                info!("[BRAIN] Analyzing unknown intent via MoE: {}", request);
-                let role = self.moe_router.route(&request).await;
-                match self.moe_router.execute(role, &request).await {
-                    Ok(resp) => Ok(resp),
+                info!("[BRAIN] Routing unknown intent via smart MoE: {}", request);
+                match self.moe_router.smart_execute(&request).await {
+                    Ok(resp) => {
+                        self.neuroplasticity.record_success();
+                        Ok(resp)
+                    }
                     Err(e) => Err(format!("Analysis failed: {}", e)),
                 }
             }
-            _ => Err("Unhandled intent or unhandled variant".to_string()),
         }
     }
 }

@@ -113,12 +113,18 @@ pub struct EditIntent {
     /// Defaults to true; suppressed automatically when density == Full.
     #[serde(default = "default_show_cut_markers")]
     pub show_cut_markers: bool,
+    #[serde(default = "default_enable_subtitles")]
+    pub enable_subtitles: bool,
     /// Whether to use Remotion for high-production elements
     #[serde(default)]
     pub use_remotion: bool,
     /// The specific Remotion template to use (e.g., "Intro", "StatsCard")
     #[serde(default)]
     pub remotion_template: Option<String>,
+}
+
+fn default_enable_subtitles() -> bool {
+    true
 }
 
 fn default_show_cut_markers() -> bool {
@@ -267,6 +273,7 @@ User Request: "{}"
             target_duration: Self::parse_duration_range(&lower),
             censor_profanity: true, // Always-on: safety-first, never let slurs through
             profanity_replacement: None, // Use built-in 1kHz sine wave (broadcast standard)
+            enable_subtitles: lower.contains("sub") || lower.contains("caption") || lower.contains("text"),
             use_remotion: lower.contains("intro")
                 || lower.contains("outro")
                 || lower.contains("overlay")

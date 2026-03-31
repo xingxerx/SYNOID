@@ -1160,9 +1160,9 @@ pub async fn smart_edit(
     }
 
     // 8. Subtitle Generation & Burning
-    // Only attempt if we have a transcript to work with
+    // Only attempt if we have a transcript to work with and subtitles are enabled
     if let Some(ref t) = transcript {
-        if !t.is_empty() {
+        if !t.is_empty() && intent.enable_subtitles {
             log("[SMART] 📝 Generating remapped subtitles for edited video...");
             let srt_content = generate_srt_for_kept_scenes(t, &scenes_to_keep);
 
@@ -1454,11 +1454,13 @@ mod tests {
                 start: 1.0,
                 end: 3.0,
                 text: "Hello".to_string(),
+                words: Vec::new(),
             },
             TranscriptSegment {
                 start: 7.0,
                 end: 9.0,
                 text: "World".to_string(),
+                words: Vec::new(),
             },
         ];
 
@@ -1548,6 +1550,7 @@ mod tests {
             start: 0.0,
             end: 4.0,
             text: "hello world".to_string(),
+            words: Vec::new(),
         };
         let timestamps = estimate_word_timestamps(&seg, "world");
         assert_eq!(timestamps.len(), 1, "should find exactly one occurrence");
@@ -1610,6 +1613,7 @@ mod tests {
             start: 2.5,
             end: 3.5,
             text: "speech here".to_string(),
+            words: Vec::new(),
         }];
         assert!(scene_has_speech(&scene, Some(&transcript)));
 
@@ -1617,6 +1621,7 @@ mod tests {
             start: 5.0,
             end: 6.0,
             text: "later speech".to_string(),
+            words: Vec::new(),
         }];
         assert!(!scene_has_speech(&scene, Some(&disjoint_transcript)));
     }

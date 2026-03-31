@@ -5,7 +5,7 @@
 // ------------------------------------------
 // Synchronises multiple camera angles using audio waveform cross-correlation
 // and automatically switches to the camera that shows the active speaker,
-// mirroring DaVinci Resolve's Multicam SmartSwitch workflow.
+// mirroring SYNOID's Multicam SmartSwitch workflow.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};

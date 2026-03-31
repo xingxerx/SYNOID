@@ -4,9 +4,11 @@
 //
 // This module provides a "Memory" for the agent, allowing it to:
 // 1. Store successful edit parameters (pacing, cut frequency)
-// 2. Retrieve "best practices" for specific intents
-// 3. Adapt over time based on feedback
+// 2. Retrieve "best practices" for specific intents (string fuzzy match)
+// 3. Find structurally similar patterns via TurboQuant vector KNN
+// 4. Adapt over time based on feedback
 
+use crate::agent::ai_systems::turbo_quant::{editing_pattern_quantizer, pattern_to_vector};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -200,5 +202,120 @@ impl LearningKernel {
         if let Ok(data) = serde_json::to_string_pretty(&self.patterns) {
             let _ = fs::write(&self.memory_path, data);
         }
+    }
+
+    // ─── TurboQuant Vector Similarity ────────────────────────────────────────
+
+    /// Convert an EditingPattern to an 8-dimensional f32 vector for TurboQuant.
+    fn pattern_to_vec(p: &EditingPattern) -> Vec<f32> {
+        // Map color_grade_style string to a numeric [0.0, 1.0] encoding
+        let color_grade = match p.color_grade_style.to_lowercase().as_str() {
+            "cinematic"     => 0.85,
+            "vibrant"       => 0.65,
+            "muted"         => 0.35,
+            "neutral"       => 0.50,
+            "warm"          => 0.70,
+            "cool"          => 0.30,
+            "learned"       => 0.75,
+            _               => 0.50,
+        };
+
+        // Normalize success_rating (1–5) → [0, 1]
+        let rating_norm = ((p.success_rating as f32) - 1.0) / 4.0;
+
+        pattern_to_vector(
+            p.avg_scene_duration as f32,
+            p.transition_speed as f32,
+            color_grade,
+            p.music_sync_strictness as f32,
+            0.0,                    // motion_blur — not tracked in EditingPattern
+            rating_norm,            // transition_style re-purposed as quality signal
+            p.kept_ratio as f32,
+            p.outcome_xp as f32,
+        )
+    }
+
+    /// Find the `top_k` most structurally similar patterns to `query` using
+    /// TurboQuant vector KNN. Returns (intent_tag, EditingPattern, score) triples,
+    /// sorted descending by similarity.
+    ///
+    /// Unlike `recall_pattern`, this operates on the *numeric geometry* of the
+    /// editing parameters — so it can find a "fast_gaming" pattern as similar to
+    /// "hype_sports" even if the intent tag strings share no words.
+    pub fn find_similar_patterns(
+        &self,
+        query: &EditingPattern,
+        top_k: usize,
+    ) -> Vec<(String, EditingPattern, f32)> {
+        if self.patterns.is_empty() {
+            return Vec::new();
+        }
+
+        let quantizer = editing_pattern_quantizer();
+        let query_vec = Self::pattern_to_vec(query);
+        let compressed_query = quantizer.compress(&query_vec);
+
+        // Build compressed index from all stored patterns
+        let index: Vec<(String, _)> = self
+            .patterns
+            .iter()
+            .map(|(key, p)| {
+                let v = Self::pattern_to_vec(p);
+                (key.clone(), quantizer.compress(&v))
+            })
+            .collect();
+
+        let top = quantizer.top_k(&compressed_query, &index, top_k);
+
+        top.into_iter()
+            .filter_map(|(key, score)| {
+                self.patterns.get(key).map(|p| (key.to_string(), p.clone(), score))
+            })
+            .collect()
+    }
+
+    /// Recall best pattern for an intent, using TurboQuant similarity as a
+    /// secondary fallback when string matching finds nothing useful.
+    ///
+    /// This replaces the `recall_pattern` logic for callers that want the
+    /// vector-aware version.
+    pub fn recall_pattern_smart(&self, intent: &str) -> EditingPattern {
+        // Try string-based recall first (fast path)
+        let string_result = self.recall_pattern(intent);
+        if string_result.intent_tag != "general" {
+            return string_result;
+        }
+
+        // No string match — synthesise a query vector from the intent name itself
+        // by using a canonical "neutral" pattern biased toward the intent keywords
+        let intent_lower = intent.to_lowercase();
+        let mut seed_pattern = EditingPattern::default();
+
+        if intent_lower.contains("fast") || intent_lower.contains("hype") || intent_lower.contains("action") {
+            seed_pattern.avg_scene_duration = 1.5;
+            seed_pattern.transition_speed = 2.0;
+            seed_pattern.kept_ratio = 0.4;
+        } else if intent_lower.contains("cinematic") || intent_lower.contains("slow") || intent_lower.contains("film") {
+            seed_pattern.avg_scene_duration = 5.0;
+            seed_pattern.transition_speed = 0.5;
+            seed_pattern.color_grade_style = "cinematic".to_string();
+            seed_pattern.kept_ratio = 0.65;
+        } else if intent_lower.contains("vlog") || intent_lower.contains("travel") {
+            seed_pattern.avg_scene_duration = 3.0;
+            seed_pattern.kept_ratio = 0.55;
+        }
+
+        let similar = self.find_similar_patterns(&seed_pattern, 1);
+        if let Some((_, best, score)) = similar.first() {
+            if *score > 0.0 {
+                info!(
+                    "[KERNEL] 🔬 TurboQuant similarity match for '{}': '{}' (score={:.3})",
+                    intent, best.intent_tag, score
+                );
+                return best.clone();
+            }
+        }
+
+        seed_pattern
     }
 }

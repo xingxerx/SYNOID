@@ -18,7 +18,8 @@
       "Bash(wc -l /d/SYNOID/src/agent/specialized/smart_editor/*.rs)",
       "Bash(cargo check:*)",
       "Bash(find /d/SYNOID/src -type f -name *.rs)",
-      "Bash(find /d/SYNOID/src -name *video_style* -o -name *learner* -o -name *learn*)"
+      "Bash(find /d/SYNOID/src -name *video_style* -o -name *learner* -o -name *learn*)",
+      "WebFetch(domain:research.google)"
     ],
     "deny": [],
     "ask": []

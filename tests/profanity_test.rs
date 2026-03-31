@@ -38,6 +38,7 @@ fn test_estimate_word_timestamps_multiple_occurrences() {
         start: 0.0,
         end: 10.0,
         text: "fuck this shit and fuck that too".to_string(),
+        words: Vec::new(),
     };
 
     // Test multiple occurrences of the same bad word
@@ -70,6 +71,7 @@ fn test_estimate_word_timestamps_phrase() {
         start: 0.0,
         end: 10.0,
         text: "Justice for George Floyd now".to_string(),
+        words: Vec::new(),
     };
     
     let timestamps = estimate_word_timestamps(&seg, "george floyd");

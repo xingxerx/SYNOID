@@ -211,14 +211,20 @@ pub async fn enhance_audio(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("[PROD] Enhancing audio: {:?}", input);
 
-    // Filter Chain (Enhanced for better vocal clarity and comment placement):
+    // Filter Chain (Enhanced for better vocal clarity and professional broadcast levels):
     // 1. afftdn=nf=-20: FFT Noise Reduction (less aggressive for natural voice)
     // 2. highpass=f=80: Remove low rumble but preserve chest voice
     // 3. lowpass=f=12000: Keep more vocal clarity (extended from 8000)
-    // 4. equalizer: Boost vocal presence frequencies (2-4kHz for clarity)
-    // 5. acompressor: Even out dynamics with gentler settings
-    // 6. loudnorm: target -14 LUFS (slightly louder for better audibility)
-    let filter_complex = "afftdn=nf=-20,highpass=f=80,lowpass=f=12000,equalizer=f=3000:width_type=o:width=2:g=3,acompressor=ratio=3:attack=150:release=300:threshold=-16dB:makeup=2dB,loudnorm=I=-14:TP=-1.0:LRA=13";
+    // 4. equalizer: Precision boost at 3.5kHz (+3dB) for presence, slight dip at 200Hz (-2dB) for mud
+    // 5. acompressor: Tighter dynamics (ratio 4:1) for consistent vocal punch
+    // 6. loudnorm: target -16 LUFS (User's broadcast standard)
+    let filter_complex = "afftdn=nf=-20,\
+                          highpass=f=80,\
+                          lowpass=f=12000,\
+                          equalizer=f=200:t=q:w=1:g=-2,\
+                          equalizer=f=3500:t=q:w=1:g=3,\
+                          acompressor=ratio=4:threshold=-18dB:attack=10:release=100:makeup=3dB,\
+                          loudnorm=I=-16:TP=-1.5:LRA=11";
 
     let safe_input = safe_arg_path(input);
     let safe_output = safe_arg_path(output);
@@ -537,7 +543,7 @@ PlayResY: 1080\r\n\
 \r\n\
 [V4+ Styles]\r\n\
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\r\n\
-Style: Default,Arial,28,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,10,10,30,1\r\n\
+Style: Default,Arial,32,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,2,2,10,10,35,1\r\n\
 \r\n\
 [Events]\r\n\
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\r\n";

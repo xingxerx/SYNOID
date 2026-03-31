@@ -417,6 +417,7 @@ async fn run_dry_eval(
         show_cut_markers: false,
         use_remotion: false,
         remotion_template: None,
+        enable_subtitles: false,
     };
 
     let total_duration = scenes.last().map(|s| s.end_time).unwrap_or(0.0);

@@ -366,7 +366,7 @@ fn format_srt_time(seconds: f64) -> String {
 // ─────────────────────────────────────────────────────────────────────────────
 // Script-Based Editing (Feature 1)
 // Users delete sentences from the transcript; SYNOID converts those removals
-// into precise FFmpeg cut-points, mimicking Descript / DaVinci IntelliScript.
+// into precise FFmpeg cut-points, mimicking Descript / SYNOID IntelliScript.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// A user-editable view of the transcript that tracks which segments have been

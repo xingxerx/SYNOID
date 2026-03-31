@@ -881,6 +881,35 @@ impl AgentCore {
         Ok(())
     }
 
+    /// Run the ReAct (Reason+Act) agent loop for a multi-step goal.
+    ///
+    /// Delegates to `Brain::run_react_goal`, which scales max_iterations by
+    /// neuroplasticity speed and wraps the SynoidAgent with the ReActAgent loop.
+    pub async fn run_react_goal(
+        &self,
+        goal: &str,
+        max_iterations: usize,
+    ) -> Result<String, String> {
+        self.set_status("🤖 ReAct Agent running...");
+        self.log(&format!("[CORE] ReAct goal: {}", goal));
+        self.record_ai_decision();
+
+        let brain = self.brain.lock().await;
+        let result = brain.run_react_goal(goal, max_iterations).await;
+
+        match &result {
+            Ok(answer) => {
+                self.log(&format!("[CORE] ✅ ReAct answer: {}", &answer[..answer.len().min(200)]));
+            }
+            Err(e) => {
+                self.log(&format!("[CORE] ❌ ReAct error: {}", e));
+            }
+        }
+
+        self.set_status("⚡ Ready");
+        result
+    }
+
     pub async fn embody_intent(
         &self,
         input: &Path,

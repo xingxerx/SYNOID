@@ -154,7 +154,7 @@ async fn measure_lufs(path: &Path) -> Result<f64, Box<dyn std::error::Error + Se
 // ─────────────────────────────────────────────────────────────────────────────
 // Spatial Audio Panner (Feature 5b)
 // Tracks a subject's horizontal screen position over time and pans the audio
-// to match, creating an immersive stereo field similar to DaVinci IntelliTrack.
+// to match, creating an immersive stereo field similar to SYNOID IntelliTrack.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// A single stereo pan keyframe.
