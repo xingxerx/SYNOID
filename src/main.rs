@@ -447,6 +447,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 login.as_deref(),
                 false,
                 chunk_minutes,
+                true,
             )
             .await?;
         }

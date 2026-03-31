@@ -1339,9 +1339,10 @@ impl SynoidApp {
                     None
                 };
                 let intent = state.intent.clone();
+                let enable_subtitles = state.enable_subtitles;
                 tokio::spawn(async move {
                     let _ = core
-                        .process_youtube_intent(&input, &intent, output, None, false, 0)
+                        .process_youtube_intent(&input, &intent, output, None, false, 0, enable_subtitles)
                         .await;
                 });
             }
@@ -2495,9 +2496,10 @@ impl SynoidApp {
                             let core = self.core.clone();
                             let input = _state.input_path.clone();
                             let intent = _state.intent.clone();
+                            let enable_subtitles = _state.enable_subtitles;
                             let ui_ptr = self.ui_state.clone();
                             tokio::spawn(async move {
-                                let _ = core.process_youtube_intent(&input, &intent, None, None, false, 0).await;
+                                let _ = core.process_youtube_intent(&input, &intent, None, None, false, 0, enable_subtitles).await;
                                 if let Ok(mut s) = ui_ptr.lock() { s.ai_edit_running = false; }
                             });
                         }

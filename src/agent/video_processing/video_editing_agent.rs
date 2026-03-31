@@ -86,6 +86,7 @@ impl VideoEditingAgent {
             None,  // pre_scanned_transcript
             Some(pattern.clone()),
             Some(self.animator.clone()),
+            true,
         )
         .await;
 

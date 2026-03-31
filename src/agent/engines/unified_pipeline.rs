@@ -221,6 +221,7 @@ impl UnifiedPipeline {
             None,
             config.learned_pattern.clone(),
             config.animator.clone(),
+            true,
         )
         .await?;
 

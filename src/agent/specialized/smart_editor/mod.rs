@@ -54,6 +54,7 @@ pub async fn smart_edit(
     learned_pattern: Option<crate::agent::learning::EditingPattern>,
     // NEW: Optional Animator for Remotion elements
     _animator: Option<Arc<Animator>>,
+    enable_subtitles_override: bool,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let log = move |msg: &str| {
         info!("{}", msg);
@@ -65,7 +66,9 @@ pub async fn smart_edit(
     log("[SMART] 🧠 Starting AI-powered edit...");
 
     // 1. Analyze Intent
-    let intent = EditIntent::from_llm(intent_text).await;
+    let mut intent = EditIntent::from_llm(intent_text).await;
+    // UI checkbox always wins — override whatever the LLM/heuristic parsed
+    intent.enable_subtitles = enable_subtitles_override;
 
     // 1.1 Render Remotion elements if requested (commented out due to undefined variables)
     let remotion_segment: Option<PathBuf> = None;

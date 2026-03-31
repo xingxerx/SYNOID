@@ -580,6 +580,7 @@ async fn ai_auto_edit(
             None,
             None,
             Some(s.core.animator.clone()),
+            true,
         )
         .await;
 
@@ -686,6 +687,7 @@ async fn start_render(
                 None,
                 None,
                 Some(s.core.animator.clone()),
+                true,
             )
             .await;
         } else {

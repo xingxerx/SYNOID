@@ -158,6 +158,7 @@ impl ReferenceEditor {
             None,  // pre_scanned_transcript
             None,  // learned_pattern
             None,  // animator
+            true,  // enable_subtitles
         )
         .await?;
 

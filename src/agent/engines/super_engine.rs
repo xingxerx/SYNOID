@@ -125,6 +125,7 @@ impl SuperEngine {
                     None,
                     None, // learned_pattern
                     self.animator.clone(),
+                    true,
                 )
                 .await
                 {

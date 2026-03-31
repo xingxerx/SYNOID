@@ -39,6 +39,7 @@ pub struct EditJob {
     pub pre_scanned_transcript: Option<Vec<TranscriptSegment>>,
     // NEW: Learned editing pattern
     pub learned_pattern: Option<crate::agent::learning::EditingPattern>,
+    pub enable_subtitles: bool,
 }
 
 pub struct VideoEditorQueue {
@@ -105,6 +106,7 @@ impl VideoEditorQueue {
                             job.pre_scanned_transcript.take(),
                             job.learned_pattern.take(),
                             Some(animator_worker.clone()),
+                            job.enable_subtitles,
                         )
                         .await;
 

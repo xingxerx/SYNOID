@@ -19,7 +19,10 @@
       "Bash(cargo check:*)",
       "Bash(find /d/SYNOID/src -type f -name *.rs)",
       "Bash(find /d/SYNOID/src -name *video_style* -o -name *learner* -o -name *learn*)",
-      "WebFetch(domain:research.google)"
+      "WebFetch(domain:research.google)",
+      "Bash(cmd.exe /c \"rmdir /s /q D:\\\\SYNOID\\\\target\")",
+      "Bash(cmd.exe /c \"for /d %i in \\(D:\\\\SYNOID\\\\target\\\\*\\) do rmdir /s /q \"\"%i\"\"\")",
+      "Bash(cmd.exe /c \"del /f /q D:\\\\SYNOID\\\\target\\\\*.*\")"
     ],
     "deny": [],
     "ask": []

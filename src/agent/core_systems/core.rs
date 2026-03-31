@@ -510,6 +510,7 @@ impl AgentCore {
         login: Option<&str>,
         funny_mode: bool,
         chunk_minutes: u32,
+        enable_subtitles: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if chunk_minutes > 0 && chunk_minutes < 600 {
             // Just logging for now as chunking logic is complex and requires ffmpeg splitting
@@ -696,6 +697,7 @@ impl AgentCore {
                 pre_scanned_transcript: None,
                 // NEW: Pass learned pattern to the job/editor
                 learned_pattern: pattern,
+                enable_subtitles,
             };
 
             let job_id = self.editor_queue.add_job(job).await;

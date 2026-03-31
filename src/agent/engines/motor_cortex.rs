@@ -219,6 +219,7 @@ impl MotorCortex {
             transcript_opt,
             None,
             self.animator.clone(),
+            true,
         )
         .await
         {
