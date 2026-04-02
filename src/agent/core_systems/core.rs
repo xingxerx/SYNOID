@@ -670,7 +670,7 @@ impl AgentCore {
                 let brain = self.brain.lock().await;
                 // Only try to recall if intent looks like a style or has substance
                 if intent.len() > 3 {
-                    let recalled = brain.learning_kernel.lock().await.recall_pattern(intent);
+                    let recalled = brain.learning_kernel.lock().await.recall_pattern_smart(intent);
                     // Check if recalled pattern is just default (success_rating 3) or learned (rating > 3 or specific tag)
                     if recalled.intent_tag != "general" || recalled.success_rating > 3 {
                         self.log(&format!(
@@ -939,7 +939,7 @@ impl AgentCore {
         {
             let brain = self.brain.lock().await;
             if intent.len() > 3 {
-                let recalled = brain.learning_kernel.lock().await.recall_pattern(intent);
+                let recalled = brain.learning_kernel.lock().await.recall_pattern_smart(intent);
                 if recalled.intent_tag != "general" || recalled.success_rating > 3 {
                     self.log(&format!(
                         "[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",
@@ -961,6 +961,10 @@ impl AgentCore {
             pre_scanned_scenes: None,
             pre_scanned_transcript: None,
             learned_pattern: pattern,
+            enable_subtitles: {
+                let lower = intent.to_lowercase();
+                lower.contains("sub") || lower.contains("caption") || lower.contains("text")
+            },
         };
 
         let job_id = self.editor_queue.add_job(job).await;
@@ -1042,7 +1046,7 @@ impl AgentCore {
 
                 // Override the outcome_xp in the specific pattern
                 let mut brain = self.brain.lock().await;
-                let mut pattern = brain.learning_kernel.lock().await.recall_pattern(&job.intent);
+                let mut pattern = brain.learning_kernel.lock().await.recall_pattern_smart(&job.intent);
                 pattern.success_rating = stars as u32;
                 pattern.outcome_xp = quality;
                 brain.learning_kernel.lock().await.memorize(&job.intent, pattern);
@@ -1183,7 +1187,7 @@ impl AgentCore {
         if let Some(ref intent_str) = intent {
             let brain = self.brain.lock().await;
             if intent_str.len() > 3 {
-                let recalled = brain.learning_kernel.lock().await.recall_pattern(intent_str);
+                let recalled = brain.learning_kernel.lock().await.recall_pattern_smart(intent_str);
                 if recalled.intent_tag != "general" || recalled.success_rating > 3 {
                     self.log(&format!(
                         "[CORE] 🧠 Brain Recalled: Style '{}' (Avg Scene: {:.1}s)",

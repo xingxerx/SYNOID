@@ -224,23 +224,12 @@ pub async fn smart_edit(
         Some(t)
     } else {
         // Try to find and reuse existing SRT file (saves massive time!)
-        let mut possible_srt_paths = vec![
-            input.with_extension("srt"),  // e.g., video/input.srt
-            output.with_extension("srt"),  // e.g., video/output.srt
-            work_dir.join("synoid_subtitles.srt"),  // temp working directory
-            work_dir.join("output.srt"),  // Common name in the same directory
+        // IMPORTANT: Only load SRT files that are time-aligned to the INPUT video.
+        // output.srt / synoid_subtitles.srt are remapped to the *edited* output
+        // timeline — loading them for censorship would shift all beep timestamps.
+        let possible_srt_paths = vec![
+            input.with_extension("srt"),  // e.g., video/Outbound.srt — input-aligned
         ];
-
-        // Also check for any .srt file in the work directory
-        if let Ok(entries) = std::fs::read_dir(work_dir) {
-            for entry in entries.flatten() {
-                if let Ok(path) = entry.path().canonicalize() {
-                    if path.extension().and_then(|e| e.to_str()) == Some("srt") {
-                        possible_srt_paths.push(path);
-                    }
-                }
-            }
-        }
 
         let mut found_srt = None;
         for srt_path in &possible_srt_paths {

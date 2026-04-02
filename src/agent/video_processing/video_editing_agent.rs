@@ -48,7 +48,7 @@ impl VideoEditingAgent {
         info!("[VEA] Starting Betterment Cycle for topic: '{}'", topic);
 
         let kernel = self.brain.lock().await.learning_kernel.clone();
-        let pattern = kernel.lock().await.recall_pattern(topic);
+        let pattern = kernel.lock().await.recall_pattern_smart(topic);
 
         info!(
             "[VEA] Recalled pattern: '{}' (scene: {:.2}s, transition: {:.2}x, XP: {:.2})",
@@ -73,7 +73,7 @@ impl VideoEditingAgent {
 
         // 1. Recall best pattern for this instruction
         let kernel = self.brain.lock().await.learning_kernel.clone();
-        let pattern = kernel.lock().await.recall_pattern(instruction);
+        let pattern = kernel.lock().await.recall_pattern_smart(instruction);
 
         // 2. Smart edit with the recalled pattern
         let result = smart_editor::smart_edit(

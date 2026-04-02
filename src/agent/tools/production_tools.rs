@@ -504,6 +504,9 @@ pub async fn burn_subtitles(
         cmd.arg("-crf").arg("23"); // CPU
     }
 
+    // faststart moves the moov atom to the front so the file is always
+    // readable by ffprobe even on very large outputs.
+    cmd.arg("-movflags").arg("+faststart");
     cmd.arg(&safe_output);
     let result = cmd.output().await?;
 

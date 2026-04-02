@@ -1,4 +1,4 @@
-// SYNOID Mixture of Experts (MoE) Router — v2
+// SYNOID Mixture of Experts (MoE) Router — v3
 // Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Enhanced MoE with:
@@ -6,12 +6,15 @@
 //   - Confidence-weighted routing: returns scored expert list, not just top-1
 //   - Ensemble execution: parallel top-2 experts, response merged when uncertain
 //   - Task complexity detection: simple → fast single-expert; complex → ensemble
+//   - Hermes Agent delegation: tool-heavy tasks routed to hermes-agent subprocess
 //
 // Architecture inspired by Mixtral/Switch Transformer sparse MoE gating, adapted
 // for LLM-routed text tasks with no gradient descent — pure prompt-based gating.
 
 use crate::agent::ai_systems::gpt_oss_bridge::SynoidAgent;
+use crate::agent::engines::process_utils::CommandExt;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 use tracing::info;
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -260,9 +263,19 @@ impl MoeRouter {
 
     /// Execute a task with automatic routing + ensemble if confidence is low.
     ///
-    /// When two experts respond, their outputs are merged by a third LLM call
-    /// that synthesizes the best elements from both perspectives.
+    /// Tool-heavy tasks (download, browse, run command, etc.) are first attempted
+    /// via the Hermes Agent subprocess (90+ tools). All other tasks route through
+    /// the MoE expert pool, with ensemble when confidence < 0.65.
     pub async fn smart_execute(&self, task: &str) -> Result<String, String> {
+        // Try Hermes first for tasks that need real tool execution
+        if Self::is_tool_task(task) {
+            info!("[MOE] Tool task detected — delegating to Hermes Agent");
+            match Self::delegate_to_hermes(task).await {
+                Ok(resp) => return Ok(resp),
+                Err(e) => info!("[MOE] Hermes unavailable ({}), falling back to expert routing", e),
+            }
+        }
+
         let decision = self.route_with_decision(task).await;
         info!(
             "[MOE] Route → {} (conf={:.2}, ensemble={})",
@@ -337,6 +350,60 @@ impl MoeRouter {
             results.push((task, decision.primary, result));
         }
         results
+    }
+
+    // ─── Hermes Agent Delegation ──────────────────────────────────────────────
+
+    /// Returns true if the task requires real tool execution that Hermes handles
+    /// better than an LLM persona (file ops, web browsing, terminal commands, etc.).
+    fn is_tool_task(task: &str) -> bool {
+        let lower = task.to_lowercase();
+        lower.contains("download") ||
+        lower.contains("search the web") ||
+        lower.contains("browse") ||
+        lower.contains("run command") ||
+        lower.contains("execute") ||
+        lower.contains("read file") ||
+        lower.contains("write file") ||
+        lower.contains("open url") ||
+        lower.contains("terminal")
+    }
+
+    /// Delegate a task to the Hermes Agent subprocess using its single-query mode.
+    /// Returns Ok(response) on success, Err if Hermes is unavailable or fails.
+    pub async fn delegate_to_hermes(task: &str) -> Result<String, String> {
+        let hermes_dir = std::env::current_dir()
+            .map(|d| d.join(".agent/repos/hermes-agent"))
+            .map_err(|e| format!("cwd error: {e}"))?;
+
+        if !hermes_dir.exists() {
+            return Err("Hermes agent directory not found".to_string());
+        }
+
+        let task_owned = task.to_string();
+        let output = tokio::task::spawn_blocking(move || {
+            Command::new("python")
+                .arg("cli.py")
+                .arg("-q")
+                .arg(&task_owned)
+                .current_dir(&hermes_dir)
+                .stealth()
+                .output()
+        })
+        .await
+        .map_err(|e| format!("Hermes spawn error: {e}"))?
+        .map_err(|e| format!("Hermes IO error: {e}"))?;
+
+        if output.status.success() {
+            let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !text.is_empty() {
+                info!("[MOE] Hermes delegate succeeded ({} chars)", text.len());
+                return Ok(text);
+            }
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("Hermes exited {}: {}", output.status, stderr.trim()))
     }
 }
 

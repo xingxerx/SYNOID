@@ -540,7 +540,7 @@ pub fn estimate_word_timestamps(
     // Tight padding: curse words are 0.2-0.5s; keep beep short and precise.
     let pre_pad = 0.10_f64;   // 100ms lead
     let post_pad = 0.08_f64;  // 80ms trail
-    const MAX_BEEP_SECS: f64 = 0.75; // Never beep longer than 0.75s per word
+    const MAX_BEEP_SECS: f64 = 0.40; // Never beep longer than 0.40s per word
 
     for (i, word) in words.iter().enumerate() {
         if word_boundary_match(word, bad_word) {
