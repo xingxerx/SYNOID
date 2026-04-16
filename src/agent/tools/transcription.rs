@@ -84,7 +84,7 @@ impl TranscriptionEngine {
         // 1. Try Cloud Transcription (Groq Whisper) for highest accuracy and speed
         let agent = crate::agent::gpt_oss_bridge::SynoidAgent::new(
             "http://localhost:11434",
-            "llama-3.1-8b-instant",
+            "default",
         );
 
         if let Ok(json_str) = agent.transcribe_audio(audio_path).await {
@@ -127,6 +127,7 @@ impl TranscriptionEngine {
                     }
 
                     if !segments.is_empty() {
+                        let segments = filter_hallucinations(segments);
                         let word_count: usize = segments.iter().map(|s| s.words.len()).sum();
                         info!("[SOVEREIGN] ☁️ Cloud Transcription Complete: {} segments, {} word-level timestamps (via Groq Whisper). Subtitles enhanced.", segments.len(), word_count);
                         return Ok(segments);
@@ -263,12 +264,60 @@ impl TranscriptionEngine {
                 start,
                 end,
                 text: text.to_string(),
-                words: Vec::new(), // Local Whisper doesn't provide word-level timestamps
+                words: Vec::new(),
             });
         }
 
-        Ok(segments)
+        Ok(filter_hallucinations(segments))
     }
+}
+
+/// Detect and strip Whisper hallucination loops.
+///
+/// Whisper sometimes gets stuck repeating the same phrase for the rest of a
+/// transcript. We detect this by scanning for a run of N segments whose
+/// normalised text is identical, then truncate everything from the start of
+/// that run onward.
+pub fn filter_hallucinations(segments: Vec<TranscriptSegment>) -> Vec<TranscriptSegment> {
+    const MIN_RUN: usize = 5; // consecutive identical lines → hallucination
+
+    if segments.len() < MIN_RUN {
+        return segments;
+    }
+
+    let normalise = |s: &str| -> String {
+        s.to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+
+    let norms: Vec<String> = segments.iter().map(|s| normalise(&s.text)).collect();
+
+    for i in 0..segments.len().saturating_sub(MIN_RUN) {
+        // Check if the next MIN_RUN segments all have the same text
+        let anchor = &norms[i];
+        if anchor.is_empty() {
+            continue;
+        }
+        let run_len = norms[i..].iter().take_while(|n| *n == anchor).count();
+        if run_len >= MIN_RUN {
+            tracing::warn!(
+                "[SOVEREIGN] 🚨 Hallucination loop detected at segment {} (t={:.1}s): \
+                 \"{}\" repeated {} times — truncating transcript here.",
+                i,
+                segments[i].start,
+                segments[i].text.trim(),
+                run_len,
+            );
+            return segments[..i].to_vec();
+        }
+    }
+
+    segments
 }
 
 pub fn generate_srt(segments: &[TranscriptSegment]) -> String {
