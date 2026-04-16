@@ -173,6 +173,9 @@ pub struct UiState {
     pub gemma4_max_steps: String,
     pub gemma4_dry_run: bool,
     pub gemma4_log: String,
+    // System
+    pub is_restarting: bool,
+    pub port: u16,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -358,6 +361,15 @@ impl SynoidApp {
         ui_state.improve_candidates = settings.improve_candidates.clone();
         ui_state.improve_iterations = settings.improve_iterations.clone();
         ui_state.improve_status = String::new();
+        ui_state.is_restarting = false;
+        
+        // Extract port from instance_id (e.g., "_3005" -> 3005) or default to 3000
+        let port = if core.instance_id.starts_with('_') {
+            core.instance_id[1..].parse::<u16>().unwrap_or(3000)
+        } else {
+            3000
+        };
+        ui_state.port = port;
 
         let tree_state = settings.tree_state.clone();
         let active_command = settings.active_command;
@@ -655,6 +667,24 @@ impl SynoidApp {
                     .strong(),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Reload Button
+                let is_restarting = state.is_restarting;
+                let (btn_label, btn_color) = if is_restarting {
+                    ("RESTARTING...", COLOR_TEXT_SECONDARY)
+                } else {
+                    ("⟳ RELOAD", COLOR_ACCENT_PURPLE)
+                };
+
+                if ui.add_enabled(!is_restarting, egui::Button::new(egui::RichText::new(btn_label).size(10.0).color(COLOR_BG_DARK)).fill(btn_color)).clicked() {
+                    state.is_restarting = true;
+                    let core = self.core.clone();
+                    let port = state.port;
+                    tokio::spawn(async move {
+                        core.initiate_graceful_restart(port).await;
+                    });
+                }
+                
+                ui.add_space(12.0);
                 ui.label(
                     egui::RichText::new("SENTINEL: SECURE")
                         .size(10.0)

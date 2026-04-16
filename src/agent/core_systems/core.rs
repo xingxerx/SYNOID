@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::Mutex as AsyncMutex;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::agent::engines::process_utils::CommandExt;
 #[cfg(windows)]
@@ -393,6 +393,58 @@ impl AgentCore {
         self.set_status("⚡ Ready");
     }
 
+    /// Initiates a graceful restart by waiting for tasks to finish and then spawning a new instance.
+    pub async fn initiate_graceful_restart(&self, port: u16) {
+        self.log("[SYSTEM] 🔄 Initiating Graceful Restart...");
+        self.set_status("🔄 Restarting...");
+
+        // Signal other background loops to stop immediately
+        self.stop_auto_improve();
+        self.stop_gemma4();
+        self.stop_sentinel();
+        self.stop_autonomous_learning();
+
+        let queue = self.editor_queue.clone();
+        let port_str = port.to_string();
+
+        tokio::spawn(async move {
+            // Wait for all video jobs to complete
+            queue.wait_for_completion().await;
+
+            info!("[SYSTEM] Jobs completed. Spawning new instance via cargo run...");
+
+            let mut cmd = Command::new("cargo");
+            cmd.args([
+                "run",
+                "--release",
+                "--bin",
+                "synoid-core",
+                "--",
+                "gui",
+                "--port",
+                &port_str,
+            ]);
+
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt as WinCommandExt;
+                // CREATE_NEW_CONSOLE (0x00000010) + DETACHED_PROCESS (0x00000008)
+                cmd.creation_flags(0x00000010 | 0x00000008);
+            }
+
+            match cmd.spawn() {
+                Ok(_) => {
+                    info!("[SYSTEM] New instance spawned. Shutting down current process.");
+                    // Exit immediately so cargo can lock the target for linking if needed
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    error!("[SYSTEM] Failed to restart: {}", e);
+                }
+            }
+        });
+    }
+
     /// Connect GPU context to the Brain for CUDA-accelerated processing.
     /// Call this after async GPU detection completes.
     pub async fn connect_gpu_to_brain(&self) {
@@ -618,7 +670,17 @@ impl AgentCore {
         };
 
         self.log(&format!("[CORE] ✅ Video acquired: {}", title));
-        let out_path = output.unwrap_or_else(|| PathBuf::from("Video/output.mp4"));
+        let out_path = output.unwrap_or_else(|| {
+            // Derive output name from input: Outbound.mp4 → Outbound_edited.mp4
+            let stem = local_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("output");
+            local_path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(format!("{}_edited.mp4", stem))
+        });
         // Ensure the output directory exists
         if let Some(parent) = out_path.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {

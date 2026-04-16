@@ -202,15 +202,29 @@ pub async fn smart_edit(
     };
     let job_prefix = job_prefix_owned.as_str();
 
-    let work_dir = input.parent().ok_or("Input path has no parent")?;
-    let enhanced_audio_path = work_dir.join(format!("synoid_{}_audio_enhanced.wav", job_prefix));
+    let input_parent = input.parent().ok_or("Input path has no parent")?;
+    // Put all temp files inside a dedicated subdirectory so they don't clutter
+    // the user's video folder.  The segments dir already lives here.
+    let work_dir_buf = input_parent.join(format!("synoid_temp_{}", job_prefix));
+    fs::create_dir_all(&work_dir_buf)
+        .map_err(|e| format!("Could not create temp dir: {}", e))?;
+    let work_dir: &Path = &work_dir_buf;
+    // Store enhanced/censored WAVs next to the input (not in temp dir) so they survive
+    // across runs and don't need to be rebuilt every time.
+    let enhanced_audio_path = input_parent.join(format!("synoid_{}_audio_enhanced.wav", job_prefix));
 
-    log("[SMART] 🎙️ Enhancing audio (High-Pass + Compression + Normalization)...");
-    match production_tools::enhance_audio(input, &enhanced_audio_path).await {
-        Ok(_) => log("[SMART] Audio enhanced successfully."),
-        Err(e) => {
-            warn!("[SMART] Audio enhancement failed ({}), using original.", e);
-            // Fallback: Just use original input as audio source if possible, or skip enhancement
+    let enhanced_cached = fs::metadata(&enhanced_audio_path)
+        .map(|m| m.len() > 0)
+        .unwrap_or(false);
+    if enhanced_cached {
+        log(&format!("[SMART] ⚡ Reusing cached enhanced audio: {:?}", enhanced_audio_path));
+    } else {
+        log("[SMART] 🎙️ Enhancing audio (High-Pass + Compression + Normalization)...");
+        match production_tools::enhance_audio(input, &enhanced_audio_path).await {
+            Ok(_) => log("[SMART] Audio enhanced successfully."),
+            Err(e) => {
+                warn!("[SMART] Audio enhancement failed ({}), using original.", e);
+            }
         }
     }
 
@@ -246,12 +260,35 @@ pub async fn smart_edit(
                     Ok(srt_content) => {
                         match crate::agent::tools::transcription::parse_srt(&srt_content) {
                             Ok(segments) => {
-                                log(&format!(
-                                    "[SMART] ✅ Successfully loaded {} segments from SRT (skipping transcription!)",
-                                    segments.len()
-                                ));
-                                found_srt = Some(segments);
-                                break;
+                                // Quick alignment check: last subtitle timestamp vs video duration.
+                                // If the SRT was made for a different video or is badly truncated,
+                                // re-transcribe rather than bleep the wrong timestamps.
+                                let video_dur = source_tools::get_video_duration(input).await.unwrap_or(0.0);
+                                let srt_end = segments.last().map(|s| s.end).unwrap_or(0.0);
+                                let aligned = if video_dur > 1.0 && srt_end > 0.0 {
+                                    // Accept if SRT covers at least 80% of the video (some silence at end is normal)
+                                    // and doesn't overshoot by more than 10%
+                                    let ratio = srt_end / video_dur;
+                                    (0.80..=1.10).contains(&ratio)
+                                } else {
+                                    true // can't check — accept
+                                };
+
+                                if aligned {
+                                    log(&format!(
+                                        "[SMART] ✅ Loaded {} segments from SRT cache (srt_end={:.1}s, video={:.1}s — aligned)",
+                                        segments.len(), srt_end, video_dur
+                                    ));
+                                    found_srt = Some(segments);
+                                    break;
+                                } else {
+                                    warn!(
+                                        "[SMART] ⚠️ SRT end ({:.1}s) doesn't align with video duration ({:.1}s) — re-transcribing",
+                                        srt_end, video_dur
+                                    );
+                                    // Delete the mismatched SRT so it doesn't keep blocking
+                                    let _ = fs::remove_file(srt_path);
+                                }
                             }
                             Err(e) => {
                                 warn!("[SMART] Failed to parse SRT file: {}, will re-transcribe", e);
@@ -349,7 +386,18 @@ pub async fn smart_edit(
         log(&format!("[SMART] 🤬 Profanity censorship enabled: {}", intent.censor_profanity));
         if let Some(t) = &transcript {
             log(&format!("[SMART] 🤬 Applying audio censorship pass based on transcript ({} segments)...", t.len()));
-            let censored_path = work_dir.join(format!("synoid_{}_audio_censored.wav", job_prefix));
+            // Stable path alongside the input so it survives across runs.
+            let censored_path = input_parent.join(format!("synoid_{}_audio_censored.wav", job_prefix));
+
+            // Reuse cached censored WAV if it already exists and has content.
+            let censored_cached = fs::metadata(&censored_path)
+                .map(|m| m.len() > 0)
+                .unwrap_or(false);
+            if censored_cached {
+                log(&format!("[SMART] ⚡ Reusing cached censored audio: {:?}", censored_path));
+                final_enhanced_audio_path = censored_path;
+                use_enhanced_audio = true;
+            } else {
 
             // Comprehensive list of words to bleep — racial slurs, hate speech, and profanity
             let profanity_words = get_profanity_word_list();
@@ -433,6 +481,7 @@ pub async fn smart_edit(
             } else {
                 log("[SMART] ℹ️ No profanity detected in transcript.");
             }
+            } // end else (censored_cached)
         } else {
             warn!("[SMART] ⚠️ Profanity censorship requested but no transcript available!");
         }
@@ -784,7 +833,8 @@ pub async fn smart_edit(
         neuro_transition_name, neuro_transition_dur, neuro_level
     ));
 
-    let segments_dir = work_dir.join(format!("synoid_temp_{}", job_prefix));
+    // work_dir IS already the synoid_temp_{prefix} folder; segments live inside it.
+    let segments_dir = work_dir.to_path_buf();
     let total_segments = scenes_to_keep.len();
 
     // Check if all segments from a previous run already exist — reuse them to save time.
@@ -1160,11 +1210,9 @@ pub async fn smart_edit(
             .await?
     };
 
-    // Clean up
-    fs::remove_dir_all(&segments_dir)?;
-    if use_enhanced_audio {
-        let _ = fs::remove_file(enhanced_audio_path);
-    }
+    // Clean up — remove entire temp dir (segments + WAVs).  Non-fatal so a
+    // missing dir from a previous run doesn't abort an otherwise-complete edit.
+    let _ = fs::remove_dir_all(&work_dir_buf);
 
     if !status.status.success() {
         let stderr = String::from_utf8_lossy(&status.stderr);
