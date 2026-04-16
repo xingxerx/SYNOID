@@ -94,6 +94,9 @@ target_*/
 # Documentation Archive (generated files)
 docs/archive/
 
+# Cloned reference repos (not submodules)
+.agent/repos/
+
 # Configuration files (instance-specific)
 config/synoid_settings_*.json
 config/editing_strategy.json
