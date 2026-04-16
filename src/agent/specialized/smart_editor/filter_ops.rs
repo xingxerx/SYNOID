@@ -194,8 +194,10 @@ pub fn generate_srt_for_kept_scenes(
     transcript: &[crate::agent::transcription::TranscriptSegment],
     kept_scenes: &[Scene],
 ) -> String {
-    const MIN_DISPLAY_SECS: f64 = 2.5; // Minimum subtitle display time (increased for readability)
-    const MERGE_THRESHOLD_SECS: f64 = 1.2; // Merge entries shorter than this into prev (adjusted)
+    const MIN_DISPLAY_SECS: f64 = 1.5; // Minimum subtitle display time
+    const MAX_DISPLAY_SECS: f64 = 5.0; // Cap so captions don't hang too long
+    const MERGE_THRESHOLD_SECS: f64 = 0.8; // Merge entries shorter than this into prev
+    const CAPTION_GAP_SECS: f64 = 0.05; // Minimum gap between consecutive captions
 
     // Build a time remapping: for each kept scene, compute its start position in the output video.
     // Output start = sum of durations of all previous kept scenes.
@@ -240,15 +242,26 @@ pub fn generate_srt_for_kept_scenes(
         }
     }
 
-    // --- Pass 3: Enforce minimum display duration ---
+    // --- Pass 3: Enforce min/max display duration ---
     for entry in merged.iter_mut() {
         let duration = entry.1 - entry.0;
         if duration < MIN_DISPLAY_SECS {
             entry.1 = entry.0 + MIN_DISPLAY_SECS;
+        } else if duration > MAX_DISPLAY_SECS {
+            entry.1 = entry.0 + MAX_DISPLAY_SECS;
         }
     }
 
-    // --- Pass 4: Write SRT ---
+    // --- Pass 4: Anti-overlap — clamp each end to next entry's start ---
+    for i in 0..merged.len().saturating_sub(1) {
+        let next_start = merged[i + 1].0;
+        let max_end = (next_start - CAPTION_GAP_SECS).max(merged[i].0 + 0.1);
+        if merged[i].1 > max_end {
+            merged[i].1 = max_end;
+        }
+    }
+
+    // --- Pass 5: Write SRT ---
     let fmt = |secs: f64| -> String {
         let total_ms = (secs * 1000.0) as u64;
         let ms = total_ms % 1000;
@@ -426,8 +439,9 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "trannies",
         "shemale",
         "shemales",
-        // NOTE: "gay", "lesbian", "queer", "homo", "homosexual" are identity terms, NOT slurs
-        // They should NOT be censored in normal contexts
+        // "gay" added per user request — beep when used as slur/insult in context
+        "gay",
+        // NOTE: "lesbian", "queer", "homo", "homosexual" are identity terms, NOT slurs
         // Violent/threatening language (REMOVED - too many false positives in gaming context)
         // "kill", "murder", "die" are common gaming terms and cause too many false positives
         // Ableist slurs
@@ -450,7 +464,7 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
 /// Words that must use exact word-boundary matching to avoid false positives.
 /// e.g. "ass" would match "assign"/"assets" with prefix matching.
 fn needs_exact_match(word: &str) -> bool {
-    matches!(word.to_lowercase().as_str(), "ass" | "tit" | "crap" | "balls" | "prick" | "cock")
+    matches!(word.to_lowercase().as_str(), "ass" | "tit" | "crap" | "balls" | "prick" | "cock" | "gay" | "fag" | "nig")
 }
 
 pub fn word_boundary_match(text: &str, bad_word: &str) -> bool {

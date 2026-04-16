@@ -16,15 +16,23 @@ pub struct SynoidAgent {
 }
 
 impl SynoidAgent {
-    /// Create a new SynoidAgent. If Groq/Google keys are missing, it falls back to Ollama.
+    /// Create a new SynoidAgent backed by Gemma 4 (Ollama primary, cloud fallback).
     pub fn new(_api_url: &str, model: &str) -> Self {
         let optimizer = Arc::new(create_default_optimizer());
-        let config = ProviderConfig::default();
+        let mut config = ProviderConfig::from_env();
+        // If caller didn't specify a model, use Gemma 4 as sovereign default
+        let effective_model = if model.is_empty() || model == "default" {
+            config.ollama_model.clone()
+        } else {
+            model.to_string()
+        };
+        config.ollama_model = effective_model.clone();
         let provider = Arc::new(MultiProviderLlm::new(config, optimizer));
+        info!("[AGENT] Initialized with primary model: {}", effective_model);
 
         Self {
             provider,
-            model: model.to_string(),
+            model: effective_model,
         }
     }
 

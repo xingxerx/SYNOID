@@ -2,9 +2,9 @@
 // Copyright (c) 2026 xingxerx_The_Creator | SYNOID
 //
 // Routes LLM requests to the best available provider:
-//   - Groq (primary): Reasoning + Fast tasks via OpenAI-compatible API
-//   - Google AI Studio: Vision/multimodal tasks via Gemini API
-//   - Ollama (fallback): Local models when cloud providers are unavailable
+//   - Ollama/Gemma4 (primary): Local gemma4:26b via Ollama — sovereign, offline-capable
+//   - Groq (optional fallback): Cloud reasoning when Ollama is unavailable
+//   - Google AI Studio (optional): Vision/multimodal tasks via Gemini API
 //
 // Integrated with TokenOptimizer to respect free-tier rate limits.
 
@@ -63,7 +63,7 @@ impl Default for ProviderConfig {
             google_vision_model: "gemini-1.5-flash".to_string(),
             ollama_url: std::env::var("SYNOID_API_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".to_string()),
-            ollama_model: "llama3.2:latest".to_string(),
+            ollama_model: "gemma4:26b".to_string(),
         }
     }
 }
@@ -83,7 +83,7 @@ impl ProviderConfig {
             ollama_url: std::env::var("SYNOID_API_URL")
                 .unwrap_or_else(|_| "http://localhost:11434".to_string()),
             ollama_model: std::env::var("SYNOID_MODEL")
-                .unwrap_or_else(|_| "llama3.2:latest".to_string()),
+                .unwrap_or_else(|_| "gemma4:26b".to_string()),
         }
     }
 
@@ -127,32 +127,44 @@ impl MultiProviderLlm {
         }
     }
 
-    /// Send a reasoning request — routes to Groq if available, else Ollama.
+    /// Send a reasoning request — Gemma 4 (Ollama) primary, Groq cloud fallback.
     pub async fn reason(&self, request: &str) -> Result<String, String> {
+        match self.call_ollama(request).await {
+            Ok(text) if !text.starts_with("(Offline Mode)") => return Ok(text),
+            Ok(_) | Err(_) => {
+                warn!("[LLM] Ollama/Gemma4 unavailable, trying Groq fallback");
+            }
+        }
         if self.config.groq_api_key.is_some() {
             match self
                 .call_groq(request, &self.config.groq_reasoning_model.clone())
                 .await
             {
                 Ok((text, _)) => return Ok(text),
-                Err(e) => warn!("[LLM] Groq reason failed ({}), falling back to Ollama", e),
+                Err(e) => warn!("[LLM] Groq fallback also failed: {}", e),
             }
         }
-        self.call_ollama(request).await
+        Err("All providers unavailable".into())
     }
 
-    /// Send a fast/simple request — routes to Groq fast model if available, else Ollama.
+    /// Send a fast/simple request — Gemma 4 (Ollama) primary, Groq cloud fallback.
     pub async fn fast_request(&self, request: &str) -> Result<String, String> {
+        match self.call_ollama(request).await {
+            Ok(text) if !text.starts_with("(Offline Mode)") => return Ok(text),
+            Ok(_) | Err(_) => {
+                warn!("[LLM] Ollama/Gemma4 unavailable, trying Groq fast fallback");
+            }
+        }
         if self.config.groq_api_key.is_some() {
             match self
                 .call_groq(request, &self.config.groq_fast_model.clone())
                 .await
             {
                 Ok((text, _)) => return Ok(text),
-                Err(e) => warn!("[LLM] Groq fast failed ({}), falling back to Ollama", e),
+                Err(e) => warn!("[LLM] Groq fast fallback also failed: {}", e),
             }
         }
-        self.call_ollama(request).await
+        Err("All providers unavailable".into())
     }
 
     /// Send a vision request — routes to Google Gemini if available, else Ollama VLM.
@@ -319,7 +331,7 @@ impl MultiProviderLlm {
 
         // Build the prompt with system message
         let full_prompt = format!(
-            "You are Synoid, an autonomous video production AI. Respond with concise JSON or direct commands.\n\n{}",
+            "You are Synoid, an autonomous video production AI powered by Gemma 4. Respond with concise JSON or direct commands.\n\n{}",
             request
         );
 

@@ -176,13 +176,17 @@ impl HiveMind {
             return ModelRole::Specialist("vision".to_string());
         }
 
-        // 2. Heavy Reasoning (Prime Reasoner)
-        if lower.contains("gpt-oss") || lower.contains("deepseek-r1") || size_gb > 14.0 {
+        // 2. Heavy Reasoning (Prime Reasoner) — Gemma 4 is the primary sovereign model
+        if lower.contains("gemma4")
+            || lower.contains("gpt-oss")
+            || lower.contains("deepseek-r1")
+            || size_gb > 14.0
+        {
             return ModelRole::Reasoning;
         }
 
         // 3. Fast/Efficient Models
-        if lower.contains("llama3.2") || lower.contains("gemma2") || size_gb < 10.0 {
+        if lower.contains("llama3.2") || lower.contains("gemma2") || lower.contains("gemma3") || size_gb < 10.0 {
             return ModelRole::FastResponder;
         }
 
@@ -193,13 +197,13 @@ impl HiveMind {
     pub fn get_reasoning_model(&self) -> String {
         self.active_reasoner
             .clone()
-            .unwrap_or_else(|| "llama3:latest".to_string())
+            .unwrap_or_else(|| "gemma4:26b".to_string())
     }
 
     pub fn get_fast_model(&self) -> String {
         self.active_fast_responder
             .clone()
-            .unwrap_or_else(|| "llama3:latest".to_string())
+            .unwrap_or_else(|| "gemma4:26b".to_string())
     }
 
     pub fn get_vision_model(&self) -> String {

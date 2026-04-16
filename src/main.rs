@@ -272,6 +272,24 @@ enum Commands {
         max_iterations: usize,
     },
 
+    /// Gemma 4 self-improvement harness — give Gemma 4 tools to build and improve SYNOID.
+    ///
+    /// Gemma 4 iterates Thought → Action → Observation using tools:
+    /// read_file, list_files, write_file, search_code, cargo_check, cargo_test, finish.
+    Gemma4 {
+        /// Task for Gemma 4 (e.g. "improve smart_editor scene detection accuracy")
+        #[arg(short, long)]
+        task: String,
+
+        /// Maximum tool-use steps before giving up (default: 16)
+        #[arg(long, default_value_t = 16)]
+        max_steps: usize,
+
+        /// Plan only — print intended actions without writing files or running cargo
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// GEPA self-improvement loop (Goal-Experience-Policy-Agent)
     ///
     /// Runs the background GEPA cycle that replays trajectory episodes,
@@ -670,6 +688,20 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     println!("\n✅ ReAct Answer:\n{}", answer);
                 }
                 Err(e) => error!("❌ ReAct Agent Error: {}", e),
+            }
+        }
+
+        Commands::Gemma4 { task, max_steps, dry_run } => {
+            use agent::gemma4_harness::Gemma4Harness;
+            let work_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let harness = Gemma4Harness::new(&work_dir, dry_run);
+            info!("🤖 Gemma4 Harness starting. Task: {}", task);
+            if dry_run {
+                info!("   [DRY RUN] No files will be written, no cargo invocations.");
+            }
+            match harness.run_task(&task, max_steps).await {
+                Ok(summary) => println!("\n[Gemma4] Done:\n{}", summary),
+                Err(e) => error!("❌ Gemma4 Harness error: {}", e),
             }
         }
 

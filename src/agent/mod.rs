@@ -30,6 +30,8 @@ pub mod ai_systems {
     pub mod turbo_quant;
     /// ReAct Agent: native Reason+Act open-source agent loop (Yao et al. ICLR 2023)
     pub mod react_agent;
+    /// Gemma 4 Self-Improvement Harness: tool loop for Gemma 4 to build and improve SYNOID
+    pub mod gemma4_harness;
 }
 
 // Video Processing - Editing, playback, stitching, and style learning
@@ -96,7 +98,7 @@ pub mod specialized {
 
 // Re-export commonly used modules at the root level for backwards compatibility
 pub use core_systems::{brain, core, consciousness, autonomous_learner, learning, body, health, neuroplasticity};
-pub use ai_systems::{llm_provider, gpt_oss_bridge, token_optimizer, reasoning, moe, supervisor, multi_agent, hive_mind, turbo_quant, react_agent};
+pub use ai_systems::{llm_provider, gpt_oss_bridge, token_optimizer, reasoning, moe, supervisor, multi_agent, hive_mind, turbo_quant, react_agent, gemma4_harness};
 pub use video_processing::{video_editing_agent, video_player, video_stitcher, video_style_learner, multicam, animator, upscale_engine};
 pub use tools::{audio_tools, vision_tools, transcription, source_tools, research_tools, production_tools};
 pub use engines::{super_engine, unified_pipeline, motor_cortex, editor_queue, process_utils};

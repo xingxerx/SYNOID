@@ -93,6 +93,8 @@ pub enum ActiveCommand {
     GpuStatus,
     // Self-improvement
     AutoImprove,
+    // Gemma 4 builder/improver
+    Gemma4,
 }
 
 impl Default for ActiveCommand {
@@ -166,6 +168,11 @@ pub struct UiState {
     pub improve_candidates: String,
     pub improve_iterations: String,
     pub improve_status: String,
+    // Gemma 4 harness
+    pub gemma4_task: String,
+    pub gemma4_max_steps: String,
+    pub gemma4_dry_run: bool,
+    pub gemma4_log: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -595,6 +602,7 @@ impl SynoidApp {
             ActiveCommand::Discovery => self.render_discovery_panel(ui, state),
             ActiveCommand::GpuStatus => self.render_gpu_status_panel(ui, state),
             ActiveCommand::AutoImprove => self.render_auto_improve_panel(ui, state),
+            ActiveCommand::Gemma4 => self.render_gemma4_panel(ui, state),
             ActiveCommand::Editor => {
                 // Create/reuse session then open React editor in browser
                 let _core = self.core.clone();
@@ -2125,6 +2133,107 @@ impl SynoidApp {
         );
     }
 
+    fn render_gemma4_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
+        use std::sync::atomic::Ordering;
+
+        ui.heading(
+            egui::RichText::new("🤖 Gemma 4 — Builder & Improver")
+                .color(egui::Color32::from_rgb(100, 220, 180)),
+        );
+        ui.separator();
+        ui.add_space(8.0);
+
+        ui.label(
+            egui::RichText::new(
+                "Give Gemma 4 a task and it will read, write, and cargo-check SYNOID source \
+                 code autonomously — looping until the task is done.",
+            )
+            .color(COLOR_TEXT_SECONDARY)
+            .small(),
+        );
+        ui.add_space(10.0);
+
+        // ── Task input ──────────────────────────────────────────────────────
+        ui.label(egui::RichText::new("Task").strong());
+        ui.add(
+            egui::TextEdit::multiline(&mut state.gemma4_task)
+                .desired_rows(4)
+                .desired_width(f32::INFINITY)
+                .hint_text("e.g. \"improve smart_editor scene detection accuracy\""),
+        );
+        ui.add_space(8.0);
+
+        // ── Options row ─────────────────────────────────────────────────────
+        ui.horizontal(|ui| {
+            ui.label("Max steps:");
+            ui.add(
+                egui::TextEdit::singleline(&mut state.gemma4_max_steps)
+                    .desired_width(48.0)
+                    .hint_text("16"),
+            );
+            ui.add_space(16.0);
+            ui.checkbox(&mut state.gemma4_dry_run, "Dry run (plan only, no writes)");
+        });
+        ui.add_space(10.0);
+
+        // ── Start / Stop ────────────────────────────────────────────────────
+        let is_running = self.core.gemma4_running.load(Ordering::Relaxed);
+
+        ui.horizontal(|ui| {
+            if is_running {
+                if ui
+                    .add(
+                        egui::Button::new(egui::RichText::new("⏹ Stop").size(15.0))
+                            .fill(egui::Color32::from_rgb(100, 100, 100)),
+                    )
+                    .clicked()
+                {
+                    self.core.stop_gemma4();
+                }
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new("● Gemma 4 working…")
+                        .color(egui::Color32::from_rgb(100, 220, 180))
+                        .strong(),
+                );
+            } else {
+                let btn = egui::Button::new(egui::RichText::new("🤖 Run Gemma 4").size(15.0))
+                    .fill(egui::Color32::from_rgb(40, 140, 100));
+                if ui.add(btn).clicked() && !state.gemma4_task.trim().is_empty() {
+                    let max_steps: usize = state.gemma4_max_steps.trim().parse().unwrap_or(16);
+                    let dry_run = state.gemma4_dry_run;
+                    let task = state.gemma4_task.trim().to_string();
+                    let ui_state = self.ui_state.clone();
+                    self.core.start_gemma4(task, max_steps, dry_run, ui_state);
+                }
+            }
+        });
+        ui.add_space(10.0);
+
+        // ── Live log ────────────────────────────────────────────────────────
+        if !state.gemma4_log.is_empty() {
+            ui.label(egui::RichText::new("Output").strong());
+            ui.add_space(4.0);
+            egui::ScrollArea::vertical()
+                .max_height(340.0)
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    egui::Frame::default()
+                        .fill(COLOR_PANEL_BG)
+                        .inner_margin(egui::Margin::same(8.0))
+                        .rounding(egui::Rounding::same(4.0))
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new(&state.gemma4_log)
+                                    .monospace()
+                                    .color(egui::Color32::from_rgb(100, 220, 180))
+                                    .size(11.0),
+                            );
+                        });
+                });
+        }
+    }
+
     fn render_process_panel(&self, ui: &mut egui::Ui, state: &mut UiState) {
         ui.heading(egui::RichText::new("⚙️ Process Video").color(COLOR_ACCENT_ORANGE));
         ui.separator();
@@ -2999,6 +3108,7 @@ impl eframe::App for SynoidApp {
                                 ("💡", "Suggest", ActiveCommand::Suggest),
                                 ("⚡", "Process Pipeline", ActiveCommand::Process),
                                 ("🧬", "AutoImprove", ActiveCommand::AutoImprove),
+                                ("🤖", "Gemma 4", ActiveCommand::Gemma4),
                             ],
                         ) {
                             new_cmd = Some(cmd);

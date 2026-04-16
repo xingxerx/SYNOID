@@ -192,8 +192,15 @@ pub async fn smart_edit(
 
     // 0. Pre-process: Enhance Audio & Transcribe (Code follows...)
     // This creates a clean audio spine for the edit
-    let job_id = uuid::Uuid::new_v4().to_string();
-    let job_prefix = &job_id[..8];
+
+    // Use a deterministic prefix derived from the input path so segment dirs survive across runs.
+    let job_prefix_owned: String = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        input.hash(&mut h);
+        format!("{:08x}", h.finish() & 0xFFFFFFFF)
+    };
+    let job_prefix = job_prefix_owned.as_str();
 
     let work_dir = input.parent().ok_or("Input path has no parent")?;
     let enhanced_audio_path = work_dir.join(format!("synoid_{}_audio_enhanced.wav", job_prefix));
@@ -301,6 +308,17 @@ pub async fn smart_edit(
                             "[SMART] Transcription complete: {} segments",
                             t.len()
                         ));
+                        // Cache as input-aligned SRT so future runs skip re-transcription.
+                        // Named after the input file (e.g., Outbound.srt) — NOT the output SRT.
+                        let input_srt_path = input.with_extension("srt");
+                        let srt_content = crate::agent::tools::transcription::generate_srt(&t);
+                        match fs::write(&input_srt_path, &srt_content) {
+                            Ok(_) => log(&format!(
+                                "[SMART] 💾 Saved input-aligned SRT to {:?} (reused next run)",
+                                input_srt_path
+                            )),
+                            Err(e) => warn!("[SMART] Could not save input SRT cache: {}", e),
+                        }
                         Some(t)
                     }
                     Err(e) => {
@@ -767,16 +785,31 @@ pub async fn smart_edit(
     ));
 
     let segments_dir = work_dir.join(format!("synoid_temp_{}", job_prefix));
-    if segments_dir.exists() {
-        fs::remove_dir_all(&segments_dir)?;
+    let total_segments = scenes_to_keep.len();
+
+    // Check if all segments from a previous run already exist — reuse them to save time.
+    let all_segs_cached = segments_dir.exists() && {
+        (0..total_segments).all(|i| {
+            let p = segments_dir.join(format!("seg_{:04}.mp4", i));
+            p.exists() && fs::metadata(&p).map(|m| m.len() > 1000).unwrap_or(false)
+        })
+    };
+
+    if all_segs_cached {
+        log(&format!(
+            "[SMART] ⚡ Reusing {} cached segments from previous run (skipping re-cut).",
+            total_segments
+        ));
+    } else {
+        if segments_dir.exists() {
+            fs::remove_dir_all(&segments_dir)?;
+        }
+        fs::create_dir_all(&segments_dir)?;
     }
-    fs::create_dir_all(&segments_dir)?;
 
     log("[SMART] ✂️ Assembling segments with single-pass render...");
 
     // Commentary Generator removed (funny_engine deprecated)
-
-    let total_segments = scenes_to_keep.len();
 
     // NVENC hardware encoder session limits:
     // - GeForce consumer GPUs: max 2-3 concurrent sessions (driver enforced)
@@ -796,6 +829,15 @@ pub async fn smart_edit(
 
     for (i, scene) in scenes_to_keep.iter().enumerate() {
         let seg_path = segments_dir.join(format!("seg_{:04}.mp4", i));
+
+        // Skip re-encoding segments that already exist from cache
+        if all_segs_cached {
+            tasks.push(tokio::spawn(async move {
+                let dur = source_tools::get_video_duration(&seg_path).await.unwrap_or(0.0);
+                Some((seg_path, dur))
+            }));
+            continue;
+        }
         let scene_duration = scene.duration;
         let scene_start = scene.start_time;
 

@@ -280,6 +280,10 @@ pub struct AgentCore {
     // AutoImprove loop state
     pub improve_running: Arc<AtomicBool>,
     pub improve_shutdown: Arc<Mutex<Option<tokio::sync::watch::Sender<bool>>>>,
+
+    // Gemma 4 harness state
+    pub gemma4_running: Arc<AtomicBool>,
+    pub gemma4_shutdown: Arc<Mutex<Option<tokio::sync::watch::Sender<bool>>>>,
 }
 
 impl AgentCore {
@@ -332,6 +336,8 @@ impl AgentCore {
             hci: Arc::new(HciTracker::new()),
             improve_running: Arc::new(AtomicBool::new(false)),
             improve_shutdown: Arc::new(Mutex::new(None)),
+            gemma4_running: Arc::new(AtomicBool::new(false)),
+            gemma4_shutdown: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -1301,6 +1307,87 @@ impl AgentCore {
             }
         }
         // Flag will be cleared by the background task when it exits.
+    }
+
+    // --- Gemma 4 Harness ---
+
+    /// Launch Gemma 4 in a background task. Progress is streamed into ui_state.gemma4_log.
+    pub fn start_gemma4(
+        &self,
+        task: String,
+        max_steps: usize,
+        dry_run: bool,
+        ui_state: Arc<Mutex<crate::window::UiState>>,
+    ) {
+        if self.gemma4_running.load(Ordering::Relaxed) {
+            self.log("[GEMMA4] Already running.");
+            return;
+        }
+
+        let (tx, _rx) = tokio::sync::watch::channel(false);
+        if let Ok(mut slot) = self.gemma4_shutdown.lock() {
+            *slot = Some(tx);
+        }
+
+        self.gemma4_running.store(true, Ordering::Relaxed);
+        self.log(&format!("[GEMMA4] Starting: {}", task));
+
+        // Clear previous log
+        if let Ok(mut s) = ui_state.lock() {
+            s.gemma4_log = format!("Starting Gemma 4 harness...\nTask: {}\n\n", task);
+        }
+
+        let running_flag = self.gemma4_running.clone();
+        let work_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+        tokio::spawn(async move {
+            use crate::agent::ai_systems::gemma4_harness::Gemma4Harness;
+
+            let harness = Gemma4Harness::new(&work_dir, dry_run);
+
+            // Override run_task to stream each step into ui_state.gemma4_log
+            // We replicate the loop here so we can capture intermediate output.
+            let _ollama_url = std::env::var("SYNOID_API_URL")
+                .unwrap_or_else(|_| "http://localhost:11434".to_string());
+            let model = std::env::var("SYNOID_MODEL")
+                .unwrap_or_else(|_| "gemma4:26b".to_string());
+
+            let append_log = {
+                let ui = ui_state.clone();
+                move |text: &str| {
+                    if let Ok(mut s) = ui.lock() {
+                        s.gemma4_log.push_str(text);
+                        s.gemma4_log.push('\n');
+                    }
+                }
+            };
+
+            append_log(&format!("Model: {} | Dry-run: {}", model, dry_run));
+            append_log("─────────────────────────────────────────");
+
+            match harness.run_task(&task, max_steps).await {
+                Ok(summary) => {
+                    append_log("\n✅ Done:");
+                    append_log(&summary);
+                }
+                Err(e) => {
+                    append_log(&format!("\n❌ Error: {}", e));
+                }
+            }
+
+            running_flag.store(false, Ordering::Relaxed);
+        });
+    }
+
+    /// Stop the running Gemma 4 harness.
+    pub fn stop_gemma4(&self) {
+        if let Ok(mut slot) = self.gemma4_shutdown.lock() {
+            if let Some(tx) = slot.take() {
+                let _ = tx.send(true);
+                self.log("[GEMMA4] 🛑 Stop signal sent.");
+            }
+        }
+        self.gemma4_running.store(false, Ordering::Relaxed);
     }
 
     // --- Sentinel ---
