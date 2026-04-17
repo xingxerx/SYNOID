@@ -945,9 +945,9 @@ impl SynoidApp {
                                         crate::agent::editor_queue::JobStatus::Queued => {
                                             egui::Color32::from_rgb(150, 150, 150)
                                         }
-                                        crate::agent::editor_queue::JobStatus::Processing {
-                                            ..
-                                        } => COLOR_ACCENT_BLUE,
+                                        crate::agent::editor_queue::JobStatus::Processing => {
+                                            COLOR_ACCENT_BLUE
+                                        }
                                         crate::agent::editor_queue::JobStatus::Completed {
                                             ..
                                         } => COLOR_ACCENT_GREEN,
@@ -984,6 +984,18 @@ impl SynoidApp {
                                         .small()
                                         .color(COLOR_TEXT_SECONDARY),
                                 );
+
+                                if job.status == crate::agent::editor_queue::JobStatus::Processing {
+                                    let pct = job.progress_shared.lock().map(|g| *g).unwrap_or(0.0);
+                                    ui.add_space(4.0);
+                                    ui.add(
+                                        egui::ProgressBar::new(pct)
+                                            .show_percentage()
+                                            .animate(true)
+                                            .desired_width(ui.available_width()),
+                                    );
+                                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(400));
+                                }
 
                                 if let crate::agent::editor_queue::JobStatus::Completed {
                                     kept_ratio,
@@ -2567,6 +2579,7 @@ impl SynoidApp {
                                 .add_filter("Video", &["mp4", "mkv", "avi", "mov"])
                                 .pick_file() {
                                 _state.input_path = path.to_string_lossy().to_string();
+                                save_settings(&self.core.instance_id, _state, self.active_command, &self.tree_state);
                             }
                         }
 
@@ -2630,7 +2643,6 @@ impl SynoidApp {
                             egui::Button::new(egui::RichText::new(btn_label).strong().color(egui::Color32::BLACK))
                             .fill(if disabled { egui::Color32::from_rgb(100, 100, 100) } else { color_gold })
                         ).clicked() && !disabled {
-                            // Logic remains the same, just moved panel location
                             _state.ai_edit_running = true;
                             let core = self.core.clone();
                             let input = _state.input_path.clone();
@@ -2641,6 +2653,22 @@ impl SynoidApp {
                                 let _ = core.process_youtube_intent(&input, &intent, None, None, false, 0, enable_subtitles).await;
                                 if let Ok(mut s) = ui_ptr.lock() { s.ai_edit_running = false; }
                             });
+                        }
+
+                        if _state.ai_edit_running {
+                            let pct = _state.recent_jobs.iter()
+                                .filter(|j| j.status == crate::agent::editor_queue::JobStatus::Processing)
+                                .next()
+                                .map(|j| j.progress_shared.lock().map(|g| *g).unwrap_or(0.0))
+                                .unwrap_or(0.0);
+                            ui.add_space(6.0);
+                            ui.add(
+                                egui::ProgressBar::new(pct)
+                                    .show_percentage()
+                                    .animate(true)
+                                    .desired_width(ui.available_width()),
+                            );
+                            ctx.request_repaint_after(std::time::Duration::from_millis(400));
                         }
                     });
             });

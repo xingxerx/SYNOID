@@ -9,6 +9,27 @@ use tokio::sync::{mpsc, Mutex};
 use tracing::{error, info};
 use uuid::Uuid;
 
+fn parse_progress_from_msg(msg: &str) -> Option<f32> {
+    if let Some(pos) = msg.find("Vision progress: ") {
+        let rest = &msg[pos + 17..];
+        if let Some(slash) = rest.find('/') {
+            let num: f32 = rest[..slash].trim().parse().ok()?;
+            let after = &rest[slash + 1..];
+            let end = after.find(|c: char| !c.is_ascii_digit()).unwrap_or(after.len());
+            let total: f32 = after[..end].trim().parse().ok()?;
+            if total > 0.0 {
+                return Some(0.10 + (num / total) * 0.45);
+            }
+        }
+    }
+    if msg.contains("Scoring scenes") { return Some(0.57); }
+    if msg.contains("Speech Continuity") { return Some(0.62); }
+    if msg.contains("Assembling segments") { return Some(0.68); }
+    if msg.contains("Stitching") && msg.contains("segments") { return Some(0.85); }
+    if msg.contains("crossfade transitions") { return Some(0.92); }
+    None
+}
+
 use crate::agent::core_systems::brain::Brain;
 use crate::agent::specialized::smart_editor;
 use crate::agent::specialized::smart_editor::Scene;
@@ -37,9 +58,10 @@ pub struct EditJob {
     pub created_at: Instant,
     pub pre_scanned_scenes: Option<Vec<Scene>>,
     pub pre_scanned_transcript: Option<Vec<TranscriptSegment>>,
-    // NEW: Learned editing pattern
     pub learned_pattern: Option<crate::agent::learning::EditingPattern>,
     pub enable_subtitles: bool,
+    /// Live progress 0.0–1.0; Arc so GUI reads current value from cloned job snapshot.
+    pub progress_shared: Arc<std::sync::Mutex<f32>>,
 }
 
 pub struct VideoEditorQueue {
@@ -89,10 +111,16 @@ impl VideoEditorQueue {
                     info!("[QUEUE] Processing Job {}: {:?}", job_id, job.input);
 
                     let log_fn_job = log_fn.clone();
+                    let progress_arc = job.progress_shared.clone();
                     let progress_cb: Option<Box<dyn Fn(&str) + Send + Sync>> =
                         Some(Box::new(move |msg: &str| {
                             info!("{}", msg);
                             log_fn_job(msg);
+                            if let Some(pct) = parse_progress_from_msg(msg) {
+                                if let Ok(mut p) = progress_arc.lock() {
+                                    *p = pct;
+                                }
+                            }
                         }));
 
                     let result: Result<String, Box<dyn std::error::Error + Send + Sync>> =

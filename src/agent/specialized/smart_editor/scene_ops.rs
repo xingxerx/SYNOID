@@ -154,11 +154,15 @@ pub async fn detect_scenes(
 
     info!("[SMART] Video duration: {:.2}s", total_duration);
 
-    // Use FFmpeg to detect scene changes
-    // Add 5-minute timeout for large files
+    // Scale timeout to 3× video duration (min 30 min) so long videos don't false-timeout
+    let timeout_secs = (total_duration as u64 * 3).max(1800);
+
+    // Use FFmpeg to detect scene changes; -hwaccel auto uses NVDEC on NVIDIA GPUs for fast decode
     let child = Command::new("ffmpeg")
         .stealth()
         .args([
+            "-hwaccel",
+            "auto",
             "-i",
             input.to_str().ok_or("Invalid input path")?,
             "-vf",
@@ -169,10 +173,13 @@ pub async fn detect_scenes(
         ])
         .output();
 
-    // Add 30-minute timeout for large files
-    let output = match tokio::time::timeout(std::time::Duration::from_secs(1800), child).await {
+    let output = match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), child).await {
         Ok(res) => res?,
-        Err(_) => return Err("FFmpeg scene detection timed out after 30 minutes".into()),
+        Err(_) => return Err(format!(
+            "FFmpeg scene detection timed out after {} minutes (video is {:.0}s)",
+            timeout_secs / 60,
+            total_duration
+        ).into()),
     };
 
     let stderr = String::from_utf8_lossy(&output.stderr);

@@ -774,9 +774,9 @@ impl AgentCore {
                 created_at: Instant::now(),
                 pre_scanned_scenes: None,
                 pre_scanned_transcript: None,
-                // NEW: Pass learned pattern to the job/editor
                 learned_pattern: pattern,
                 enable_subtitles,
+                progress_shared: std::sync::Arc::new(std::sync::Mutex::new(0.0_f32)),
             };
 
             let job_id = self.editor_queue.add_job(job).await;
@@ -1053,7 +1053,7 @@ impl AgentCore {
             input: input.to_path_buf(),
             intent: intent.to_string(),
             output: safe_output,
-            funny_mode: false, // Embody intent doesn't have funny_mode param yet
+            funny_mode: false,
             status: JobStatus::Queued,
             created_at: Instant::now(),
             pre_scanned_scenes: None,
@@ -1063,6 +1063,7 @@ impl AgentCore {
                 let lower = intent.to_lowercase();
                 lower.contains("sub") || lower.contains("caption") || lower.contains("text")
             },
+            progress_shared: std::sync::Arc::new(std::sync::Mutex::new(0.0_f32)),
         };
 
         let job_id = self.editor_queue.add_job(job).await;

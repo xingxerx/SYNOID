@@ -27,20 +27,17 @@ impl VideoPlayer {
 
         let mut child = Command::new("ffmpeg")
             .stealth()
+            .arg("-hwaccel").arg("none")   // force software decode — hardware decoders can silently fail on piped raw output
             .arg("-ss")
             .arg(format!("{:.3}", timestamp))
             .arg("-i")
             .arg(path)
-            .arg("-f")
-            .arg("rawvideo")
-            .arg("-pix_fmt")
-            .arg("rgb24")
-            .arg("-s")
-            .arg(format!("{}x{}", width, height))
+            .arg("-vf")
+            .arg(format!("scale={}:{},format=rgb24", width, height))
             .arg("-r")
             .arg(fps.to_string())
-            .arg("-vsync")
-            .arg("cfr")   // constant frame rate — avoids VFR decode stalls
+            .arg("-f")
+            .arg("rawvideo")
             .arg("-an")   // disable audio (handled by ffplay)
             .arg("-sn")   // disable subtitles
             .arg("-")
