@@ -276,9 +276,17 @@ pub async fn smart_edit(
                                 };
 
                                 if aligned {
+                                    // Review the SRT quality before accepting it
+                                    let word_count: usize = segments.iter()
+                                        .map(|s| s.text.split_whitespace().count())
+                                        .sum();
+                                    let avg_seg_secs = if segments.is_empty() { 0.0 } else {
+                                        segments.iter().map(|s| s.end - s.start).sum::<f64>() / segments.len() as f64
+                                    };
                                     log(&format!(
-                                        "[SMART] ✅ Loaded {} segments from SRT cache (srt_end={:.1}s, video={:.1}s — aligned)",
-                                        segments.len(), srt_end, video_dur
+                                        "[SMART] ✅ SRT review: {} segments, ~{} words, avg {:.1}s/seg, covers {:.0}% of video — reusing (no re-transcription)",
+                                        segments.len(), word_count, avg_seg_secs,
+                                        (srt_end / video_dur.max(0.001)) * 100.0
                                     ));
                                     found_srt = Some(segments);
                                     break;

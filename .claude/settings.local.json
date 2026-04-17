@@ -27,7 +27,8 @@
       "Bash(./target/debug/synoid-core.exe transcribe *)",
       "Bash(awk 'NF && !/-->/ && !/^[0-9]+$/ { *)",
       "Bash(grep -c \"^[0-9][0-9]*$\" \"d:/SYNOID/video/OutboundnGnome.mp4.srt\")",
-      "Bash(powershell -Command \"Get-Content 'C:\\\\Users\\\\xing\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--SYNOID\\\\2bd99601-144b-4678-a4e2-a8937f21dd35\\\\tasks\\\\bx39iydnf.output' -Wait | Select-String -Pattern 'error\\\\[|^error|Finished|Compiling synoid-core'\")"
+      "Bash(powershell -Command \"Get-Content 'C:\\\\Users\\\\xing\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--SYNOID\\\\2bd99601-144b-4678-a4e2-a8937f21dd35\\\\tasks\\\\bx39iydnf.output' -Wait | Select-String -Pattern 'error\\\\[|^error|Finished|Compiling synoid-core'\")",
+      "Bash(powershell -Command \"Get-Content 'C:\\\\Users\\\\xing\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--SYNOID\\\\2bd99601-144b-4678-a4e2-a8937f21dd35\\\\tasks\\\\bo5joz91l.output' -Wait | Select-String -Pattern '^error|Finished|Compiling synoid-core'\")"
     ],
     "deny": [],
     "ask": []
