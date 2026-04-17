@@ -237,6 +237,7 @@ impl TranscriptionEngine {
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_print_special(false);
+        params.set_no_context(true);
         // Enable progress logging so the user doesn't think the app is frozen
         params.set_print_progress(true);
         params.set_print_realtime(true);
@@ -278,7 +279,7 @@ impl TranscriptionEngine {
 /// transcript. We detect this by scanning for a run of N segments whose
 /// normalised text is identical, then truncate everything from the start of
 /// that run onward.
-pub fn filter_hallucinations(segments: Vec<TranscriptSegment>) -> Vec<TranscriptSegment> {
+pub fn filter_hallucinations(mut segments: Vec<TranscriptSegment>) -> Vec<TranscriptSegment> {
     const MIN_RUN: usize = 5; // consecutive identical lines → hallucination
 
     if segments.len() < MIN_RUN {
@@ -295,25 +296,35 @@ pub fn filter_hallucinations(segments: Vec<TranscriptSegment>) -> Vec<Transcript
             .join(" ")
     };
 
-    let norms: Vec<String> = segments.iter().map(|s| normalise(&s.text)).collect();
-
-    for i in 0..segments.len().saturating_sub(MIN_RUN) {
-        // Check if the next MIN_RUN segments all have the same text
-        let anchor = &norms[i];
+    let mut i = 0;
+    while i < segments.len().saturating_sub(MIN_RUN) {
+        let anchor = normalise(&segments[i].text);
         if anchor.is_empty() {
+            i += 1;
             continue;
         }
-        let run_len = norms[i..].iter().take_while(|n| *n == anchor).count();
+
+        let mut run_len = 0;
+        for j in i..segments.len() {
+            if normalise(&segments[j].text) == anchor {
+                run_len += 1;
+            } else {
+                break;
+            }
+        }
+
         if run_len >= MIN_RUN {
             tracing::warn!(
-                "[SOVEREIGN] 🚨 Hallucination loop detected at segment {} (t={:.1}s): \
-                 \"{}\" repeated {} times — truncating transcript here.",
+                "[SOVEREIGN] 🚨 Hallucination loop detected at segment {}: \
+                 \"{}\" repeated {} times — stripping these specific segments.",
                 i,
-                segments[i].start,
                 segments[i].text.trim(),
                 run_len,
             );
-            return segments[..i].to_vec();
+            // Drain the repeated hallucinated lines instead of truncating the whole remainder
+            segments.drain(i..i + run_len);
+        } else {
+            i += 1;
         }
     }
 

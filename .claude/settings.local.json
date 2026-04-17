@@ -23,7 +23,8 @@
       "Bash(cmd.exe /c \"rmdir /s /q D:\\\\SYNOID\\\\target\")",
       "Bash(cmd.exe /c \"for /d %i in \\(D:\\\\SYNOID\\\\target\\\\*\\) do rmdir /s /q \"\"%i\"\"\")",
       "Bash(cmd.exe /c \"del /f /q D:\\\\SYNOID\\\\target\\\\*.*\")",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(./target/debug/synoid-core.exe transcribe *)"
     ],
     "deny": [],
     "ask": []

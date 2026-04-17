@@ -197,6 +197,8 @@ pub async fn insert_cut_markers(
 pub fn generate_srt_for_kept_scenes(
     transcript: &[crate::agent::transcription::TranscriptSegment],
     kept_scenes: &[Scene],
+    exact_durations: &[f64],
+    xfade_dur: f64,
 ) -> String {
     const MIN_DISPLAY_SECS: f64 = 1.5; // Minimum subtitle display time
     const MAX_DISPLAY_SECS: f64 = 5.0; // Cap so captions don't hang too long
@@ -207,9 +209,13 @@ pub fn generate_srt_for_kept_scenes(
     // Output start = sum of durations of all previous kept scenes.
     let mut output_offsets: Vec<(f64, f64, f64)> = Vec::new(); // (src_start, src_end, out_start)
     let mut cursor = 0.0_f64;
-    for scene in kept_scenes {
+    for (i, scene) in kept_scenes.iter().enumerate() {
+        let actual_dur = exact_durations.get(i).copied().unwrap_or(scene.duration);
         output_offsets.push((scene.start_time, scene.end_time, cursor));
-        cursor += scene.duration;
+        cursor += actual_dur;
+        if i < kept_scenes.len().saturating_sub(1) {
+            cursor -= xfade_dur;
+        }
     }
 
     // --- Pass 1: Collect all candidate entries (start, end, text) ---
@@ -225,7 +231,7 @@ pub fn generate_srt_for_kept_scenes(
             let new_start = out_start + (clip_start - src_start);
             let new_end = out_start + (clip_end - src_start);
             entries.push((new_start, new_end, seg.text.trim().to_string()));
-            break;
+            // removed break to allow subtitle segments to span across cut boundaries
         }
     }
 

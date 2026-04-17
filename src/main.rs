@@ -312,6 +312,13 @@ enum Commands {
         #[arg(long, default_value_t = 120)]
         interval: u64,
     },
+
+    /// Transcribe a video and save a clean SRT subtitle file next to it
+    Transcribe {
+        /// Input video path
+        #[arg(short, long)]
+        input: PathBuf,
+    },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -745,6 +752,43 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             signal::ctrl_c().await?;
             gepa.stop_background_loop();
             info!("🛑 GEPA Loop Stopped.");
+        }
+
+        Commands::Transcribe { input } => {
+            use synoid_core::agent::tools::production_tools;
+            use synoid_core::agent::tools::transcription::{
+                TranscriptionEngine, filter_hallucinations, generate_srt,
+            };
+
+            info!("[TRANSCRIBE] Input: {:?}", input);
+
+            let tmp_wav = input.with_extension("_whisper_tmp.wav");
+            let audio_path = match production_tools::extract_audio_wav(&input, &tmp_wav).await {
+                Ok(p) => {
+                    info!("[TRANSCRIBE] Audio extracted to {:?}", p);
+                    p
+                }
+                Err(e) => {
+                    error!("[TRANSCRIBE] Audio extraction failed: {}. Trying direct input.", e);
+                    input.clone()
+                }
+            };
+
+            let engine = TranscriptionEngine::new(None).await?;
+            let segments = engine.transcribe(&audio_path).await?;
+            let segments = filter_hallucinations(segments);
+
+            // Clean up temp WAV
+            if audio_path == tmp_wav {
+                let _ = std::fs::remove_file(&tmp_wav);
+            }
+
+            let srt_path = input.with_extension("srt");
+            let srt_content = generate_srt(&segments);
+            std::fs::write(&srt_path, &srt_content)?;
+
+            info!("[TRANSCRIBE] ✅ {} segments → {:?}", segments.len(), srt_path);
+            println!("Saved: {:?}", srt_path);
         }
     }
 

@@ -260,6 +260,7 @@ pub async fn smart_edit(
                     Ok(srt_content) => {
                         match crate::agent::tools::transcription::parse_srt(&srt_content) {
                             Ok(segments) => {
+                                let segments = crate::agent::tools::transcription::filter_hallucinations(segments);
                                 // Quick alignment check: last subtitle timestamp vs video duration.
                                 // If the SRT was made for a different video or is badly truncated,
                                 // re-transcribe rather than bleep the wrong timestamps.
@@ -1032,8 +1033,13 @@ pub async fn smart_edit(
     // 7. Stitch segments — use crossfade transitions when feasible (≤ 30 segments),
     //    fall back to simple concat for very long edit lists.
     let xfade_dur = neuro_transition_dur.clamp(0.12, 0.25);
+    let applied_xfade_dur = if segment_files.len() >= 2 && segment_files.len() <= 30 {
+        xfade_dur
+    } else {
+        0.0
+    };
 
-    let status = if segment_files.len() >= 2 && segment_files.len() <= 30 {
+    let status = if applied_xfade_dur > 0.0 {
         // ── Crossfade path ──────────────────────────────────────────────
         log(&format!(
             "[SMART] 🎞️ Using crossfade transitions ({:.2}s, {} style)",
@@ -1268,7 +1274,34 @@ pub async fn smart_edit(
     if let Some(ref t) = transcript {
         if !t.is_empty() && intent.enable_subtitles {
             log("[SMART] 📝 Generating remapped subtitles for edited video...");
-            let srt_content = generate_srt_for_kept_scenes(t, &scenes_to_keep);
+            
+            // Probe exact segment durations to prevent cumulative subtitle drift 
+            // Chunked concurrency to avoid launching 1500+ ffprobe processes simultaneously
+            let mut exact_durations = Vec::with_capacity(segment_files.len());
+            for chunk in segment_files.chunks(50).enumerate() {
+                let mut tasks = Vec::new();
+                for (idx, p) in chunk.1.iter().enumerate() {
+                    let global_i = chunk.0 * 50 + idx;
+                    let path = p.clone();
+                    let fallback = scenes_to_keep.get(global_i).map(|s| s.duration).unwrap_or(0.0);
+                    tasks.push(tokio::spawn(async move {
+                        let probe = Command::new("ffprobe")
+                            .args(["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1"])
+                            .arg(production_tools::safe_arg_path(&path))
+                            .output().await;
+                        if let Ok(m) = probe {
+                            String::from_utf8_lossy(&m.stdout).trim().parse::<f64>().unwrap_or(fallback)
+                        } else {
+                            fallback
+                        }
+                    }));
+                }
+                for task in tasks {
+                    exact_durations.push(task.await.unwrap_or(0.0));
+                }
+            }
+
+            let srt_content = generate_srt_for_kept_scenes(t, &scenes_to_keep, &exact_durations, applied_xfade_dur);
 
             if !srt_content.trim().is_empty() {
                 // Resolve the output to an absolute path first so we write the temp SRT directly
