@@ -960,6 +960,7 @@ pub async fn smart_edit(
 
             let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
             cmd.arg("-c:v").arg(gpu_ctx.ffmpeg_encoder());
+            cmd.arg("-pix_fmt").arg("yuv420p");
             for flag in gpu_ctx.neuroplastic_ffmpeg_flags(neuro.current_speed()) {
                 cmd.arg(flag);
             }
@@ -1142,6 +1143,7 @@ pub async fn smart_edit(
 
         let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
         cmd.arg("-c:v").arg(gpu_ctx.ffmpeg_encoder());
+        cmd.arg("-pix_fmt").arg("yuv420p");
         for flag in gpu_ctx.neuroplastic_ffmpeg_flags(neuro.current_speed()) {
             cmd.arg(flag);
         }
@@ -1234,10 +1236,6 @@ pub async fn smart_edit(
             .await?
     };
 
-    // Clean up — remove entire temp dir (segments + WAVs).  Non-fatal so a
-    // missing dir from a previous run doesn't abort an otherwise-complete edit.
-    let _ = fs::remove_dir_all(&work_dir_buf);
-
     if !status.status.success() {
         let stderr = String::from_utf8_lossy(&status.stderr);
         error!("[SMART] FFmpeg concat failed: {}", stderr);
@@ -1273,7 +1271,16 @@ pub async fn smart_edit(
             let srt_content = generate_srt_for_kept_scenes(t, &scenes_to_keep);
 
             if !srt_content.trim().is_empty() {
-                let srt_path = work_dir.join("synoid_subtitles.srt");
+                // Resolve the output to an absolute path first so we write the temp SRT directly
+                // to a stable location alongside it, preventing 'os error 3' if work_dir was lost.
+                let abs_output = strip_unc_prefix(
+                    fs::canonicalize(output).unwrap_or_else(|_| output.to_path_buf()),
+                );
+                
+                let srt_path = abs_output.with_extension("temp.srt");
+                let output_srt = abs_output.with_extension("srt");
+                let sub_output = abs_output.with_extension("sub.mp4");
+
                 match fs::write(&srt_path, &srt_content) {
                     Ok(_) => {
                         log(&format!(
@@ -1281,13 +1288,6 @@ pub async fn smart_edit(
                             srt_content.lines().filter(|l| l.contains(" --> ")).count()
                         ));
 
-                        // Resolve the output to an absolute path so sub_output lands in the same dir.
-                        // strip_unc_prefix removes the Windows \\?\ extended-path prefix that
-                        // fs::canonicalize sometimes returns; FFmpeg cannot open those paths.
-                        let abs_output = strip_unc_prefix(
-                            fs::canonicalize(output).unwrap_or_else(|_| output.to_path_buf()),
-                        );
-                        let sub_output = abs_output.with_extension("sub.mp4");
                         log("[SMART] 🔥 Burning subtitles into video...");
                         match production_tools::burn_subtitles(&abs_output, &srt_path, &sub_output)
                             .await
@@ -1322,8 +1322,7 @@ pub async fn smart_edit(
                             Err(e) => warn!("[SMART] Subtitle burning failed (non-fatal): {}", e),
                         }
 
-                        // Also keep the raw SRT alongside the output for reference
-                        let output_srt = output.with_extension("srt");
+                        // Keep the raw SRT alongside the output for reference and clean up the temp
                         let _ = fs::copy(&srt_path, &output_srt);
                         let _ = fs::remove_file(&srt_path);
                     }
@@ -1340,6 +1339,10 @@ pub async fn smart_edit(
     if learned_pattern.is_some() {
         config.save_to_cortex();
     }
+
+    // Clean up — remove entire temp dir (segments + WAVs).  Non-fatal so a
+    // missing dir from a previous run doesn't abort an otherwise-complete edit.
+    let _ = fs::remove_dir_all(&work_dir_buf);
 
     Ok(summary)
 }

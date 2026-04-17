@@ -136,14 +136,18 @@ fn default_censor_profanity() -> bool {
 
 impl EditIntent {
     /// Parse natural language intent into structured intent using LLM.
-    /// Routes through Groq (fast model) when available, Ollama as fallback.
+    /// Routes through local Gemma 4 (Ollama) by default — sovereign, offline-capable.
+    /// Groq/Google are used only as cloud fallbacks if their keys are set AND
+    /// Ollama is unreachable.
     pub async fn from_llm(text: &str) -> Self {
         use crate::agent::ai_systems::gpt_oss_bridge::SynoidAgent;
-        // Use the multi-provider bridge; standard fast JSON intent parser
-        let api_url = std::env::var("OLLAMA_API_URL")
+        // Use the multi-provider bridge. Passing "default" forces the agent to
+        // pick up SYNOID_MODEL from the environment (gemma4:26b by default)
+        // instead of pinning a cloud-specific tag.
+        let api_url = std::env::var("SYNOID_API_URL")
+            .or_else(|_| std::env::var("OLLAMA_API_URL"))
             .unwrap_or_else(|_| "http://localhost:11434".to_string());
-        // Uses Groq fast model via multi-provider when GROQ_API_KEY is set
-        let agent = SynoidAgent::new(&api_url, "llama-3.1-8b-instant");
+        let agent = SynoidAgent::new(&api_url, "default");
 
         let prompt = format!(
             r#"You are a video editing AI assistant. Convert the user's natural language request into a JSON configuration for the EditIntent struct.

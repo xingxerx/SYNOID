@@ -106,14 +106,23 @@ SYNOID supports advanced reference-based video editing:
 - **yt-dlp** (for YouTube features)
 - **Python 3** (for Voice/TTS features)
 - **Ollama** — [ollama.com](https://ollama.com)
-  - Install Ollama, then pull required models:
+  - Install Ollama, then pull the sovereign local model SYNOID ships with by default:
     ```powershell
-    ollama pull llama3.2
-    ollama pull gemma2:9b
+    # Primary (sovereign reasoner) — matches SYNOID_MODEL default
+    ollama pull gemma4:26b
+    ```
+  - Optional smaller/faster fallbacks (used only if you override `SYNOID_MODEL`):
+    ```powershell
+    ollama pull gemma3:4b       # lightweight Gemma 3 for low-VRAM hosts
+    ollama pull llama3.2        # legacy fallback referenced by a few subsystems
     ```
   - Start Ollama server before running SYNOID:
     ```powershell
     ollama serve
+    ```
+  - Verify Gemma 4 responds:
+    ```powershell
+    ollama run gemma4:26b "hi"
     ```
 
 ### First-time Setup
@@ -680,13 +689,12 @@ cargo run --release --bin synoid-core -- embody --help
    ollama list
    ```
 
-4. If you need to install models:
+4. If you need to install the sovereign model:
    ```powershell
-   ollama pull llama3.2
-   ollama pull gemma2:9b
+   ollama pull gemma4:26b
    ```
 
-**Note:** SYNOID now uses Ollama's native API (`/api/generate`) instead of the OpenAI-compatible endpoint. No external API keys are required for local operation.
+**Note:** SYNOID uses Ollama's native API (`/api/chat` and `/api/generate`) — no external API keys are required for local operation. Gemma 4 (`gemma4:26b`) is the default sovereign reasoner for intent parsing, scene scoring, and the self-improvement harness (`synoid-core gemma4`). Override with `SYNOID_MODEL` in `.env` if you want to point at a different local tag.
 
 ### Port Already in Use
 
