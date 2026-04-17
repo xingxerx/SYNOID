@@ -813,6 +813,30 @@ pub async fn smart_edit(
         cut_points.len()
     ));
 
+    // Combine strictly contiguous scenes in `scenes_to_keep` so we don't
+    // chop the video up into identical contiguous parts during extraction.
+    {
+        let before_contig = scenes_to_keep.len();
+        let mut merged: Vec<crate::agent::specialized::smart_editor::types::Scene> = Vec::new();
+        for sc in scenes_to_keep {
+            if let Some(last) = merged.last_mut() {
+                // If the start of this scene is basically the end of the last one
+                if sc.start_time - last.end_time <= 0.25 {
+                    last.end_time = sc.end_time;
+                    last.duration = last.end_time - last.start_time;
+                    continue;
+                }
+            }
+            merged.push(sc);
+        }
+        scenes_to_keep = merged;
+        log(&format!(
+            "[SMART] 🔗 Contiguous-merge: {} → {} physical segments for rendering",
+            before_contig,
+            scenes_to_keep.len()
+        ));
+    }
+
     // Determine neuroplasticity-driven transition style
     let neuro = crate::agent::neuroplasticity::Neuroplasticity::new();
     let neuro_level = neuro.adaptation_level();
