@@ -671,9 +671,20 @@ impl AgentCore {
 
         self.log(&format!("[CORE] ✅ Video acquired: {}", title));
         let out_path = output.unwrap_or_else(|| {
-            // Derive output name from input: Outbound.mp4 → Outbound_edited.mp4
-            let stem = local_path
-                .file_stem()
+            // Strip all known video extensions so double-ext files (e.g. foo.mp4.mov)
+            // produce a clean stem: foo → foo_edited.mp4
+            let video_exts = ["mp4", "mov", "mkv", "avi", "webm", "flv", "wmv", "m4v"];
+            let mut stem_path = local_path.clone();
+            loop {
+                match stem_path.extension().and_then(|e| e.to_str()) {
+                    Some(ext) if video_exts.contains(&ext.to_lowercase().as_str()) => {
+                        stem_path = stem_path.with_extension("");
+                    }
+                    _ => break,
+                }
+            }
+            let stem = stem_path
+                .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or("output");
             local_path
@@ -1018,11 +1029,30 @@ impl AgentCore {
             }
         }
 
+        // Guard: never write to the input file itself; derive _edited.mp4 if needed.
+        let safe_output = if output.as_os_str().is_empty() || output == input {
+            let video_exts = ["mp4", "mov", "mkv", "avi", "webm", "flv", "wmv", "m4v"];
+            let mut stem_path = input.to_path_buf();
+            loop {
+                match stem_path.extension().and_then(|e| e.to_str()) {
+                    Some(ext) if video_exts.contains(&ext.to_lowercase().as_str()) => {
+                        stem_path = stem_path.with_extension("");
+                    }
+                    _ => break,
+                }
+            }
+            let stem = stem_path.file_name().and_then(|s| s.to_str()).unwrap_or("output");
+            input.parent().unwrap_or_else(|| Path::new("."))
+                .join(format!("{}_edited.mp4", stem))
+        } else {
+            output.to_path_buf()
+        };
+
         let job = EditJob {
             id: Uuid::new_v4(),
             input: input.to_path_buf(),
             intent: intent.to_string(),
-            output: output.to_path_buf(),
+            output: safe_output,
             funny_mode: false, // Embody intent doesn't have funny_mode param yet
             status: JobStatus::Queued,
             created_at: Instant::now(),
