@@ -403,6 +403,14 @@ pub async fn smart_edit(
                 .map(|m| m.len() > 0)
                 .unwrap_or(false);
 
+            // Profanity list fingerprint — stored as a sidecar .meta file.
+            // If the list changed (e.g. new words added), the cached WAV won't cover them.
+            let censored_meta_path = input_parent.join(format!("synoid_{}_audio_censored.meta", job_prefix));
+            let current_list_fingerprint = {
+                let words = get_profanity_word_list();
+                format!("n={}", words.len())
+            };
+
             // Invalidate if the input SRT (transcript) was regenerated after the censored WAV.
             // Stale censored audio would miss newly detected profanity or have wrong timestamps.
             if censored_cached {
@@ -417,6 +425,18 @@ pub async fn smart_edit(
                 if srt_newer {
                     log("[SMART] ♻️ Transcript SRT is newer than cached beep audio — regenerating censored audio for accurate beep timing...");
                     let _ = fs::remove_file(&censored_path);
+                    let _ = fs::remove_file(&censored_meta_path);
+                    censored_cached = false;
+                }
+            }
+
+            // Invalidate if the profanity list has changed since the WAV was generated.
+            if censored_cached {
+                let stored_fingerprint = fs::read_to_string(&censored_meta_path).unwrap_or_default();
+                if stored_fingerprint.trim() != current_list_fingerprint {
+                    log("[SMART] ♻️ Profanity list changed — regenerating censored audio to include new words...");
+                    let _ = fs::remove_file(&censored_path);
+                    let _ = fs::remove_file(&censored_meta_path);
                     censored_cached = false;
                 }
             }
@@ -498,6 +518,8 @@ pub async fn smart_edit(
                             "[SMART] Successfully censored {} segments.",
                             censor_timestamps.len()
                         ));
+                        // Write fingerprint so future runs know which list version produced this WAV.
+                        let _ = fs::write(&censored_meta_path, &current_list_fingerprint);
                         final_enhanced_audio_path = censored_path;
                         use_enhanced_audio = true; // ensure censored track is used in segments
                     }

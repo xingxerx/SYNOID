@@ -718,11 +718,12 @@ pub async fn apply_audio_censor(
         for (i, (start, end)) in censor_timestamps.iter().enumerate() {
             let dur = (end - start).max(0.05);
             let delay_ms = (start * 1000.0) as i64;
-            // sine generates a continuous tone; we trim it to `dur` seconds,
-            // lower the volume to 40 % so it blends cleanly, then delay it.
+            // sine generates mono audio; upmix to stereo so amix doesn't fail
+            // when the source audio is stereo (which is the common case).
             filter_complex.push_str(&format!(
                 "sine=frequency=1000:sample_rate=48000:duration={dur:.4},\
                  volume=0.70,\
+                 aformat=channel_layouts=stereo,\
                  adelay={delay}|{delay}[beep{i}];",
                 dur = dur,
                 delay = delay_ms,

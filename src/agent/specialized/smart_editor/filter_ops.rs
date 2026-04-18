@@ -559,10 +559,11 @@ pub fn estimate_word_timestamps(
     let words: Vec<&str> = seg.text.split_whitespace().collect();
     let seg_dur = (seg.end - seg.start).max(0.001);
 
-    // Tight padding: curse words are 0.2-0.5s; keep beep short and precise.
-    let pre_pad = 0.10_f64;   // 100ms lead
-    let post_pad = 0.08_f64;  // 80ms trail
-    const MAX_BEEP_SECS: f64 = 0.45; // Never beep longer than 0.45s per word
+    // Wider padding for estimation mode: character-proportion offsets can be
+    // 150-300ms off, so we widen the window to reliably cover the spoken word.
+    let pre_pad = 0.20_f64;   // 200ms lead
+    let post_pad = 0.20_f64;  // 200ms trail
+    const MAX_BEEP_SECS: f64 = 0.70; // Cap at 700ms per word
 
     // Use character count as a proxy for speaking time — longer words take longer.
     // This is more accurate than equal distribution, especially for short vs long words.
