@@ -50,11 +50,10 @@ pub async fn smart_edit(
     progress_callback: Option<Box<dyn Fn(&str) + Send + Sync>>,
     pre_scanned_scenes: Option<Vec<Scene>>,
     pre_scanned_transcript: Option<Vec<TranscriptSegment>>,
-    // NEW: Optional learned pattern to guide editing
     learned_pattern: Option<crate::agent::learning::EditingPattern>,
-    // NEW: Optional Animator for Remotion elements
     _animator: Option<Arc<Animator>>,
     enable_subtitles_override: bool,
+    enable_censoring_override: bool,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let log = move |msg: &str| {
         info!("{}", msg);
@@ -67,8 +66,9 @@ pub async fn smart_edit(
 
     // 1. Analyze Intent
     let mut intent = EditIntent::from_llm(intent_text).await;
-    // UI checkbox always wins — override whatever the LLM/heuristic parsed
+    // UI checkboxes always win — override whatever the LLM/heuristic parsed
     intent.enable_subtitles = enable_subtitles_override;
+    intent.censor_profanity = enable_censoring_override;
 
     // 1.1 Render Remotion elements if requested (commented out due to undefined variables)
     let remotion_segment: Option<PathBuf> = None;
@@ -399,9 +399,28 @@ pub async fn smart_edit(
             let censored_path = input_parent.join(format!("synoid_{}_audio_censored.wav", job_prefix));
 
             // Reuse cached censored WAV if it already exists and has content.
-            let censored_cached = fs::metadata(&censored_path)
+            let mut censored_cached = fs::metadata(&censored_path)
                 .map(|m| m.len() > 0)
                 .unwrap_or(false);
+
+            // Invalidate if the input SRT (transcript) was regenerated after the censored WAV.
+            // Stale censored audio would miss newly detected profanity or have wrong timestamps.
+            if censored_cached {
+                let srt_path_check = input.with_extension("srt");
+                let srt_newer = fs::metadata(&srt_path_check).ok()
+                    .zip(fs::metadata(&censored_path).ok())
+                    .and_then(|(srt_m, cen_m)| {
+                        srt_m.modified().ok().zip(cen_m.modified().ok())
+                    })
+                    .map(|(srt_time, cen_time)| srt_time > cen_time)
+                    .unwrap_or(false);
+                if srt_newer {
+                    log("[SMART] ♻️ Transcript SRT is newer than cached beep audio — regenerating censored audio for accurate beep timing...");
+                    let _ = fs::remove_file(&censored_path);
+                    censored_cached = false;
+                }
+            }
+
             if censored_cached {
                 log(&format!("[SMART] ⚡ Reusing cached censored audio: {:?}", censored_path));
                 final_enhanced_audio_path = censored_path;
@@ -520,7 +539,7 @@ pub async fn smart_edit(
     const MAX_VISION_FRAMES: usize = 40;
     log("[SMART] 👁️ Performing sampled vision scan on scenes...");
 
-    let agent = Arc::new(SynoidAgent::new("", "gemini-2.0-flash"));
+    let agent = Arc::new(SynoidAgent::new("http://localhost:11434", "llava:latest"));
 
     let all_eligible: Vec<(usize, f64, f64)> = scenes.iter().enumerate()
         .filter(|(_, s)| s.duration >= 2.0)
@@ -870,8 +889,23 @@ pub async fn smart_edit(
     let segments_dir = work_dir.to_path_buf();
     let total_segments = scenes_to_keep.len();
 
+    // Fingerprint the current scene selection so we can detect if scenes changed between runs.
+    // Format: "start,end" per line, one line per scene — fast to compare with fs::read_to_string.
+    let scene_fingerprint: String = scenes_to_keep.iter()
+        .map(|s| format!("{:.6},{:.6}", s.start_time, s.end_time))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let fingerprint_path = segments_dir.join("scene_fingerprint.txt");
+    let cached_fingerprint = if segments_dir.exists() {
+        fs::read_to_string(&fingerprint_path).ok()
+    } else {
+        None
+    };
+    let fingerprint_matches = cached_fingerprint.as_deref() == Some(scene_fingerprint.as_str());
+
     // Check if all segments from a previous run already exist — reuse them to save time.
-    let all_segs_cached = segments_dir.exists() && {
+    // Fingerprint must match to ensure the cached segments correspond to the current edit.
+    let all_segs_cached = fingerprint_matches && segments_dir.exists() && {
         (0..total_segments).all(|i| {
             let p = segments_dir.join(format!("seg_{:04}.mp4", i));
             p.exists() && fs::metadata(&p).map(|m| m.len() > 1000).unwrap_or(false)
@@ -1031,6 +1065,11 @@ pub async fn smart_edit(
     if segment_files.is_empty() {
         fs::remove_dir_all(&segments_dir).ok();
         return Err("Failed to extract any video segments".into());
+    }
+
+    // Persist scene fingerprint so future runs can validate the segment cache.
+    if !all_segs_cached {
+        let _ = fs::write(&fingerprint_path, &scene_fingerprint);
     }
 
     log(&format!(

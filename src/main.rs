@@ -473,6 +473,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 false,
                 chunk_minutes,
                 true,
+                true,
             )
             .await?;
         }
@@ -521,7 +522,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             output,
             dry_run,
         } => {
-            core.embody_intent(&input, &intent, &output, dry_run)
+            core.embody_intent(&input, &intent, &output, dry_run, true, true)
                 .await?;
         }
         Commands::Learn { input, name } => {

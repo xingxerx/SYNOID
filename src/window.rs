@@ -241,7 +241,7 @@ impl Default for PersistedSettings {
             track_overlay: String::new(),
             discovery_query: String::new(),
             enable_subtitles: true,
-            enable_censoring: false,
+            enable_censoring: true,
             enable_audio_enhancement: true,
             enable_silence_removal: false,
             improve_benchmark: String::new(),
@@ -1341,7 +1341,29 @@ impl SynoidApp {
         ui.add_space(10.0);
 
         self.render_output_file_picker(ui, state);
-        ui.add_space(20.0);
+        ui.add_space(10.0);
+
+        // ── Editing Options ──────────────────────────────────────────────────
+        ui.group(|ui| {
+            ui.label(
+                egui::RichText::new("EDITING OPTIONS")
+                    .size(10.0)
+                    .color(COLOR_TEXT_SECONDARY)
+                    .strong(),
+            );
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut state.enable_subtitles, "🔤 Burn Subtitles");
+                ui.add_space(20.0);
+                ui.checkbox(&mut state.enable_censoring, "🔇 Censor Profanity (bleep)");
+            });
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut state.enable_audio_enhancement, "🎵 Enhance Audio");
+                ui.add_space(20.0);
+                ui.checkbox(&mut state.enable_silence_removal, "✂️ Remove Silence");
+            });
+        });
+        ui.add_space(10.0);
 
         let has_input = !state.input_path.is_empty();
         if !has_input {
@@ -1367,9 +1389,11 @@ impl SynoidApp {
                 let input = PathBuf::from(&state.input_path);
                 let output = PathBuf::from(&state.output_path);
                 let intent = state.intent.clone();
+                let enable_subtitles = state.enable_subtitles;
+                let enable_censoring = state.enable_censoring;
 
                 tokio::spawn(async move {
-                    let _ = core.embody_intent(&input, &intent, &output, false).await;
+                    let _ = core.embody_intent(&input, &intent, &output, false, enable_subtitles, enable_censoring).await;
                 });
             }
 
@@ -1390,9 +1414,10 @@ impl SynoidApp {
                 };
                 let intent = state.intent.clone();
                 let enable_subtitles = state.enable_subtitles;
+                let enable_censoring = state.enable_censoring;
                 tokio::spawn(async move {
                     let _ = core
-                        .process_youtube_intent(&input, &intent, output, None, false, 0, enable_subtitles)
+                        .process_youtube_intent(&input, &intent, output, None, false, 0, enable_subtitles, enable_censoring)
                         .await;
                 });
             }
@@ -2281,23 +2306,71 @@ impl SynoidApp {
         ui.separator();
         ui.add_space(10.0);
 
-        ui.label("Advanced video processing options:");
+        ui.label("Run all pipeline stages: smart edit, enhance audio, and encode.");
         ui.add_space(10.0);
 
         self.render_input_file_picker(ui, state);
         ui.add_space(10.0);
 
         self.render_output_file_picker(ui, state);
-        ui.add_space(20.0);
+        ui.add_space(10.0);
 
+        // ── Editing Options ──────────────────────────────────────────────────
+        ui.group(|ui| {
+            ui.label(
+                egui::RichText::new("EDITING OPTIONS")
+                    .size(10.0)
+                    .color(COLOR_TEXT_SECONDARY)
+                    .strong(),
+            );
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut state.enable_subtitles, "🔤 Burn Subtitles");
+                ui.add_space(20.0);
+                ui.checkbox(&mut state.enable_censoring, "🔇 Censor Profanity (bleep)");
+            });
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut state.enable_audio_enhancement, "🎵 Enhance Audio");
+                ui.add_space(20.0);
+                ui.checkbox(&mut state.enable_silence_removal, "✂️ Remove Silence");
+            });
+        });
+        ui.add_space(10.0);
+
+        ui.label("Creative Intent (optional):");
+        ui.add(
+            egui::TextEdit::multiline(&mut state.intent)
+                .desired_rows(2)
+                .desired_width(f32::INFINITY)
+                .hint_text("e.g. make it cinematic, fast-paced highlights"),
+        );
+        ui.add_space(10.0);
+
+        let has_input = !state.input_path.is_empty();
         if ui
-            .add(
-                egui::Button::new(egui::RichText::new("⚙️ Process").size(16.0))
-                    .fill(COLOR_ACCENT_ORANGE),
+            .add_enabled(
+                has_input,
+                egui::Button::new(egui::RichText::new("⚙️ Run Full Pipeline").size(16.0))
+                    .fill(if has_input { COLOR_ACCENT_ORANGE } else { egui::Color32::from_rgb(80, 80, 80) }),
             )
             .clicked()
         {
-            ui.label("Process functionality to be implemented.");
+            let core = self.core.clone();
+            let input = PathBuf::from(&state.input_path);
+            let output = PathBuf::from(&state.output_path);
+            let intent = if state.intent.trim().is_empty() {
+                None
+            } else {
+                Some(state.intent.clone())
+            };
+            let stages = {
+                let mut s = String::from("smart_edit,encode");
+                if state.enable_audio_enhancement { s = format!("{},enhance", s); }
+                s
+            };
+            tokio::spawn(async move {
+                let _ = core.run_unified_pipeline(&input, &output, &stages, "cuda", intent, 1.0).await;
+            });
         }
     }
 
@@ -2648,9 +2721,10 @@ impl SynoidApp {
                             let input = _state.input_path.clone();
                             let intent = _state.intent.clone();
                             let enable_subtitles = _state.enable_subtitles;
+                            let enable_censoring = _state.enable_censoring;
                             let ui_ptr = self.ui_state.clone();
                             tokio::spawn(async move {
-                                let _ = core.process_youtube_intent(&input, &intent, None, None, false, 0, enable_subtitles).await;
+                                let _ = core.process_youtube_intent(&input, &intent, None, None, false, 0, enable_subtitles, enable_censoring).await;
                                 if let Ok(mut s) = ui_ptr.lock() { s.ai_edit_running = false; }
                             });
                         }

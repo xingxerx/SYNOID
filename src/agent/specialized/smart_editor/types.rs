@@ -128,7 +128,7 @@ fn default_enable_subtitles() -> bool {
 }
 
 fn default_show_cut_markers() -> bool {
-    true
+    false
 }
 fn default_censor_profanity() -> bool {
     true

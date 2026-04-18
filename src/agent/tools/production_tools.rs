@@ -500,6 +500,8 @@ pub async fn burn_subtitles(
         cmd.arg("-rc").arg("vbr"); // Required for NVENC -cq to work
         cmd.arg("-b:v").arg("0");
         cmd.arg("-cq").arg("23"); // NVENC constant quality
+        cmd.arg("-maxrate").arg("20M"); // Cap bitrate — prevents multi-GB outputs
+        cmd.arg("-bufsize").arg("40M");
     } else {
         cmd.arg("-crf").arg("23"); // CPU
     }

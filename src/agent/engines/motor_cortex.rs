@@ -220,6 +220,7 @@ impl MotorCortex {
             None,
             self.animator.clone(),
             true,
+            true,
         )
         .await
         {

@@ -569,6 +569,7 @@ impl AgentCore {
         funny_mode: bool,
         chunk_minutes: u32,
         enable_subtitles: bool,
+        enable_censoring: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if chunk_minutes > 0 && chunk_minutes < 600 {
             // Just logging for now as chunking logic is complex and requires ffmpeg splitting
@@ -776,6 +777,7 @@ impl AgentCore {
                 pre_scanned_transcript: None,
                 learned_pattern: pattern,
                 enable_subtitles,
+                enable_censoring,
                 progress_shared: std::sync::Arc::new(std::sync::Mutex::new(0.0_f32)),
             };
 
@@ -997,6 +999,8 @@ impl AgentCore {
         intent: &str,
         output: &Path,
         _dry_run: bool,
+        enable_subtitles: bool,
+        enable_censoring: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Human chose the intent; AI will handle execution — record both sides.
         self.record_director_decision();
@@ -1059,10 +1063,8 @@ impl AgentCore {
             pre_scanned_scenes: None,
             pre_scanned_transcript: None,
             learned_pattern: pattern,
-            enable_subtitles: {
-                let lower = intent.to_lowercase();
-                lower.contains("sub") || lower.contains("caption") || lower.contains("text")
-            },
+            enable_subtitles,
+            enable_censoring,
             progress_shared: std::sync::Arc::new(std::sync::Mutex::new(0.0_f32)),
         };
 

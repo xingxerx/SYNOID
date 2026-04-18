@@ -142,32 +142,24 @@ pub async fn insert_cut_markers(
     );
 
     let marked_path = work_dir.join("output_marked.mp4");
-    let mark_status = Command::new("ffmpeg")
-        .stealth()
-        .args([
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-nostdin",
-            "-i",
-            output.to_str().unwrap_or(""),
-            "-vf",
-            &flash_drawtext,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "23",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "copy",
-            marked_path.to_str().unwrap_or(""),
-        ])
-        .status()
-        .await?;
+    let gpu_ctx = crate::gpu_backend::get_gpu_context().await;
+    let mut mark_cmd = Command::new("ffmpeg");
+    mark_cmd.stealth();
+    mark_cmd.args(["-y", "-hide_banner", "-loglevel", "error", "-nostdin"]);
+    if let Some(hwaccel) = gpu_ctx.ffmpeg_hwaccel() {
+        mark_cmd.args(["-hwaccel", hwaccel]);
+    }
+    mark_cmd.arg("-i").arg(output.to_str().unwrap_or(""));
+    mark_cmd.args(["-vf", &flash_drawtext, "-pix_fmt", "yuv420p"]);
+    mark_cmd.arg("-c:v").arg(gpu_ctx.ffmpeg_encoder());
+    if gpu_ctx.has_gpu() {
+        mark_cmd.args(["-rc", "vbr", "-b:v", "0", "-cq", "23", "-maxrate", "20M", "-bufsize", "40M"]);
+    } else {
+        mark_cmd.args(["-preset", "ultrafast", "-crf", "23"]);
+    }
+    mark_cmd.args(["-c:a", "copy"]);
+    mark_cmd.arg(marked_path.to_str().unwrap_or(""));
+    let mark_status = mark_cmd.status().await?;
 
     let _ = fs::remove_file(&marker_path); // cleanup marker clip
 
@@ -201,9 +193,9 @@ pub fn generate_srt_for_kept_scenes(
     xfade_dur: f64,
 ) -> String {
     const MIN_DISPLAY_SECS: f64 = 1.5; // Minimum subtitle display time
-    const MAX_DISPLAY_SECS: f64 = 5.0; // Cap so captions don't hang too long
+    const MAX_DISPLAY_SECS: f64 = 8.0; // Cap — allows full sentences before cut-off
     const MERGE_THRESHOLD_SECS: f64 = 0.8; // Merge entries shorter than this into prev
-    const CAPTION_GAP_SECS: f64 = 0.05; // Minimum gap between consecutive captions
+    const CAPTION_GAP_SECS: f64 = 0.08; // Minimum gap between consecutive captions
 
     // Build a time remapping: for each kept scene, compute its start position in the output video.
     // Output start = sum of durations of all previous kept scenes.
@@ -367,6 +359,12 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "pisses",
         "wtf",
         "stfu",
+        // Whisper phonetic / censored-audio transcription variants
+        "effing",    // Whisper hears bleeps as "effing" for "fucking"
+        "effin",
+        "friggin",
+        "frigging",
+        "fricking",
         // NOTE: "hell" causes false positives (shell, hello, etc.) - only match specific phrases
         "what the hell",
         "go to hell",
@@ -558,33 +556,42 @@ pub fn estimate_word_timestamps(
     // Strategy 2: Fall back to estimation (for local Whisper or SRT files)
     info!("[CENSOR] No word-level timestamps, using estimation for segment {:.2}s-{:.2}s", seg.start, seg.end);
     let words: Vec<&str> = seg.text.split_whitespace().collect();
-    let n = words.len().max(1) as f64;
     let seg_dur = (seg.end - seg.start).max(0.001);
 
     // Tight padding: curse words are 0.2-0.5s; keep beep short and precise.
     let pre_pad = 0.10_f64;   // 100ms lead
     let post_pad = 0.08_f64;  // 80ms trail
-    const MAX_BEEP_SECS: f64 = 0.40; // Never beep longer than 0.40s per word
+    const MAX_BEEP_SECS: f64 = 0.45; // Never beep longer than 0.45s per word
 
+    // Use character count as a proxy for speaking time — longer words take longer.
+    // This is more accurate than equal distribution, especially for short vs long words.
+    let char_lengths: Vec<usize> = words.iter()
+        .map(|w| w.chars().filter(|c| c.is_alphanumeric()).count().max(1))
+        .collect();
+    let total_chars: usize = char_lengths.iter().sum::<usize>().max(1);
+
+    let mut char_offset = 0usize;
     for (i, word) in words.iter().enumerate() {
         if word_boundary_match(word, bad_word) {
-            // Calculate word boundaries with estimation
-            let estimated_word_start = seg.start + (i as f64 / n) * seg_dur;
-            let estimated_word_end = seg.start + ((i + 1) as f64 / n) * seg_dur;
+            let start_ratio = char_offset as f64 / total_chars as f64;
+            let end_ratio = (char_offset + char_lengths[i]) as f64 / total_chars as f64;
+
+            let estimated_word_start = seg.start + start_ratio * seg_dur;
+            let estimated_word_end = seg.start + end_ratio * seg_dur;
 
             let beep_start = (estimated_word_start - pre_pad).max(seg.start);
-            // Cap beep at 0.75s so a single word never kills multiple seconds of audio
             let beep_end = (estimated_word_end + post_pad)
                 .min(beep_start + MAX_BEEP_SECS)
                 .min(seg.end);
 
             info!(
-                "[CENSOR] ~ Estimated '{}' in segment {:.2}s-{:.2}s → beep {:.2}s-{:.2}s (lead: {:.2}s)",
-                bad_word, seg.start, seg.end, beep_start, beep_end, estimated_word_start - beep_start
+                "[CENSOR] ~ Char-prop '{}' in segment {:.2}s-{:.2}s → beep {:.2}s-{:.2}s ({}/{} chars, lead: {:.2}s)",
+                bad_word, seg.start, seg.end, beep_start, beep_end, char_offset, total_chars, estimated_word_start - beep_start
             );
 
             occurrences.push((beep_start, beep_end));
         }
+        char_offset += char_lengths[i];
     }
 
     // Fallback: multi-word phrase matched segment text but no individual word matched.

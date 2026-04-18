@@ -60,6 +60,7 @@ pub struct EditJob {
     pub pre_scanned_transcript: Option<Vec<TranscriptSegment>>,
     pub learned_pattern: Option<crate::agent::learning::EditingPattern>,
     pub enable_subtitles: bool,
+    pub enable_censoring: bool,
     /// Live progress 0.0–1.0; Arc so GUI reads current value from cloned job snapshot.
     pub progress_shared: Arc<std::sync::Mutex<f32>>,
 }
@@ -135,6 +136,7 @@ impl VideoEditorQueue {
                             job.learned_pattern.take(),
                             Some(animator_worker.clone()),
                             job.enable_subtitles,
+                            job.enable_censoring,
                         )
                         .await;
 

@@ -581,6 +581,7 @@ async fn ai_auto_edit(
             None,
             Some(s.core.animator.clone()),
             true,
+            true,
         )
         .await;
 
@@ -687,6 +688,7 @@ async fn start_render(
                 None,
                 None,
                 Some(s.core.animator.clone()),
+                true,
                 true,
             )
             .await;

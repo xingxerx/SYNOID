@@ -152,13 +152,10 @@ impl ReferenceEditor {
         // Delegate to existing smart editor
         // This maintains backward compatibility
         let _result = crate::agent::smart_editor::smart_edit(
-            input, intent, output, false, // funny_mode
-            None,  // progress_callback
-            None,  // pre_scanned_scenes
-            None,  // pre_scanned_transcript
-            None,  // learned_pattern
-            None,  // animator
-            true,  // enable_subtitles
+            input, intent, output, false,
+            None, None, None, None, None,
+            true, // enable_subtitles
+            true, // enable_censoring
         )
         .await?;
 

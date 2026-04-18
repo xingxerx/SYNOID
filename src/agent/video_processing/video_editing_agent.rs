@@ -80,13 +80,12 @@ impl VideoEditingAgent {
             input,
             instruction,
             output,
-            false, // funny_mode
-            None,  // progress_callback
-            None,  // pre_scanned_scenes
-            None,  // pre_scanned_transcript
+            false,
+            None, None, None,
             Some(pattern.clone()),
             Some(self.animator.clone()),
-            true,
+            true,  // enable_subtitles
+            true,  // enable_censoring
         )
         .await;
 

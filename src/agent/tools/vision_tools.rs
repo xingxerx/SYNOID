@@ -100,72 +100,47 @@ pub async fn scan_visual(
     Ok(scenes)
 }
 
-/// Analyze a reference image using Gemini Vision API
+/// Analyze an image using the local Ollama VLM (e.g. llava:latest).
 pub async fn analyze_image_gemini(
     image_path: &Path,
     prompt: &str,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    info!("[VISION] Analyzing image with Gemini: {:?}", image_path);
+    info!("[VISION] Analyzing image with Ollama VLM: {:?}", image_path);
 
     if !image_path.exists() {
         return Err(format!("Image not found: {:?}", image_path).into());
     }
 
-    // Read and encode image to base64
     let image_bytes = std::fs::read(image_path)?;
     let image_base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image_bytes);
 
-    // Determine MIME type
-    let mime_type = match image_path.extension().and_then(|s| s.to_str()) {
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("png") => "image/png",
-        Some("webp") => "image/webp",
-        _ => "image/jpeg", // default
-    };
-
-    // Call Gemini Vision API
-    let api_key = std::env::var("GEMINI_API_KEY")
-        .unwrap_or_else(|_| "".to_string());
-
-    if api_key.is_empty() {
-        return Err("GEMINI_API_KEY not set in environment".into());
-    }
-
-    let client = reqwest::Client::new();
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={}",
-        api_key
-    );
+    let ollama_url = std::env::var("SYNOID_API_URL")
+        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let vision_model = std::env::var("SYNOID_VISION_MODEL")
+        .unwrap_or_else(|_| "llava:latest".to_string());
+    let base = ollama_url.trim_end_matches('/').trim_end_matches("/v1");
 
     let payload = serde_json::json!({
-        "contents": [{
-            "parts": [
-                {"text": prompt},
-                {
-                    "inline_data": {
-                        "mime_type": mime_type,
-                        "data": image_base64
-                    }
-                }
-            ]
-        }]
+        "model": vision_model,
+        "prompt": prompt,
+        "images": [image_base64],
+        "stream": false
     });
 
+    let client = reqwest::Client::new();
     let response = client
-        .post(&url)
+        .post(format!("{}/api/generate", base))
         .json(&payload)
+        .timeout(std::time::Duration::from_secs(90))
         .send()
         .await?;
 
     if !response.status().is_success() {
-        let error_text = response.text().await?;
-        return Err(format!("Gemini API error: {}", error_text).into());
+        return Err(format!("Ollama VLM error: {}", response.status()).into());
     }
 
     let result: serde_json::Value = response.json().await?;
-
-    // Extract text from response
-    let text = result["candidates"][0]["content"]["parts"][0]["text"]
+    let text = result["response"]
         .as_str()
         .unwrap_or("No analysis available")
         .to_string();
@@ -261,17 +236,13 @@ impl SemanticIndex {
     }
 }
 
-/// Sample one frame every `interval_secs` seconds, ask an Ollama VLM to
-/// describe it, and build a `SemanticIndex`.
+/// Sample one frame every `interval_secs` seconds, ask the local Ollama VLM
+/// to describe it, and build a `SemanticIndex`.
 ///
 /// Requires an Ollama server running with a vision-capable model
 /// (e.g. `llava`, `moondream`).  If the model is unavailable the function
 /// falls back to tag-less descriptions so the rest of the pipeline can
 /// continue.
-///
-/// When `GOOGLE_AI_KEY` is set, vision requests are routed to Google AI
-/// Studio (Gemini) via the multi-provider LLM bridge for superior
-/// multimodal analysis while preserving the free-tier token budget.
 pub async fn build_semantic_index(
     video_path: &Path,
     interval_secs: f64,
@@ -295,18 +266,6 @@ pub async fn build_semantic_index(
         frames: Vec::new(),
     };
 
-    // Check if Google AI Studio is available for vision
-    let use_google = std::env::var("GOOGLE_AI_KEY").is_ok();
-    let vision_agent = if use_google {
-        info!("[SEMANTIC] Using Google AI Studio (Gemini) for vision analysis");
-        Some(crate::agent::gpt_oss_bridge::SynoidAgent::new(
-            ollama_url,
-            vision_model,
-        ))
-    } else {
-        None
-    };
-
     let mut t = 0.0f64;
     let agent = crate::agent::gpt_oss_bridge::SynoidAgent::new(ollama_url, vision_model);
 
@@ -315,25 +274,13 @@ pub async fn build_semantic_index(
         extract_frame(video_path, t, &frame_path).await.ok();
 
         if frame_path.exists() {
-            let meta = if let Some(agent) = &vision_agent {
-                // Route through multi-provider (Google AI Studio → Ollama VLM fallback)
-                describe_frame_multi_provider(agent, &frame_path, t)
-                    .await
-                    .unwrap_or_else(|_| FrameMetadata {
-                        timestamp: t,
-                        description: String::new(),
-                        tags: Vec::new(),
-                    })
-            } else {
-                // Legacy Ollama-only path
-                describe_frame_with_vlm(&agent, &frame_path, t)
-                    .await
-                    .unwrap_or_else(|_| FrameMetadata {
-                        timestamp: t,
-                        description: String::new(),
-                        tags: Vec::new(),
-                    })
-            };
+            let meta = describe_frame_with_vlm(&agent, &frame_path, t)
+                .await
+                .unwrap_or_else(|_| FrameMetadata {
+                    timestamp: t,
+                    description: String::new(),
+                    tags: Vec::new(),
+                });
             index.frames.push(meta);
             let _ = std::fs::remove_file(&frame_path);
         }
@@ -349,8 +296,7 @@ pub async fn build_semantic_index(
     Ok(index)
 }
 
-/// Describe a frame using the multi-provider LLM bridge.
-/// Routes to Google AI Studio (Gemini) with Ollama VLM fallback.
+/// Describe a frame using the local Ollama VLM.
 pub async fn describe_frame_multi_provider(
     agent: &crate::agent::gpt_oss_bridge::SynoidAgent,
     frame_path: &PathBuf,
