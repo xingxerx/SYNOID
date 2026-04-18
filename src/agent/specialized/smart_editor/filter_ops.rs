@@ -192,10 +192,10 @@ pub fn generate_srt_for_kept_scenes(
     exact_durations: &[f64],
     xfade_dur: f64,
 ) -> String {
-    const MIN_DISPLAY_SECS: f64 = 1.5; // Minimum subtitle display time
-    const MAX_DISPLAY_SECS: f64 = 8.0; // Cap — allows full sentences before cut-off
+    const MIN_DISPLAY_SECS: f64 = 2.5; // Minimum subtitle display time — readable at normal viewing speed
+    const MAX_DISPLAY_SECS: f64 = 12.0; // Cap — allows long sentences to breathe
     const MERGE_THRESHOLD_SECS: f64 = 0.8; // Merge entries shorter than this into prev
-    const CAPTION_GAP_SECS: f64 = 0.08; // Minimum gap between consecutive captions
+    const CAPTION_GAP_SECS: f64 = 0.05; // Minimum gap between consecutive captions
 
     // Build a time remapping: for each kept scene, compute its start position in the output video.
     // Output start = sum of durations of all previous kept scenes.
@@ -255,9 +255,10 @@ pub fn generate_srt_for_kept_scenes(
     }
 
     // --- Pass 4: Anti-overlap — clamp each end to next entry's start ---
+    // Never clamp below MIN_DISPLAY_SECS — a slight overlap is better than an unreadable flash.
     for i in 0..merged.len().saturating_sub(1) {
         let next_start = merged[i + 1].0;
-        let max_end = (next_start - CAPTION_GAP_SECS).max(merged[i].0 + 0.1);
+        let max_end = (next_start - CAPTION_GAP_SECS).max(merged[i].0 + MIN_DISPLAY_SECS);
         if merged[i].1 > max_end {
             merged[i].1 = max_end;
         }
