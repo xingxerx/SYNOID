@@ -559,8 +559,11 @@ pub fn estimate_word_timestamps(
     let words: Vec<&str> = seg.text.split_whitespace().collect();
     let seg_dur = (seg.end - seg.start).max(0.001);
 
-    let pre_pad = 0.05_f64;   // 50ms lead
-    let post_pad = 0.25_f64;  // 250ms trail — estimation can run late, so extend coverage forward
+    // Whisper segments often include trailing silence, causing char-prop to place words
+    // earlier than they're actually spoken. A forward shift compensates for this bias.
+    let lag_correction = 0.30_f64; // 300ms forward shift to counter systematic early bias
+    let pre_pad = 0.05_f64;        // 50ms lead before corrected estimate
+    let post_pad = 0.20_f64;       // 200ms trail after corrected estimate
     const MAX_BEEP_SECS: f64 = 0.70; // Cap at 700ms per word
 
     // Use character count as a proxy for speaking time — longer words take longer.
@@ -576,8 +579,8 @@ pub fn estimate_word_timestamps(
             let start_ratio = char_offset as f64 / total_chars as f64;
             let end_ratio = (char_offset + char_lengths[i]) as f64 / total_chars as f64;
 
-            let estimated_word_start = seg.start + start_ratio * seg_dur;
-            let estimated_word_end = seg.start + end_ratio * seg_dur;
+            let estimated_word_start = (seg.start + start_ratio * seg_dur + lag_correction).min(seg.end);
+            let estimated_word_end = (seg.start + end_ratio * seg_dur + lag_correction).min(seg.end);
 
             let beep_start = (estimated_word_start - pre_pad).max(seg.start);
             let beep_end = (estimated_word_end + post_pad)
