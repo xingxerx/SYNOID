@@ -238,12 +238,11 @@ impl TranscriptionEngine {
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_print_special(false);
         params.set_no_context(true);
-        // Enable progress logging so the user doesn't think the app is frozen
         params.set_print_progress(true);
         params.set_print_realtime(true);
         params.set_print_timestamps(true);
+        params.set_token_timestamps(true); // enables word-level t0/t1 on each token
 
-        // Maximize CPU threads (Even with GPU, parts of Whisper run on CPU)
         let num_threads = std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(4) as i32;
@@ -252,20 +251,58 @@ impl TranscriptionEngine {
         // Run
         state.full(params, &pcm_data).context("Running inference")?;
 
-        // Extract
+        // Extract segments + word-level timestamps from tokens
         let num_segments = state.full_n_segments().context("Get segments count")?;
         let mut segments = Vec::new();
 
         for i in 0..num_segments {
-            let start = state.full_get_segment_t0(i).unwrap_or(0) as f64 / 100.0; // cs to s
-            let end = state.full_get_segment_t1(i).unwrap_or(0) as f64 / 100.0;
+            let seg_start = state.full_get_segment_t0(i).unwrap_or(0) as f64 / 100.0;
+            let seg_end   = state.full_get_segment_t1(i).unwrap_or(0) as f64 / 100.0;
             let text = state.full_get_segment_text(i).unwrap_or_default();
 
+            // Build word timestamps by merging BPE tokens.
+            // Whisper tokens that begin with a space mark word boundaries.
+            let mut words: Vec<WordTimestamp> = Vec::new();
+            if let Ok(n_tokens) = state.full_n_tokens(i) {
+                let mut cur_word = String::new();
+                let mut cur_t0 = seg_start;
+                let mut cur_t1 = seg_start;
+
+                for j in 0..n_tokens {
+                    let tok_text = match state.full_get_token_text_lossy(i, j) {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    // Skip Whisper special tokens ([_BEG_], [_TT_N], etc.)
+                    if tok_text.starts_with('[') || tok_text.starts_with('<') {
+                        continue;
+                    }
+                    let token_data = state.full_get_token_data(i, j).ok();
+                    let t0 = token_data.map(|d| d.t0 as f64 / 100.0).unwrap_or(cur_t1);
+                    let t1 = token_data.map(|d| d.t1 as f64 / 100.0).unwrap_or(cur_t1);
+
+                    let is_new_word = tok_text.starts_with(' ');
+                    if is_new_word && !cur_word.is_empty() {
+                        words.push(WordTimestamp { word: cur_word.trim().to_string(), start: cur_t0, end: cur_t1 });
+                        cur_word = tok_text.trim_start_matches(' ').to_string();
+                        cur_t0 = t0;
+                        cur_t1 = t1;
+                    } else {
+                        if cur_word.is_empty() { cur_t0 = t0; }
+                        cur_word.push_str(tok_text.trim_start_matches(' '));
+                        cur_t1 = t1;
+                    }
+                }
+                if !cur_word.is_empty() {
+                    words.push(WordTimestamp { word: cur_word.trim().to_string(), start: cur_t0, end: cur_t1 });
+                }
+            }
+
             segments.push(TranscriptSegment {
-                start,
-                end,
-                text: text.to_string(),
-                words: Vec::new(),
+                start: seg_start,
+                end:   seg_end,
+                text:  text.to_string(),
+                words,
             });
         }
 

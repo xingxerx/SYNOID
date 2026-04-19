@@ -2,6 +2,9 @@
   "permissions": {
     "additionalDirectories": [
       "d:\\SYNOID\\video"
+    ],
+    "allow": [
+      "Read(//c/Users/xing/.cargo/registry/src/**)"
     ]
   }
 }

@@ -377,6 +377,9 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "douchebag",
         "jackass",
         "jackasses",
+        "dipshit",
+        "dipshits",
+        "blood clot",  // Caribbean/Jamaican expletive
         "twat",
         "prick",
         "pricks",
