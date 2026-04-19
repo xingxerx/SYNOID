@@ -370,6 +370,9 @@ pub fn get_profanity_word_list() -> Vec<&'static str> {
         "what the hell",
         "go to hell",
         "hell yeah",
+        "hell no",
+        "as hell",
+        "like hell",
         "douche",
         "douchebag",
         "jackass",
@@ -559,15 +562,7 @@ pub fn estimate_word_timestamps(
     let words: Vec<&str> = seg.text.split_whitespace().collect();
     let seg_dur = (seg.end - seg.start).max(0.001);
 
-    // Whisper segments often include trailing silence, causing char-prop to place words
-    // earlier than they're actually spoken. A forward shift compensates for this bias.
-    let lag_correction = 0.30_f64; // 300ms forward shift to counter systematic early bias
-    let pre_pad = 0.05_f64;        // 50ms lead before corrected estimate
-    let post_pad = 0.20_f64;       // 200ms trail after corrected estimate
-    const MAX_BEEP_SECS: f64 = 0.70; // Cap at 700ms per word
-
-    // Use character count as a proxy for speaking time — longer words take longer.
-    // This is more accurate than equal distribution, especially for short vs long words.
+    // Char-count ratio for estimating word position within the segment.
     let char_lengths: Vec<usize> = words.iter()
         .map(|w| w.chars().filter(|c| c.is_alphanumeric()).count().max(1))
         .collect();
@@ -579,17 +574,30 @@ pub fn estimate_word_timestamps(
             let start_ratio = char_offset as f64 / total_chars as f64;
             let end_ratio = (char_offset + char_lengths[i]) as f64 / total_chars as f64;
 
-            let estimated_word_start = (seg.start + start_ratio * seg_dur + lag_correction).min(seg.end);
-            let estimated_word_end = (seg.start + end_ratio * seg_dur + lag_correction).min(seg.end);
+            // Whisper segments often have leading AND trailing silence, and mid-sentence
+            // pauses. Estimation error is typically ±300ms. Strategy: use segment
+            // length to decide how wide the beep window should be, and bias the window
+            // toward covering "after" the estimate since pauses push words later.
+            //
+            // Short segment (<3s):  beep the whole segment — no point estimating
+            // Medium (3-6s):        1.0s window, slight forward bias
+            // Long (>6s):           1.4s window, stronger forward bias (more pause accumulation)
+            let (pre_pad, post_pad, lag) = if seg_dur < 3.0 {
+                (seg_dur * start_ratio, seg_dur * (1.0 - end_ratio), 0.0)
+            } else if seg_dur < 6.0 {
+                (0.15, 0.65, 0.10)
+            } else {
+                (0.15, 0.85, 0.20)
+            };
 
-            let beep_start = (estimated_word_start - pre_pad).max(seg.start);
-            let beep_end = (estimated_word_end + post_pad)
-                .min(beep_start + MAX_BEEP_SECS)
+            let estimated_center = seg.start + start_ratio * seg_dur + lag;
+            let beep_start = (estimated_center - pre_pad).max(seg.start);
+            let beep_end = (seg.start + end_ratio * seg_dur + lag + post_pad)
                 .min(seg.end);
 
             info!(
-                "[CENSOR] ~ Char-prop '{}' in segment {:.2}s-{:.2}s → beep {:.2}s-{:.2}s ({}/{} chars, lead: {:.2}s)",
-                bad_word, seg.start, seg.end, beep_start, beep_end, char_offset, total_chars, estimated_word_start - beep_start
+                "[CENSOR] ~ Est '{}' seg={:.2}-{:.2}({:.1}s) ratio={:.2}-{:.2} → beep {:.2}-{:.2}",
+                bad_word, seg.start, seg.end, seg_dur, start_ratio, end_ratio, beep_start, beep_end
             );
 
             occurrences.push((beep_start, beep_end));
@@ -598,7 +606,6 @@ pub fn estimate_word_timestamps(
     }
 
     // Fallback: multi-word phrase matched segment text but no individual word matched.
-    // Estimate phrase position via character offset ratio instead of beeping the whole segment.
     if occurrences.is_empty() && word_boundary_match(&seg.text, bad_word) {
         let text_lower = seg.text.to_lowercase();
         let phrase_lower = bad_word.to_lowercase();
@@ -607,14 +614,19 @@ pub fn estimate_word_timestamps(
         let phrase_len = bad_word.len();
         let start_ratio = char_pos as f64 / text_len as f64;
         let end_ratio = (char_pos + phrase_len) as f64 / text_len as f64;
-        let phrase_start = seg.start + start_ratio * seg_dur;
-        let phrase_end = seg.start + end_ratio * seg_dur;
-        let beep_start = (phrase_start - 0.10).max(seg.start);
-        let beep_end = (phrase_end + 0.10)
-            .min(beep_start + MAX_BEEP_SECS)
-            .min(seg.end);
+        let (pre_pad, post_pad, lag) = if seg_dur < 3.0 {
+            (0.10, 0.30, 0.0)
+        } else if seg_dur < 6.0 {
+            (0.15, 0.65, 0.10)
+        } else {
+            (0.15, 0.85, 0.20)
+        };
+        let phrase_start = seg.start + start_ratio * seg_dur + lag;
+        let phrase_end = seg.start + end_ratio * seg_dur + lag;
+        let beep_start = (phrase_start - pre_pad).max(seg.start);
+        let beep_end = (phrase_end + post_pad).min(seg.end);
         info!(
-            "[CENSOR] ~ Phrase '{}' in segment {:.2}s-{:.2}s → beep {:.2}s-{:.2}s (char offset estimate)",
+            "[CENSOR] ~ Phrase '{}' in segment {:.2}s-{:.2}s → beep {:.2}s-{:.2}s (phrase estimate)",
             bad_word, seg.start, seg.end, beep_start, beep_end
         );
         occurrences.push((beep_start, beep_end));
