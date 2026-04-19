@@ -209,15 +209,18 @@ pub async fn smart_edit(
     fs::create_dir_all(&work_dir_buf)
         .map_err(|e| format!("Could not create temp dir: {}", e))?;
     let work_dir: &Path = &work_dir_buf;
-    // Store enhanced/censored WAVs next to the input (not in temp dir) so they survive
-    // across runs and don't need to be rebuilt every time.
-    let enhanced_audio_path = input_parent.join(format!("synoid_{}_audio_enhanced.wav", job_prefix));
+    // Single user-visible audio file — enhanced + censored combined.
+    // The raw enhanced WAV lives in the temp dir as a build cache (not shown to the user).
+    let audio_path = input_parent.join(format!("synoid_{}_audio.wav", job_prefix));
+    let audio_meta_path = input_parent.join(format!("synoid_{}_audio.meta", job_prefix));
+    // Internal build cache — used to re-censor without re-enhancing.
+    let enhanced_audio_path = work_dir_buf.join("audio_enhanced.wav");
 
     let enhanced_cached = fs::metadata(&enhanced_audio_path)
         .map(|m| m.len() > 0)
         .unwrap_or(false);
     if enhanced_cached {
-        log(&format!("[SMART] ⚡ Reusing cached enhanced audio: {:?}", enhanced_audio_path));
+        log("[SMART] ⚡ Reusing cached enhanced audio (build cache).");
     } else {
         log("[SMART] 🎙️ Enhancing audio (High-Pass + Compression + Normalization)...");
         match production_tools::enhance_audio(input, &enhanced_audio_path).await {
@@ -382,158 +385,144 @@ pub async fn smart_edit(
         intent.remove_boring, intent.keep_action, intent.keep_speech, intent.remove_silence, intent.ruthless, intent.density, intent.censor_profanity
     ));
 
-    // 1.5. Apply Audio Censorship if requested
-    // Use the enhanced audio if available; otherwise fall back to the raw input so
-    // censoring is always applied to an existing file regardless of whether the
-    // audio-enhancement step succeeded.
-    let mut final_enhanced_audio_path = if use_enhanced_audio {
+    // 1.5. Apply Audio Censorship if requested, then write the single combined audio file.
+    // audio_path (synoid_{prefix}_audio.wav) is the ONE output — enhanced + censored.
+    // enhanced_audio_path in work_dir is a hidden build cache for re-censoring without re-enhancing.
+    let audio_source = if use_enhanced_audio {
         enhanced_audio_path.clone()
     } else {
         input.to_path_buf()
     };
+    let mut final_enhanced_audio_path = audio_source.clone();
+
     if intent.censor_profanity {
         log(&format!("[SMART] 🤬 Profanity censorship enabled: {}", intent.censor_profanity));
         if let Some(t) = &transcript {
             log(&format!("[SMART] 🤬 Applying audio censorship pass based on transcript ({} segments)...", t.len()));
-            // Stable path alongside the input so it survives across runs.
-            let censored_path = input_parent.join(format!("synoid_{}_audio_censored.wav", job_prefix));
 
-            // Reuse cached censored WAV if it already exists and has content.
-            let mut censored_cached = fs::metadata(&censored_path)
+            // Cache check: reuse audio_path if it already has censorship applied and the
+            // profanity list hasn't changed since it was generated.
+            let current_list_fingerprint = {
+                let words = get_profanity_word_list();
+                format!("censored,n={}", words.len())
+            };
+            let mut audio_cached = fs::metadata(&audio_path)
                 .map(|m| m.len() > 0)
                 .unwrap_or(false);
 
-            // Profanity list fingerprint — stored as a sidecar .meta file.
-            // If the list changed (e.g. new words added), the cached WAV won't cover them.
-            let censored_meta_path = input_parent.join(format!("synoid_{}_audio_censored.meta", job_prefix));
-            let current_list_fingerprint = {
-                let words = get_profanity_word_list();
-                format!("n={}", words.len())
-            };
-
-            // Invalidate if the input SRT (transcript) was regenerated after the censored WAV.
-            // Stale censored audio would miss newly detected profanity or have wrong timestamps.
-            if censored_cached {
-                let srt_path_check = input.with_extension("srt");
-                let srt_newer = fs::metadata(&srt_path_check).ok()
-                    .zip(fs::metadata(&censored_path).ok())
-                    .and_then(|(srt_m, cen_m)| {
-                        srt_m.modified().ok().zip(cen_m.modified().ok())
-                    })
-                    .map(|(srt_time, cen_time)| srt_time > cen_time)
+            if audio_cached {
+                // Invalidate if SRT was regenerated after the audio was built.
+                let srt_newer = fs::metadata(input.with_extension("srt")).ok()
+                    .zip(fs::metadata(&audio_path).ok())
+                    .and_then(|(s, a)| s.modified().ok().zip(a.modified().ok()))
+                    .map(|(st, at)| st > at)
                     .unwrap_or(false);
                 if srt_newer {
-                    log("[SMART] ♻️ Transcript SRT is newer than cached beep audio — regenerating censored audio for accurate beep timing...");
-                    let _ = fs::remove_file(&censored_path);
-                    let _ = fs::remove_file(&censored_meta_path);
-                    censored_cached = false;
+                    log("[SMART] ♻️ Transcript SRT is newer than audio — regenerating for accurate beep timing...");
+                    let _ = fs::remove_file(&audio_path);
+                    let _ = fs::remove_file(&audio_meta_path);
+                    audio_cached = false;
                 }
             }
 
-            // Invalidate if the profanity list has changed since the WAV was generated.
-            if censored_cached {
-                let stored_fingerprint = fs::read_to_string(&censored_meta_path).unwrap_or_default();
-                if stored_fingerprint.trim() != current_list_fingerprint {
-                    log("[SMART] ♻️ Profanity list changed — regenerating censored audio to include new words...");
-                    let _ = fs::remove_file(&censored_path);
-                    let _ = fs::remove_file(&censored_meta_path);
-                    censored_cached = false;
+            if audio_cached {
+                // Invalidate if profanity list changed.
+                let stored = fs::read_to_string(&audio_meta_path).unwrap_or_default();
+                if stored.trim() != current_list_fingerprint {
+                    log("[SMART] ♻️ Profanity list changed — regenerating audio with updated beeps...");
+                    let _ = fs::remove_file(&audio_path);
+                    let _ = fs::remove_file(&audio_meta_path);
+                    audio_cached = false;
                 }
             }
 
-            if censored_cached {
-                log(&format!("[SMART] ⚡ Reusing cached censored audio: {:?}", censored_path));
-                final_enhanced_audio_path = censored_path;
+            if audio_cached {
+                log(&format!("[SMART] ⚡ Reusing cached audio (enhanced + censored): {:?}", audio_path));
+                final_enhanced_audio_path = audio_path.clone();
                 use_enhanced_audio = true;
             } else {
+                let profanity_words = get_profanity_word_list();
+                let mut censor_timestamps: Vec<(f64, f64)> = Vec::new();
+                let mut segments_with_profanity = 0;
 
-            // Comprehensive list of words to bleep — racial slurs, hate speech, and profanity
-            let profanity_words = get_profanity_word_list();
-            let mut censor_timestamps: Vec<(f64, f64)> = Vec::new();
-            let mut segments_with_profanity = 0;
-
-            for seg in t {
-                let text_lower = seg.text.to_lowercase();
-                let mut found_in_segment = false;
-
-                for bad_word in &profanity_words {
-                    if word_boundary_match(&text_lower, bad_word) {
-                        info!(
-                            "[SMART] 🤬 Found profanity '{}' in segment: \"{}\" ({:.2}s-{:.2}s)",
-                            bad_word, seg.text, seg.start, seg.end
-                        );
-                        found_in_segment = true;
-                        // Use word-level timestamp (can have multiple occurrences in one segment)
-                        let word_timestamps = estimate_word_timestamps(seg, bad_word);
-                        censor_timestamps.extend(word_timestamps);
-                    }
-                }
-
-                if found_in_segment {
-                    segments_with_profanity += 1;
-                }
-            }
-
-            log(&format!("[SMART] 📊 Profanity scan complete: found in {}/{} segments",
-                segments_with_profanity, t.len()));
-            // Merge overlapping/adjacent timestamp ranges (in case a segment has multiple hits)
-            censor_timestamps
-                .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-            let mut merged_stamps: Vec<(f64, f64)> = Vec::new();
-            for (s, e) in censor_timestamps {
-                if let Some(last) = merged_stamps.last_mut() {
-                    if s <= last.1 + 0.1 {
-                        last.1 = last.1.max(e);
-                        continue;
-                    }
-                }
-                merged_stamps.push((s, e));
-            }
-            let censor_timestamps = merged_stamps;
-
-            if !censor_timestamps.is_empty() {
-                // Validate replacement SFX path exists; fall back to built-in beep if not
-                let replacement_sfx: Option<&str> =
-                    intent.profanity_replacement.as_deref().and_then(|p| {
-                        if Path::new(p).exists() {
-                            Some(p)
-                        } else {
-                            warn!(
-                                "[SMART] profanity_replacement '{}' not found, using built-in beep.",
-                                p
+                for seg in t {
+                    let text_lower = seg.text.to_lowercase();
+                    let mut found_in_segment = false;
+                    for bad_word in &profanity_words {
+                        if word_boundary_match(&text_lower, bad_word) {
+                            info!(
+                                "[SMART] 🤬 Found '{}' in segment: \"{}\" ({:.2}s-{:.2}s)",
+                                bad_word, seg.text, seg.start, seg.end
                             );
-                            None
+                            found_in_segment = true;
+                            censor_timestamps.extend(estimate_word_timestamps(seg, bad_word));
                         }
-                    });
-                match production_tools::apply_audio_censor(
-                    &final_enhanced_audio_path,
-                    &censored_path,
-                    &censor_timestamps,
-                    replacement_sfx,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        log(&format!(
-                            "[SMART] Successfully censored {} segments.",
-                            censor_timestamps.len()
-                        ));
-                        // Write fingerprint so future runs know which list version produced this WAV.
-                        let _ = fs::write(&censored_meta_path, &current_list_fingerprint);
-                        final_enhanced_audio_path = censored_path;
-                        use_enhanced_audio = true; // ensure censored track is used in segments
                     }
-                    Err(e) => warn!(
-                        "[SMART] Audio censorship failed: {}, using original audio.",
-                        e
-                    ),
+                    if found_in_segment { segments_with_profanity += 1; }
                 }
-            } else {
-                log("[SMART] ℹ️ No profanity detected in transcript.");
+
+                log(&format!("[SMART] 📊 Profanity scan: found in {}/{} segments", segments_with_profanity, t.len()));
+                censor_timestamps.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                let mut merged: Vec<(f64, f64)> = Vec::new();
+                for (s, e) in censor_timestamps {
+                    if let Some(last) = merged.last_mut() {
+                        if s <= last.1 + 0.1 { last.1 = last.1.max(e); continue; }
+                    }
+                    merged.push((s, e));
+                }
+                let censor_timestamps = merged;
+
+                if !censor_timestamps.is_empty() {
+                    let replacement_sfx: Option<&str> =
+                        intent.profanity_replacement.as_deref().and_then(|p| {
+                            if Path::new(p).exists() { Some(p) } else {
+                                warn!("[SMART] profanity_replacement '{}' not found, using built-in beep.", p);
+                                None
+                            }
+                        });
+                    // Censor writes directly to audio_path (the combined single output).
+                    match production_tools::apply_audio_censor(
+                        &audio_source,
+                        &audio_path,
+                        &censor_timestamps,
+                        replacement_sfx,
+                    ).await {
+                        Ok(_) => {
+                            log(&format!("[SMART] ✅ Audio ready: {} beep(s) applied → {:?}", censor_timestamps.len(), audio_path));
+                            let _ = fs::write(&audio_meta_path, &current_list_fingerprint);
+                            final_enhanced_audio_path = audio_path.clone();
+                            use_enhanced_audio = true;
+                        }
+                        Err(e) => warn!("[SMART] Audio censorship failed: {}, using original audio.", e),
+                    }
+                } else {
+                    // No profanity — copy enhanced directly to audio_path so only one file exists.
+                    if use_enhanced_audio && audio_source != audio_path {
+                        if let Err(e) = fs::copy(&audio_source, &audio_path) {
+                            warn!("[SMART] Could not write combined audio: {}", e);
+                        } else {
+                            let _ = fs::write(&audio_meta_path, "enhanced");
+                            final_enhanced_audio_path = audio_path.clone();
+                        }
+                    }
+                    log("[SMART] ℹ️ No profanity detected in transcript.");
+                }
             }
-            } // end else (censored_cached)
         } else {
             warn!("[SMART] ⚠️ Profanity censorship requested but no transcript available!");
+        }
+    } else if use_enhanced_audio {
+        // Censorship not requested — still consolidate to the single audio_path if not already there.
+        let audio_exists = fs::metadata(&audio_path).map(|m| m.len() > 0).unwrap_or(false);
+        if !audio_exists && audio_source != audio_path {
+            if let Err(e) = fs::copy(&audio_source, &audio_path) {
+                warn!("[SMART] Could not write combined audio: {}", e);
+            } else {
+                let _ = fs::write(&audio_meta_path, "enhanced");
+                final_enhanced_audio_path = audio_path.clone();
+            }
+        } else if audio_exists {
+            final_enhanced_audio_path = audio_path.clone();
         }
     }
 

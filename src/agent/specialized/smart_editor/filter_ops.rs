@@ -583,11 +583,11 @@ pub fn estimate_word_timestamps(
             // Medium (3-6s):        1.0s window, slight forward bias
             // Long (>6s):           1.4s window, stronger forward bias (more pause accumulation)
             let (pre_pad, post_pad, lag) = if seg_dur < 3.0 {
-                (seg_dur * start_ratio, seg_dur * (1.0 - end_ratio), 0.0)
+                (0.08, 0.25, 0.0)
             } else if seg_dur < 6.0 {
-                (0.15, 0.65, 0.10)
+                (0.08, 0.32, 0.10)
             } else {
-                (0.15, 0.85, 0.20)
+                (0.08, 0.38, 0.15)
             };
 
             let estimated_center = seg.start + start_ratio * seg_dur + lag;
@@ -615,11 +615,11 @@ pub fn estimate_word_timestamps(
         let start_ratio = char_pos as f64 / text_len as f64;
         let end_ratio = (char_pos + phrase_len) as f64 / text_len as f64;
         let (pre_pad, post_pad, lag) = if seg_dur < 3.0 {
-            (0.10, 0.30, 0.0)
+            (0.08, 0.25, 0.0)
         } else if seg_dur < 6.0 {
-            (0.15, 0.65, 0.10)
+            (0.08, 0.32, 0.10)
         } else {
-            (0.15, 0.85, 0.20)
+            (0.08, 0.38, 0.15)
         };
         let phrase_start = seg.start + start_ratio * seg_dur + lag;
         let phrase_end = seg.start + end_ratio * seg_dur + lag;

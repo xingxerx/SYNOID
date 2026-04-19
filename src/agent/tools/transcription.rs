@@ -33,7 +33,7 @@ pub struct TranscriptionEngine {
 
 impl TranscriptionEngine {
     pub async fn new(model_name: Option<String>) -> Result<Self> {
-        let model_name = model_name.unwrap_or_else(|| "base.en".to_string());
+        let model_name = model_name.unwrap_or_else(|| "large-v3".to_string());
 
         // Locate or download the model in blocking task
         let model_path =
