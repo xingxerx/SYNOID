@@ -317,55 +317,64 @@ impl TranscriptionEngine {
 /// normalised text is identical, then truncate everything from the start of
 /// that run onward.
 pub fn filter_hallucinations(mut segments: Vec<TranscriptSegment>) -> Vec<TranscriptSegment> {
-    const MIN_RUN: usize = 5; // consecutive identical lines → hallucination
-
-    if segments.len() < MIN_RUN {
+    // A robust hallucination filter that catches pure loops and alternating loops.
+    // It scans the sequence and removes segments that repeat abnormally.
+    if segments.is_empty() {
         return segments;
     }
 
     let normalise = |s: &str| -> String {
         s.to_lowercase()
             .chars()
-            .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+            .filter(|c| c.is_alphanumeric())
             .collect::<String>()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
     };
 
-    let mut i = 0;
-    while i < segments.len().saturating_sub(MIN_RUN) {
-        let anchor = normalise(&segments[i].text);
-        if anchor.is_empty() {
-            i += 1;
+    let mut filtered = Vec::new();
+    
+    // We keep track of recent segments to detect alternating loops (A B A B) 
+    // or simple consecutive loops (A A A).
+    let mut recent_history: Vec<String> = Vec::new();
+
+    for seg in segments {
+        let norm = normalise(&seg.text);
+        if norm.is_empty() {
+            filtered.push(seg);
             continue;
         }
 
-        let mut run_len = 0;
-        for j in i..segments.len() {
-            if normalise(&segments[j].text) == anchor {
-                run_len += 1;
-            } else {
-                break;
+        // Count how many times this exact normalized text appears in our recent history window
+        let count_in_history = recent_history.iter().filter(|h| **h == norm).count();
+
+        // If it appeared more than 3 times in the last 15 segments, it's a hallucination loop.
+        if count_in_history >= 3 {
+            tracing::warn!(
+                "[SOVEREIGN] 🚨 Hallucination loop detected for: \"{}\" — stripping.",
+                seg.text.trim()
+            );
+            // Skip adding this segment because it's caught in a loop.
+            continue;
+        }
+
+        recent_history.push(norm);
+        if recent_history.len() > 15 {
+            recent_history.remove(0);
+        }
+
+        // Also merge exactly identical adjacent segments to clean up output
+        if let Some(last) = filtered.last_mut() {
+            if normalise(&last.text) == normalise(&seg.text) && seg.start - last.end < 2.0 {
+                // Merge this segment into the last one instead of creating a new one
+                last.end = seg.end;
+                last.words.extend(seg.words.clone());
+                continue;
             }
         }
 
-        if run_len >= MIN_RUN {
-            tracing::warn!(
-                "[SOVEREIGN] 🚨 Hallucination loop detected at segment {}: \
-                 \"{}\" repeated {} times — stripping these specific segments.",
-                i,
-                segments[i].text.trim(),
-                run_len,
-            );
-            // Drain the repeated hallucinated lines instead of truncating the whole remainder
-            segments.drain(i..i + run_len);
-        } else {
-            i += 1;
-        }
+        filtered.push(seg);
     }
 
-    segments
+    filtered
 }
 
 pub fn generate_srt(segments: &[TranscriptSegment]) -> String {

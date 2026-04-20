@@ -227,13 +227,33 @@ pub fn generate_srt_for_kept_scenes(
         }
     }
 
-    // --- Pass 2: Merge flash entries (< MERGE_THRESHOLD_SECS) into the previous entry ---
+    // --- Pass 2: Merge flash entries or identical consecutive entries (caused by cut loops) ---
+    let normalise = |s: &str| -> String {
+        s.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect()
+    };
+
     let mut merged: Vec<(f64, f64, String)> = Vec::new();
     for (start, end, text) in entries {
         let duration = end - start;
-        if duration < MERGE_THRESHOLD_SECS && !merged.is_empty() {
-            // Extend previous entry's end time and append text
-            let last = merged.last_mut().unwrap();
+        if merged.is_empty() {
+            merged.push((start, end, text));
+            continue;
+        }
+
+        let last = merged.last_mut().unwrap();
+
+        // If the same text is emitted back-to-back (e.g. one long original segment split over multiple cuts)
+        // merge their time bounds but do not rewrite the same text over and over.
+        if normalise(&last.2) == normalise(&text) {
+            // Wait, we should only merge if the gap between them isn't completely massive
+            if start - last.1 < 3.0 {
+                last.1 = last.1.max(end);
+                continue;
+            }
+        }
+
+        if duration < MERGE_THRESHOLD_SECS {
+            // Extend previous entry's end time and append text (flash subtitle)
             last.1 = last.1.max(end);
             if !text.is_empty() {
                 last.2.push(' ');
