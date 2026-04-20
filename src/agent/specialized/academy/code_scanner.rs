@@ -55,9 +55,7 @@ impl CodeScanner {
             cleaned_url
         };
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?;
+        let client = crate::net::build_client(std::time::Duration::from_secs(10));
 
         let resp = client.get(&raw_url).send().await?;
         if !resp.status().is_success() {

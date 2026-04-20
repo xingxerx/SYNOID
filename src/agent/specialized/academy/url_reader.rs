@@ -109,8 +109,9 @@ impl UrlReader {
     ) -> Result<LearnedPattern, Box<dyn std::error::Error + Send + Sync>> {
         info!("[SENSES] Detected Article URL. Scraping text...");
 
-        // 1. Fetch HTML
-        let resp = reqwest::get(url).await?.text().await?;
+        // 1. Fetch HTML (proper client: 30 s timeout, gzip, UA header)
+        let client = crate::net::build_client(std::time::Duration::from_secs(30));
+        let resp = client.get(url).send().await?.text().await?;
 
         // 2. Extract Text (Naive implementation)
         let mut text_content = String::new();

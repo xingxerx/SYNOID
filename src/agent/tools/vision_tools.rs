@@ -127,11 +127,9 @@ pub async fn analyze_image_gemini(
         "stream": false
     });
 
-    let client = reqwest::Client::new();
-    let response = client
+    let response = crate::net::build_local_client(std::time::Duration::from_secs(90))
         .post(format!("{}/api/generate", base))
         .json(&payload)
-        .timeout(std::time::Duration::from_secs(90))
         .send()
         .await?;
 
@@ -541,7 +539,8 @@ async fn request_comfyui_extension(
     std::fs::File::open(seed_frame)?.read_to_end(&mut bytes)?;
     let b64 = base64_encode(&bytes);
 
-    let client = reqwest::Client::new();
+    let upload_client = crate::net::build_local_client(std::time::Duration::from_secs(10));
+    let prompt_client = crate::net::build_local_client(std::time::Duration::from_secs(120));
 
     // Upload the seed image to ComfyUI /upload/image
     let upload_body = serde_json::json!({
@@ -549,10 +548,9 @@ async fn request_comfyui_extension(
         "type": "input",
         "overwrite": true
     });
-    let upload_resp = client
+    let upload_resp = upload_client
         .post(format!("{}/upload/image", config.url))
         .json(&upload_body)
-        .timeout(std::time::Duration::from_secs(10))
         .send()
         .await?
         .json::<serde_json::Value>()
@@ -591,10 +589,9 @@ async fn request_comfyui_extension(
         }
     });
 
-    client
+    prompt_client
         .post(format!("{}/prompt", config.url))
         .json(&prompt)
-        .timeout(std::time::Duration::from_secs(120))
         .send()
         .await?;
 
@@ -629,10 +626,8 @@ pub async fn correct_eye_contact(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("[EYE-CONTACT] Requesting gaze correction via ComfyUI…");
 
-    let client = reqwest::Client::new();
-    let ping = client
+    let ping = crate::net::build_local_client(std::time::Duration::from_secs(3))
         .get(format!("{}/system_stats", config.url))
-        .timeout(std::time::Duration::from_secs(3))
         .send()
         .await;
 

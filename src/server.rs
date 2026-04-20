@@ -10,9 +10,13 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::{Component, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tower::ServiceExt; // For oneshot
 use tower_http::cors::CorsLayer;
+use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
+use tower_http::timeout::TimeoutLayer;
+use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
 use crate::editor_api;
@@ -107,6 +111,13 @@ pub fn create_router(state: Arc<KernelState>) -> Router {
         .nest("/api/editor", editor_router)
         // Merge the stateful dashboard router
         .merge(dashboard_router)
+        // Structured HTTP access log
+        .layer(TraceLayer::new_for_http())
+        // 30 s hard wall-clock timeout per request (returns 408 on breach)
+        .layer(TimeoutLayer::new(Duration::from_secs(30)))
+        // 10 MiB request body cap — prevents runaway uploads exhausting RAM
+        .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024))
+        // Permissive CORS is safe here: server binds to 127.0.0.1 only
         .layer(CorsLayer::permissive())
 }
 
@@ -136,9 +147,33 @@ pub async fn start_server(port: u16, state: Arc<KernelState>) {
             return;
         }
     };
-    if let Err(e) = axum::serve(listener, app).await {
+    if let Err(e) = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+    {
         error!("❌ Server error: {}", e);
     }
+    info!("🛑 SYNOID server shut down gracefully.");
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+    // On non-Unix platforms (Windows) there is no SIGTERM, so we only wait for Ctrl+C.
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut terminate = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+        tokio::select! {
+            _ = ctrl_c => {},
+            _ = terminate.recv() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    ctrl_c.await;
 }
 
 async fn get_status(State(state): State<AppState>) -> Json<DashboardStatus> {
@@ -186,10 +221,11 @@ async fn auth_middleware(
 ) -> Result<Response, StatusCode> {
     let api_key =
         std::env::var("SYNOID_API_KEY").unwrap_or_else(|_| "synoid_secret_v1".to_string());
+    let expected = api_key.as_bytes();
 
-    // 1. Check x-api-key header
+    // 1. Check x-api-key header — constant-time compare to resist timing attacks
     if let Some(key) = headers.get("x-api-key") {
-        if key == api_key.as_str() {
+        if crate::net::ct_eq(key.as_bytes(), expected) {
             return Ok(next.run(request).await);
         }
     }
@@ -198,7 +234,7 @@ async fn auth_middleware(
     if let Some(query) = request.uri().query() {
         for pair in query.split('&') {
             if let Some(val) = pair.strip_prefix("api_key=") {
-                if val == api_key.as_str() {
+                if crate::net::ct_eq(val.as_bytes(), expected) {
                     return Ok(next.run(request).await);
                 }
             }

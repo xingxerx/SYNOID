@@ -5,8 +5,10 @@
 // Ollama server.  No cloud providers (Groq / Google) are used.
 
 use crate::agent::ai_systems::token_optimizer::TokenOptimizer;
+use crate::net;
 use serde_json::json;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::{info, warn};
 
 /// Single provider — always Ollama.
@@ -67,10 +69,7 @@ impl MultiProviderLlm {
     pub fn new(config: ProviderConfig, optimizer: Arc<TokenOptimizer>) -> Self {
         info!("[LLM] Initialized — Ollama-only mode ({})", config.ollama_url);
         Self {
-            client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(60))
-                .build()
-                .unwrap_or_default(),
+            client: net::build_local_client(Duration::from_secs(60)),
             config,
             optimizer,
         }
@@ -132,21 +131,22 @@ impl MultiProviderLlm {
             "options": { "temperature": 0.7 }
         });
 
-        match self
-            .client
-            .post(format!("{}/api/generate", base))
-            .json(&payload)
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => {
-                let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        let url = format!("{}/api/generate", base);
+        // Retry up to 2 extra times on timeout / connect errors before going offline.
+        let resp = net::retry(2, net::is_transient_reqwest, || {
+            self.client.post(&url).json(&payload).send()
+        })
+        .await;
+
+        match resp {
+            Ok(r) if r.status().is_success() => {
+                let json: serde_json::Value = r.json().await.map_err(|e| e.to_string())?;
                 Ok(json["response"]
                     .as_str()
                     .unwrap_or("Error: Empty response")
                     .to_string())
             }
-            Ok(resp) => Err(format!("Ollama API error: {}", resp.status())),
+            Ok(r) => Err(format!("Ollama API error: {}", r.status())),
             Err(e) => {
                 warn!("[LLM] Ollama unreachable ({}), entering offline mode", e);
                 Ok(format!("(Offline Mode) Mock response for: {}", request))
@@ -168,11 +168,12 @@ impl MultiProviderLlm {
             "stream": false
         });
 
-        match self
-            .client
+        // Vision inference is slow — use a dedicated 90 s client to avoid overriding the
+        // 60 s reasoning timeout on the shared client.
+        let vision_client = net::build_local_client(Duration::from_secs(90));
+        match vision_client
             .post(format!("{}/api/generate", base))
             .json(&body)
-            .timeout(std::time::Duration::from_secs(90))
             .send()
             .await
         {

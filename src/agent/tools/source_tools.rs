@@ -695,8 +695,14 @@ pub async fn web_search(
         "https://html.duckduckgo.com/html/?q={}",
         urlencoding::encode(query)
     );
+    // Use a browser UA so DuckDuckGo returns HTML results; add 15 s timeout.
     let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
+        .pool_max_idle_per_host(2)
+        .tcp_nodelay(true)
+        .gzip(true)
         .build()?;
 
     let resp = client.get(&url).send().await?.text().await?;

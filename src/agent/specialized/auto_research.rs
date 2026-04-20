@@ -125,10 +125,7 @@ impl AutoResearchPipeline {
             .unwrap_or_else(|_| "llama-3.3-70b-versatile".to_string());
 
         Self {
-            client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap_or_default(),
+            client: crate::net::build_client(std::time::Duration::from_secs(30)),
             api_key_semantic: std::env::var("SEMANTIC_SCHOLAR_API_KEY").ok(),
             ollama_url,
             ollama_model: std::env::var("SYNOID_MODEL")
@@ -421,7 +418,7 @@ impl AutoResearchPipeline {
         let resp = match self
             .client
             .get(&url)
-            .header("User-Agent", "SYNOID/0.1.1 (mailto:synoid@example.com)")
+            .header("User-Agent", crate::net::USER_AGENT)
             .send()
             .await
         {

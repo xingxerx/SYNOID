@@ -55,10 +55,7 @@ pub struct HiveMind {
 impl HiveMind {
     pub fn new(api_url: &str) -> Self {
         Self {
-            client: Client::builder()
-                .timeout(std::time::Duration::from_secs(5))
-                .build()
-                .unwrap_or_default(),
+            client: crate::net::build_local_client(std::time::Duration::from_secs(5)),
             api_url: api_url.to_string(),
             models: HashMap::new(),
             active_reasoner: None,
