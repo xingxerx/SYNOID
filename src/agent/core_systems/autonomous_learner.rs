@@ -469,15 +469,14 @@ impl AutonomousLearner {
                 state.save(&instance_id);
 
                 info!(
-                    "[LEARNER] ✅ Cycle #{} Summary: Topic '{}' processed. Next cycle in 30s.",
+                    "[LEARNER] ✅ Cycle #{} Summary: Topic '{}' processed. Next cycle in 10m.",
                     cycle_count, topic
                 );
 
                 // Release state lock before long sleep
                 drop(state);
 
-                // Sleep between topic cycles - also adaptive? For now fixed 30s base
-                tokio::time::sleep(Duration::from_secs(30)).await;
+                tokio::time::sleep(Duration::from_secs(600)).await;
             }
 
             info!("[LEARNER] 🛑 Loop Stopped");

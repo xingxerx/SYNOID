@@ -316,7 +316,7 @@ impl TranscriptionEngine {
 /// transcript. We detect this by scanning for a run of N segments whose
 /// normalised text is identical, then truncate everything from the start of
 /// that run onward.
-pub fn filter_hallucinations(mut segments: Vec<TranscriptSegment>) -> Vec<TranscriptSegment> {
+pub fn filter_hallucinations(segments: Vec<TranscriptSegment>) -> Vec<TranscriptSegment> {
     // A robust hallucination filter that catches pure loops and alternating loops.
     // It scans the sequence and removes segments that repeat abnormally.
     if segments.is_empty() {
